@@ -218,8 +218,34 @@ public:
 		// do your own comparison here
 		// check each pixel or use some other methods
 
-		return true;
-	}
+        return compare_images(rendered_image, target_image);
+    }
+
+    // Compare two images for similarity
+    static bool compare_images(const cv::Mat &image1, const cv::Mat &image2) {
+        // Check for empty images
+        if (image1.empty() || image2.empty()) {
+            std::cerr << "Error: One of the images is empty." << std::endl;
+            return false;
+        }
+
+        // Check for size and type mismatch
+        if (image1.size() != image2.size() || image1.type() != image2.type()) {
+            std::cerr << "Error: Images do not match in size or type." << std::endl;
+            return false;
+        }
+
+        // Compute the absolute difference between images and convert to grayscale
+        cv::Mat absDifference;
+        cv::absdiff(image1, image2, absDifference);
+        cv::cvtColor(absDifference, absDifference, cv::COLOR_BGR2GRAY);
+
+        // Apply a threshold to filter out minor differences
+        cv::threshold(absDifference, absDifference, 10, 255, cv::THRESH_BINARY);
+
+        // Check if there are any significant differences
+        return cv::countNonZero(absDifference) == 0;
+    }
 
 	View search_next_view() {
 
