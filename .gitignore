@@ -40,3 +40,6 @@ build/
 
 # CLion
 .idea/
+
+# Generated images
+**/viewspace_images/**/*.png
