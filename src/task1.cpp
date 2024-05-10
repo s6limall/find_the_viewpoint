@@ -21,7 +21,7 @@
 #include <Eigen/Dense>
 #include <Eigen/Geometry>
 
-typedef unsigned unsigned long long pop_t;
+typedef unsigned long long pop_t;
 
 using namespace std;
 
