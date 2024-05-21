@@ -35,9 +35,6 @@ set(LIBRARIES
         spdlog::spdlog
 )
 
-# Include directories
-include_directories(${INCLUDE_DIRS})
-
 # Collect source files and headers
 file(GLOB_RECURSE PROJECT_HEADERS CONFIGURE_DEPENDS include/*.hpp)
 file(GLOB_RECURSE PROJECT_SOURCES CONFIGURE_DEPENDS src/*.cpp)
@@ -48,5 +45,8 @@ add_executable(${PROJECT_NAME} ${PROJECT_HEADERS} ${PROJECT_SOURCES})
 # Link libraries
 target_link_libraries(${PROJECT_NAME} PRIVATE ${LIBRARIES})
 
-# Enable parallel builds
+# Include directories
+target_include_directories(${PROJECT_NAME} PRIVATE ${INCLUDE_DIRS})
+
+# Enable parallel builds (optional, usually set outside CMakeLists)
 set(CMAKE_BUILD_PARALLEL_LEVEL 4)

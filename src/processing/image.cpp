@@ -1,12 +1,9 @@
 //
-// Created by ayush on 5/18/24.
+// Created by ayush on 5/21/24.
 //
 
-#include "../include/image_processing.hpp"
-#include "../include/config.hpp"
-
-#include <opencv2/imgproc.hpp>
-#include <opencv2/xfeatures2d.hpp>
+#include "../../include/processing/image.hpp"
+#include <spdlog/spdlog.h>
 
 // Convert image to grayscale
 cv::Mat convertToGrayscale(const cv::Mat &image) {
