@@ -328,6 +328,10 @@ void task1(string object_name, int test_num) {
 
 int main()
 {
+	// Initialize logging
+	Config::initializeLogging();
+	Config::setLoggingLevel(spdlog::level::trace);
+
 	// Set random seed
 	srand(43);
 	// Set test objects
