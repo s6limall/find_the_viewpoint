@@ -1,6 +1,6 @@
 #include <iostream>
-#include <string>  
-#include <vector> 
+#include <string>
+#include <vector>
 #include <cmath>
 
 #include <opencv2/opencv.hpp>
@@ -20,6 +20,9 @@
 #include <Eigen/Core>
 #include <Eigen/Dense>
 #include <Eigen/Geometry>
+
+#include "../include/config.hpp"
+#include "../include/image_processing.hpp"
 
 typedef unsigned long long pop_t;
 
@@ -216,14 +219,41 @@ public:
 	}
 
 	View search_next_view() {
+		size_t maxGoodMatches = 0;
+		View bestView;
+		bool foundBestView = false;
 
-		// search the next view
-		// ...
-		// do your own search here
-		// sequenial or random search ... 
+		for (const auto &view: view_space) {
+			if (std::any_of(selected_views.begin(), selected_views.end(), [&](const View &v) {
+				return view.pose_6d.isApprox(v.pose_6d);
+			}))
+				continue;
 
-		return view_space[0];
+			cv::Mat renderedImage = render_view_image(view);
+			size_t goodMatches = computeSIFTMatches(target_image, renderedImage);
+
+			spdlog::info("View {}: {} good matches", &view - &view_space[0], goodMatches);
+
+			if (goodMatches > maxGoodMatches) {
+				maxGoodMatches = goodMatches;
+				bestView = view;
+				foundBestView = true;
+			}
+		}
+
+		if (!foundBestView) {
+			if (!selected_views.empty()) {
+				spdlog::warn("No good matches found, returning the first selected view.");
+				return selected_views[0];
+			}
+			spdlog::error("No available views to select from");
+			throw std::runtime_error("No available views to select from");
+		}
+
+		spdlog::info("Best view found with {} good matches", maxGoodMatches);
+		return bestView;
 	}
+
 
 	// search the best view until find the target
 	void loop() {
