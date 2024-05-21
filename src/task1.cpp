@@ -120,7 +120,7 @@ public:
 		}
 		object_center(0) /= points.size();
 		object_center(1) /= points.size();
-		object_center(2) /= points.size(); 
+		object_center(2) /= points.size();
 		double object_size = 0.0;
 		for (auto& ptr : points) {
 			object_size = max(object_size, (object_center - ptr).norm());
@@ -186,7 +186,7 @@ public:
 	cv::Mat target_image; // target image
 	vector<View> view_space; // view space
 	vector<View> selected_views; // selected views
-	vector<cv::Mat> rendered_images; // rendered images	
+	vector<cv::Mat> rendered_images; // rendered images
 
 	// Constructor
 	View_Planning_Simulator(Perception* _perception_simulator, cv::Mat _target_image, vector<View> _view_space = vector<View>()) {
