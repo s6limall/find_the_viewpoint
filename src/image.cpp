@@ -1,41 +1,33 @@
 //
-// Created by ayush on 5/18/24.
+// Created by ayush on 5/21/24.
 //
 
-#include "../include/image_processing.hpp"
-#include "../include/config.hpp"
-
-#include <opencv2/imgproc.hpp>
-#include <opencv2/xfeatures2d.hpp>
+#include "../include/image.hpp"
+#include <spdlog/spdlog.h>
 
 // Convert image to grayscale
 cv::Mat convertToGrayscale(const cv::Mat &image) {
-    spdlog::debug("Converting image to grayscale.");
     if (image.empty()) {
         spdlog::error("Input image is empty.");
         return cv::Mat();
     }
     cv::Mat gray;
     cv::cvtColor(image, gray, cv::COLOR_BGR2GRAY); // Convert BGR image to grayscale
-    spdlog::debug("Image converted to grayscale.");
     return gray;
 }
 
 // Detect SIFT keypoints and compute descriptors
 void detectAndComputeSIFT(const cv::Mat &gray, std::vector<cv::KeyPoint> &keypoints, cv::Mat &descriptors) {
-    spdlog::debug("Detecting SIFT keypoints and computing descriptors.");
     if (gray.empty()) {
         spdlog::error("Input grayscale image is empty.");
         return;
     }
     cv::Ptr<cv::SIFT> sift = cv::SIFT::create(); // Create SIFT detector
     sift->detectAndCompute(gray, cv::noArray(), keypoints, descriptors); // Detect keypoints and compute descriptors
-    spdlog::debug("Detected {} keypoints and computed descriptors.", keypoints.size());
 }
 
 // Match descriptors using FLANN-based matcher
 std::vector<std::vector<cv::DMatch>> matchSIFTDescriptors(const cv::Mat &descriptors1, const cv::Mat &descriptors2) {
-    spdlog::debug("Matching SIFT descriptors using FLANN-based matcher.");
     if (descriptors1.empty()) {
         spdlog::error("First descriptor matrix is empty.");
         return {};
@@ -47,26 +39,22 @@ std::vector<std::vector<cv::DMatch>> matchSIFTDescriptors(const cv::Mat &descrip
     cv::Ptr<cv::DescriptorMatcher> matcher = cv::DescriptorMatcher::create(cv::DescriptorMatcher::FLANNBASED);
     std::vector<std::vector<cv::DMatch>> knnMatches;
     matcher->knnMatch(descriptors1, descriptors2, knnMatches, 2); // Perform KNN matching with k=2
-    spdlog::debug("Found {} matches.", knnMatches.size());
     return knnMatches;
 }
 
 // Apply the ratio test to filter good matches
 std::vector<cv::DMatch> applyRatioTest(const std::vector<std::vector<cv::DMatch>> &knnMatches, float ratioThresh) {
-    spdlog::debug("Applying ratio test to filter good matches with ratio threshold = {}.", ratioThresh);
     std::vector<cv::DMatch> goodMatches;
     for (const auto &knnMatch : knnMatches) {
         if (knnMatch[0].distance < ratioThresh * knnMatch[1].distance) {
             goodMatches.push_back(knnMatch[0]); // Keep only the good matches
         }
     }
-    spdlog::debug("Number of good matches: {}", goodMatches.size());
     return goodMatches;
 }
 
 // Compute the number of good SIFT matches between two images
 size_t computeSIFTMatches(const cv::Mat &image1, const cv::Mat &image2, float ratioThresh) {
-    spdlog::debug("Computing the number of good SIFT matches between two images with ratio threshold = {}.", ratioThresh);
     if (image1.empty()) {
         spdlog::error("First input image is empty.");
         return 0;
@@ -85,13 +73,11 @@ size_t computeSIFTMatches(const cv::Mat &image1, const cv::Mat &image2, float ra
 
     auto knnMatches = matchSIFTDescriptors(descriptors1, descriptors2);
     auto goodMatches = applyRatioTest(knnMatches, ratioThresh);
-    spdlog::info("Computed {} good SIFT matches.", goodMatches.size());
     return goodMatches.size();
 }
 
 // Compare two images for similarity using SIFT feature matching
 bool compareImages(const cv::Mat &image1, const cv::Mat &image2) {
-    spdlog::debug("Comparing two images for similarity using SIFT feature matching.");
     if (image1.empty()) {
         spdlog::error("First input image is empty.");
         return false;

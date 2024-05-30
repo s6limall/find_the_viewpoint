@@ -32,7 +32,11 @@
 *.app
 
 # CMake
-cmake-build-*/
+cmake-build-*
+CMakeFiles/
+CMakeCache.txt
+build/
+Makefile
 
 # Xmake cache
 .xmake/

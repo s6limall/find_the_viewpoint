@@ -43,6 +43,12 @@ public:
 		pose_6d = Eigen::Matrix4d::Identity();
 	}
 
+	// Function to get the camera position from pose_6d
+	Eigen::Vector3d getCameraPosition() const {
+		Eigen::Vector3d position = pose_6d.block<3, 1>(0, 3);
+		return position;
+	}
+
 	// Destructor
 	~View() {
 		;
@@ -218,69 +224,74 @@ public:
 		return compareImages(rendered_image, target_image);
 	}
 
-	View search_next_view() {
-		size_t maxGoodMatches = 0;
-		View bestView;
-		bool foundBestView = false;
+	View calculate_new_center(const View & A, const View & B, const View & C) {
+		Eigen::Vector3d a = getCameraPosition(A)
+		Eigen::Vector3d b = getCameraPosition(B)
+		Eigen::Vector3d c = getCameraPosition(C)
+		Eigen::Vector3d ab = b - a;
+		Eigen::Vector3d ac = c - a;
 
-		for (const auto &view: view_space) {
-			if (std::any_of(selected_views.begin(), selected_views.end(), [&](const View &v) {
-				return view.pose_6d.isApprox(v.pose_6d);
-			}))
-				continue;
+		Eigen::Vector3d normal = ab.cross(ac);
+		
+		normal.normalize();
+		
+		View new_center = view.compute_pose_from_positon_and_object_center(normal * 3.0, Eigen::Vector3d(1e-100, 1e-100, 1e-100));
+		
+		return new_center;
+	}
 
-			cv::Mat renderedImage = render_view_image(view);
-			size_t goodMatches = computeSIFTMatches(target_image, renderedImage);
+	View dfs_next_view(const View & A, const View & B, const View & C, int & best_score) {
+		View D = calculate_new_center(A,B,C);
+		View best_view = D;
+		//Check Triangle score if not better return
+		//generate Images and get sift scores
+		//check if better than best score else return without changing best_score
+		if (avg_score < best_score)
+			return best_view;
+		
+		best_score = avg_score;
 
-			spdlog::info("View {}: {} good matches", &view - &view_space[0], goodMatches);
+		//check for final perfect match if done return early
 
-			if (goodMatches > maxGoodMatches) {
-				maxGoodMatches = goodMatches;
-				bestView = view;
-				foundBestView = true;
-			}
+		std::vector<std::pair<Eigen::Vector3d, Eigen::Vector3d>> edges = {
+			{A, B},
+			{B, C},
+			{C, D}
+		};
+		
+
+		for (const auto &edge : edges) {
+			// Call new function if better add score if score well 
+			candidate_view = dfs_next_view(edge.first, edge.second, p4, best_score);
+			
+			if (avg_score > best_score)
+				pass;
+			best_view = candidate_view
 		}
 
-		if (!foundBestView) {
-			if (!selected_views.empty()) {
-				spdlog::warn("No good matches found, returning the first selected view.");
-				return selected_views[0];
-			}
-			spdlog::error("No available views to select from");
-			throw std::runtime_error("No available views to select from");
-		}
-
-		spdlog::info("Best view found with {} good matches", maxGoodMatches);
-		return bestView;
+		return best_view;
 	}
 
 
 	// search the best view until find the target
-	void loop() {
-		View next_view = search_next_view();
-		selected_views.push_back(next_view);
-
-		while (!is_target(next_view)) {
-			next_view = search_next_view();
-			selected_views.push_back(next_view);
-		}
+	void dfs() {
+		//Create Initial Pyramid
+		View p1 = view.compute_pose_from_positon_and_object_center(Eigen::Vector3d vec(1.0, 0.0, 0.0) * 3.0, Eigen::Vector3d(1e-100, 1e-100, 1e-100));
+		View p2 = view.compute_pose_from_positon_and_object_center(Eigen::Vector3d vec(-.5, 0.866, 0.0) * 3.0, Eigen::Vector3d(1e-100, 1e-100, 1e-100));
+		View p3 = view.compute_pose_from_positon_and_object_center(Eigen::Vector3d vec(-.5, -0.866, 0.0) * 3.0, Eigen::Vector3d(1e-100, 1e-100, 1e-100));
+		View p4 = view.compute_pose_from_positon_and_object_center(Eigen::Vector3d vec(0.0, 0.0, 1.0) * 3.0, Eigen::Vector3d(1e-100, 1e-100, 1e-100));
 
 		cout << "Find the target!" << endl;
 	}
 
 };
 
-void task1(string object_name, int test_num) {
+void task2(string object_name, int test_num) {
 	// Create a perception simulator
 	Perception* perception_simulator = new Perception("./3d_models/" + object_name + ".ply");
 	// read a fixed viewspace
 	vector<View> view_space;
-	std::string filepath = "./view_space/" + std::to_string(test_num) + ".txt";
-	ifstream fin(filepath);
-	if (!fin.is_open()) {
-		cout << "Open file failed!" << endl;
-		exit(1);
-	}
+	
 	Eigen::Vector3d position;
 	while (fin >> position(0) >> position(1) >> position(2)) {
 		position = position.normalized();
@@ -288,9 +299,7 @@ void task1(string object_name, int test_num) {
 		view.compute_pose_from_positon_and_object_center(position * 3.0, Eigen::Vector3d(1e-100, 1e-100, 1e-100));
 		view_space.push_back(view);
 	}
-	fin.close();
-	cout << "Read view space successfully!" << endl;
-	cout << "View space size: " << view_space.size() << endl;
+	
 	// Render RGB images from the viewspace
 	for (int i = 0; i < view_space.size(); i++) {
 		perception_simulator->render(view_space[i], "./task1/viewspace_images/" + object_name + "/rgb_" + to_string(i) + ".png");
@@ -312,7 +321,7 @@ void task1(string object_name, int test_num) {
 		cv::Mat target_image = cv::imread("./task1/viewspace_images/" + object_name + "/rgb_" + to_string(index) + ".png");
 		// Create a view planning simulator
 		View_Planning_Simulator view_planning_simulator(perception_simulator, target_image, view_space);
-		view_planning_simulator.loop();
+		view_planning_simulator.dfs();
 		// Save the selected views
 		ofstream fout("./task1/selected_views/" + object_name + "/test_" + to_string(test_id) + ".txt");
 		fout << view_planning_simulator.selected_views.size() << endl;
