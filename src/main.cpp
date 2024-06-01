@@ -5,17 +5,17 @@
 #include <spdlog/spdlog.h>
 
 #include "../include/task1.hpp"
+#include "../include/task2.hpp"
 
 using namespace std;
 
-enum Task {
-    Task_1,
-    Task_2,
-    Task_3,
-    Task_4
+enum Level {
+    Level_1,
+    Level_2,
+    Level_3,
 };
 
-Task selected_task = Task_1; 
+Level selected_task = Level_3; 
 
 int main() {
     Config::initializeLogging();
@@ -25,14 +25,19 @@ int main() {
 
 
     switch (selected_task) {
-        case Task_1:{
+        case Level_1:{
             spdlog::info("Task_1: level_1");
-            run_level_1();
+            task1::run_level_1();
             break;
         }
-        case Task_2:{
+        case Level_2:{
             spdlog::info("Task_1: level_2");
-            run_level_2();
+            task1::run_level_2();
+            break;
+        }
+        case Level_3:{
+            spdlog::info("Task_2: level_3");
+            task2::run_level_3();
             break;
         }
         default:

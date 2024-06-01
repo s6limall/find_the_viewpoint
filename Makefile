@@ -202,6 +202,30 @@ src/main.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/find_the_viewpoint.dir/build.make CMakeFiles/find_the_viewpoint.dir/src/main.cpp.s
 .PHONY : src/main.cpp.s
 
+src/processing/dfs.o: src/processing/dfs.cpp.o
+.PHONY : src/processing/dfs.o
+
+# target to build an object file
+src/processing/dfs.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/find_the_viewpoint.dir/build.make CMakeFiles/find_the_viewpoint.dir/src/processing/dfs.cpp.o
+.PHONY : src/processing/dfs.cpp.o
+
+src/processing/dfs.i: src/processing/dfs.cpp.i
+.PHONY : src/processing/dfs.i
+
+# target to preprocess a source file
+src/processing/dfs.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/find_the_viewpoint.dir/build.make CMakeFiles/find_the_viewpoint.dir/src/processing/dfs.cpp.i
+.PHONY : src/processing/dfs.cpp.i
+
+src/processing/dfs.s: src/processing/dfs.cpp.s
+.PHONY : src/processing/dfs.s
+
+# target to generate assembly for a file
+src/processing/dfs.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/find_the_viewpoint.dir/build.make CMakeFiles/find_the_viewpoint.dir/src/processing/dfs.cpp.s
+.PHONY : src/processing/dfs.cpp.s
+
 src/task1.o: src/task1.cpp.o
 .PHONY : src/task1.o
 
@@ -226,6 +250,30 @@ src/task1.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/find_the_viewpoint.dir/build.make CMakeFiles/find_the_viewpoint.dir/src/task1.cpp.s
 .PHONY : src/task1.cpp.s
 
+src/task2.o: src/task2.cpp.o
+.PHONY : src/task2.o
+
+# target to build an object file
+src/task2.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/find_the_viewpoint.dir/build.make CMakeFiles/find_the_viewpoint.dir/src/task2.cpp.o
+.PHONY : src/task2.cpp.o
+
+src/task2.i: src/task2.cpp.i
+.PHONY : src/task2.i
+
+# target to preprocess a source file
+src/task2.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/find_the_viewpoint.dir/build.make CMakeFiles/find_the_viewpoint.dir/src/task2.cpp.i
+.PHONY : src/task2.cpp.i
+
+src/task2.s: src/task2.cpp.s
+.PHONY : src/task2.s
+
+# target to generate assembly for a file
+src/task2.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/find_the_viewpoint.dir/build.make CMakeFiles/find_the_viewpoint.dir/src/task2.cpp.s
+.PHONY : src/task2.cpp.s
+
 # Help Target
 help:
 	@echo "The following are some of the valid targets for this Makefile:"
@@ -244,9 +292,15 @@ help:
 	@echo "... src/main.o"
 	@echo "... src/main.i"
 	@echo "... src/main.s"
+	@echo "... src/processing/dfs.o"
+	@echo "... src/processing/dfs.i"
+	@echo "... src/processing/dfs.s"
 	@echo "... src/task1.o"
 	@echo "... src/task1.i"
 	@echo "... src/task1.s"
+	@echo "... src/task2.o"
+	@echo "... src/task2.i"
+	@echo "... src/task2.s"
 .PHONY : help
 
 

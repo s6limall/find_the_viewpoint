@@ -28,6 +28,7 @@ typedef unsigned long long pop_t;
 
 using namespace std;
 
+namespace task1{
 //Robot
 class Robot {
 	;
@@ -352,4 +353,6 @@ int run_level_2()
 	}
 
 	return 0;
+}
+
 }

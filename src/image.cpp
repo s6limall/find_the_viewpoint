@@ -70,7 +70,7 @@ size_t computeSIFTMatches(const cv::Mat &image1, const cv::Mat &image2, float ra
     cv::Mat descriptors1, descriptors2;
     detectAndComputeSIFT(gray1, keypoints1, descriptors1);
     detectAndComputeSIFT(gray2, keypoints2, descriptors2);
-
+    
     auto knnMatches = matchSIFTDescriptors(descriptors1, descriptors2);
     auto goodMatches = applyRatioTest(knnMatches, ratioThresh);
     return goodMatches.size();

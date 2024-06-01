@@ -28,6 +28,7 @@ typedef unsigned long long pop_t;
 
 using namespace std;
 
+namespace task2{
 //Robot
 class Robot {
 	;
@@ -193,15 +194,13 @@ class View_Planning_Simulator {
 public:
 	Perception* perception_simulator; // perception simulator
 	cv::Mat target_image; // target image
-	vector<View> view_space; // view space
 	vector<View> selected_views; // selected views
 	vector<cv::Mat> rendered_images; // rendered images
 
 	// Constructor
-	View_Planning_Simulator(Perception* _perception_simulator, cv::Mat _target_image, vector<View> _view_space = vector<View>()) {
+	View_Planning_Simulator(Perception* _perception_simulator, View _target_view) {
 		perception_simulator = _perception_simulator;
-		target_image = _target_image;
-		view_space = _view_space;
+		target_image = render_view_image(_target_view);
 	}
 
 	// Destructor
@@ -225,63 +224,103 @@ public:
 	}
 
 	View calculate_new_center(const View & A, const View & B, const View & C) {
-		Eigen::Vector3d a = getCameraPosition(A)
-		Eigen::Vector3d b = getCameraPosition(B)
-		Eigen::Vector3d c = getCameraPosition(C)
-		Eigen::Vector3d ab = b - a;
-		Eigen::Vector3d ac = c - a;
+		Eigen::Vector3d a = A.getCameraPosition();
+		Eigen::Vector3d b = B.getCameraPosition();
+		Eigen::Vector3d c = C.getCameraPosition();
 
-		Eigen::Vector3d normal = ab.cross(ac);
-		
-		normal.normalize();
-		
-		View new_center = view.compute_pose_from_positon_and_object_center(normal * 3.0, Eigen::Vector3d(1e-100, 1e-100, 1e-100));
-		
+		a.normalize();
+		b.normalize();
+		c.normalize();
+
+		Eigen::Vector3d centroid = (a + b + c).normalized();
+
+		std::cout << "(" << centroid(0) << "," << centroid(1) << "," << centroid(2) << ")" << std::endl;
+
+		View new_center;
+		new_center.compute_pose_from_positon_and_object_center(centroid * 3.0, Eigen::Vector3d(1e-100, 1e-100, 1e-100));
+
 		return new_center;
 	}
 
-	View dfs_next_view(const View & A, const View & B, const View & C, int & best_score) {
+
+	View dfs_next_view(const View & A, const View & B, const View & C, size_t & best_score) {
 		View D = calculate_new_center(A,B,C);
 		View best_view = D;
-		//Check Triangle score if not better return
-		//generate Images and get sift scores
-		//check if better than best score else return without changing best_score
-		if (avg_score < best_score)
-			return best_view;
+		size_t tmp_score = 0;
+		size_t max_score = 0;
+		cv::Mat candidate_image;
+
+		View views[] = { A, B, C, D };
+    
+		for (const View & view : views) {
+			candidate_image = render_view_image(view);
+			tmp_score += computeSIFTMatches(target_image, candidate_image);
+			if(tmp_score>max_score)
+				max_score=tmp_score;
+		}
 		
-		best_score = avg_score;
+		spdlog::info("max_score {} vs {} best_score",  max_score, best_score);
+
+		if (best_score >= max_score)
+			return best_view;
+		spdlog::info("going deeper");
+		
+		best_score = max_score;
 
 		//check for final perfect match if done return early
 
-		std::vector<std::pair<Eigen::Vector3d, Eigen::Vector3d>> edges = {
+		std::vector<std::pair<View, View>> edges = {
 			{A, B},
 			{B, C},
 			{C, D}
 		};
 		
-
+		View candidate_view;
 		for (const auto &edge : edges) {
 			// Call new function if better add score if score well 
-			candidate_view = dfs_next_view(edge.first, edge.second, p4, best_score);
+			candidate_view = dfs_next_view(edge.first, edge.second, D, best_score);
 			
-			if (avg_score > best_score)
-				pass;
-			best_view = candidate_view
+			if (max_score > best_score)
+				continue;
+			best_view = candidate_view;
 		}
 
 		return best_view;
 	}
 
 
-	// search the best view until find the target
+	// depth first search
 	void dfs() {
-		//Create Initial Pyramid
-		View p1 = view.compute_pose_from_positon_and_object_center(Eigen::Vector3d vec(1.0, 0.0, 0.0) * 3.0, Eigen::Vector3d(1e-100, 1e-100, 1e-100));
-		View p2 = view.compute_pose_from_positon_and_object_center(Eigen::Vector3d vec(-.5, 0.866, 0.0) * 3.0, Eigen::Vector3d(1e-100, 1e-100, 1e-100));
-		View p3 = view.compute_pose_from_positon_and_object_center(Eigen::Vector3d vec(-.5, -0.866, 0.0) * 3.0, Eigen::Vector3d(1e-100, 1e-100, 1e-100));
-		View p4 = view.compute_pose_from_positon_and_object_center(Eigen::Vector3d vec(0.0, 0.0, 1.0) * 3.0, Eigen::Vector3d(1e-100, 1e-100, 1e-100));
+		// Number of triangles to look at (e.g., 4 for a pyramid with a square base)
 
-		cout << "Find the target!" << endl;
+		size_t base_view_count = 4; // You can change this to any number
+		std::vector<View> search_views(base_view_count + 1); // +1 for the top view
+
+		// Create base views dynamically
+		for (size_t i = 0; i < base_view_count; ++i) {
+			double angle = (2.0 * M_PI * i) / base_view_count;
+			Eigen::Vector3d position(std::cos(angle), std::sin(angle), 0.0);
+			search_views[i].compute_pose_from_positon_and_object_center(position.normalized() * 3.0, Eigen::Vector3d(1e-100, 1e-100, 1e-100));
+		}
+
+		// Create top view
+		search_views[base_view_count].compute_pose_from_positon_and_object_center(Eigen::Vector3d(0.0, 0.0, 1.0) * 3.0, Eigen::Vector3d(1e-100, 1e-100, 1e-100));
+
+		size_t best_score = 0;
+		size_t tmp_score = 0;
+		View best_view;
+
+		for (size_t i = 0; i < base_view_count; ++i) {
+			size_t next_index = (i + 1) % base_view_count;
+			tmp_score = 0;
+			best_view = dfs_next_view(search_views[i], search_views[next_index], search_views[base_view_count], tmp_score);
+
+			spdlog::info("Best score for iteration {} is {}", i, tmp_score);
+			if (tmp_score > best_score){
+				selected_views.push_back(best_view);
+				best_score = tmp_score;
+			}
+		}
 	}
 
 };
@@ -289,76 +328,39 @@ public:
 void task2(string object_name, int test_num) {
 	// Create a perception simulator
 	Perception* perception_simulator = new Perception("./3d_models/" + object_name + ".ply");
-	// read a fixed viewspace
-	vector<View> view_space;
-	
-	Eigen::Vector3d position;
-	while (fin >> position(0) >> position(1) >> position(2)) {
-		position = position.normalized();
-		View view;
-		view.compute_pose_from_positon_and_object_center(position * 3.0, Eigen::Vector3d(1e-100, 1e-100, 1e-100));
-		view_space.push_back(view);
-	}
-	
-	// Render RGB images from the viewspace
-	for (int i = 0; i < view_space.size(); i++) {
-		perception_simulator->render(view_space[i], "./task1/viewspace_images/" + object_name + "/rgb_" + to_string(i) + ".png");
-	}
+
 	// for each test, select a view
 	set<int> selected_view_indices;
 	for (int test_id = 0; test_id < test_num; test_id++) {
-		// Randomly select 1 view from the viewspace
-		int index;
-		while (true) {
-			index = rand() % view_space.size();
-			if (selected_view_indices.find(index) == selected_view_indices.end()) {
-				selected_view_indices.insert(index);
-				break;
-			}
-		}
-		cout << "Select view " << index << " for test " << test_id << endl;
-		View target_view = view_space[index];
-		cv::Mat target_image = cv::imread("./task1/viewspace_images/" + object_name + "/rgb_" + to_string(index) + ".png");
-		// Create a view planning simulator
-		View_Planning_Simulator view_planning_simulator(perception_simulator, target_image, view_space);
+		View target_view;
+		target_view.compute_pose_from_positon_and_object_center(Eigen::Vector3d(5.0, 0.0, 5.0).normalized() * 3.0, Eigen::Vector3d(1e-100, 1e-100, 1e-100));
+	
+		View_Planning_Simulator view_planning_simulator(perception_simulator, target_view);
 		view_planning_simulator.dfs();
 		// Save the selected views
-		ofstream fout("./task1/selected_views/" + object_name + "/test_" + to_string(test_id) + ".txt");
+		ofstream fout("./task2/selected_views/" + object_name + "/test_" + to_string(test_id) + ".txt");
 		fout << view_planning_simulator.selected_views.size() << endl;
 		for (int i = 0; i < view_planning_simulator.selected_views.size(); i++) {
 			fout << view_planning_simulator.selected_views[i].pose_6d << endl;
+			cout << view_planning_simulator.selected_views[i].pose_6d << endl;
 		}
+		cout << target_view.pose_6d << endl;
 		fout.close();
 	}
 	// Delete the perception simulator
 	delete perception_simulator;
 }
 
-int run_level_1()
+int run_level_3()
 {
 	vector<string> objects;
 	objects.push_back("obj_000020");
-	// Set test number
-	int test_num = 5;
 	// Task 1
 	for (auto& object : objects) {
-		task1(object, test_num);
+		task2(object, 1);
 	}
 
 	return 0;
 }
 
-int run_level_2()
-{
-	// Set test objects
-	vector<string> objects;
-	objects.push_back("obj_000020");
-	// Set test number
-	int test_num = 100;
-	// Task 2
-	for (auto& object : objects) {
-		task1(object, test_num);
-	}
-
-	return 0;
 }

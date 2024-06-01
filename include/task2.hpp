@@ -1,5 +1,5 @@
-#ifndef TASK1_HPP
-#define TASK1_HPP
+#ifndef TASK2_HPP
+#define TASK2_HPP
 
 #pragma once
 #include <iostream>
@@ -32,7 +32,7 @@ typedef unsigned long long pop_t;
 
 using namespace std;
 
-namespace task1{
+namespace task2{
 // Robot class
 class Robot {
     // Placeholder for Robot class implementation
@@ -98,19 +98,15 @@ public:
     bool is_target(View view);
 
     // Search for the next view
-    View search_next_view();
+    View dfs_next_view(const View & A, const View & B, const View & C, size_t & best_score);
 
     // Search the best view until find the target
-    void loop();
+    void dfs();
 };
 
-// Task1 function
-void run_level_1();
-void run_level_2();
 
-// Main function
-int main();
+void run_level_3();
 
 }
 
-#endif // TASK1_HPP
+#endif // TASK2_HPP
