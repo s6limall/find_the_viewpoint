@@ -9,10 +9,10 @@
 
 using namespace std;
 
-Simulator::Simulator(Perception* _perception_simulator, cv::Mat _target_image, vector<View> _view_space) {
-    perception_simulator = _perception_simulator;
-    target_image = _target_image;
-    view_space = _view_space;
+Simulator::Simulator(Perception *_perception_simulator, cv::Mat _target_image, std::vector<View> _view_space,
+                     ResultsLogger &_results_logger, int _test_id)
+    : perception_simulator(_perception_simulator), target_image(_target_image), view_space(_view_space),
+      results_logger(_results_logger), test_id(_test_id) {
 }
 
 Simulator::~Simulator() {
@@ -20,42 +20,42 @@ Simulator::~Simulator() {
 }
 
 cv::Mat Simulator::renderViewImage(View view) {
-    string image_save_path = "../tmp/rgb.png";
+    std::string image_save_path = "../tmp/rgb.png";
     perception_simulator->render(view, image_save_path);
     cv::Mat rendered_image = cv::imread(image_save_path);
     remove(image_save_path.c_str());
     return rendered_image;
 }
 
-bool Simulator::isTarget(View view) {
+std::pair<bool, size_t> Simulator::isTarget(View view) {
     cv::Mat rendered_image = renderViewImage(view);
     return compareImages(rendered_image, target_image);
 }
 
 View Simulator::searchNextView() {
-    size_t maxGoodMatches = 0;
-    View bestView;
-    bool foundBestView = false;
+    size_t max_good_matches = 0;
+    View best_view;
+    bool found_best_view = false;
 
-    for (const auto &view : view_space) {
+    for (const auto &view: view_space) {
         if (std::any_of(selected_views.begin(), selected_views.end(), [&](const View &v) {
             return view.pose_6d.isApprox(v.pose_6d);
         }))
             continue;
 
-        cv::Mat renderedImage = renderViewImage(view);
-        size_t goodMatches = computeSIFTMatches(target_image, renderedImage);
+        cv::Mat rendered_image = renderViewImage(view);
+        auto [result, good_matches] = compareImages(rendered_image, target_image);
 
-        spdlog::info("View {}: {} good matches", &view - &view_space[0], goodMatches);
+        spdlog::info("View {}: {} good matches", &view - &view_space[0], good_matches);
 
-        if (goodMatches > maxGoodMatches) {
-            maxGoodMatches = goodMatches;
-            bestView = view;
-            foundBestView = true;
+        if (good_matches > max_good_matches) {
+            max_good_matches = good_matches;
+            best_view = view;
+            found_best_view = true;
         }
     }
 
-    if (!foundBestView) {
+    if (!found_best_view) {
         if (!selected_views.empty()) {
             spdlog::warn("No good matches found, returning the first selected view.");
             return selected_views[0];
@@ -64,19 +64,26 @@ View Simulator::searchNextView() {
         throw std::runtime_error("No available views to select from");
     }
 
-    spdlog::info("Best view found with {} good matches", maxGoodMatches);
-    return bestView;
+    spdlog::info("Best view found with {} good matches", max_good_matches);
+    return best_view;
 }
 
 
 void Simulator::loop() {
-    View next_view = searchNextView();
-    selected_views.push_back(next_view);
+    size_t good_matches = 0;
 
-    while (!isTarget(next_view)) {
-        next_view = searchNextView();
+    do {
+        View next_view = searchNextView();
         selected_views.push_back(next_view);
-    }
+        if (auto [target_found, matches] = isTarget(next_view); target_found) {
+            good_matches = matches;
+            break; // Exit when the target is found
+        }
+    } while (true);
 
-    cout << "Find the target!" << endl;
+    // Log the results after finding the target
+    ResultsLogger::TestResult result(test_id, selected_views.size() - 1, good_matches, selected_views);
+    results_logger.addResult(result);
+
+    cout << "Found the target!" << endl;
 }

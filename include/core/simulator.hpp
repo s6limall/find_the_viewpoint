@@ -10,6 +10,8 @@
 #include "perception.hpp"
 #include "view.hpp"
 
+#include "../logging/results_logger.hpp"
+
 class Simulator {
 public:
     Perception* perception_simulator;
@@ -17,13 +19,18 @@ public:
     std::vector<View> view_space;
     std::vector<View> selected_views;
     std::vector<cv::Mat> rendered_images;
+    ResultsLogger& results_logger;
+    int test_id;
 
-    Simulator(Perception* _perception_simulator, cv::Mat _target_image, std::vector<View> _view_space = std::vector<View>());
+    Simulator(Perception* _perception_simulator, cv::Mat _target_image, std::vector<View> _view_space, ResultsLogger& _results_logger, int _test_id);
     ~Simulator();
 
     cv::Mat renderViewImage(View view);
-    bool isTarget(View view);
+
+    std::pair<bool, size_t> isTarget(View view);
+
     View searchNextView();
+
     void loop();
 };
 

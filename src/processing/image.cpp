@@ -87,29 +87,29 @@ size_t computeSIFTMatches(const cv::Mat &image1, const cv::Mat &image2, float ra
 }
 
 // Compare two images for similarity using SIFT feature matching
-bool compareImages(const cv::Mat &image1, const cv::Mat &image2) {
+std::pair<bool, size_t> compareImages(const cv::Mat &image1, const cv::Mat &image2) {
     spdlog::debug("Comparing two images for similarity using SIFT feature matching.");
     if (image1.empty()) {
         spdlog::error("First input image is empty.");
-        return false;
+        return {false, 0};
     }
     if (image2.empty()) {
         spdlog::error("Second input image is empty.");
-        return false;
+        return {false, 0};
     }
     if (image1.size() != image2.size()) {
         spdlog::error("Input images do not match in size.");
-        return false;
+        return {false, 0};
     }
     if (image1.type() != image2.type()) {
         spdlog::error("Input images do not match in type.");
-        return false;
+        return {false, 0};
     }
 
-    size_t goodMatches = computeSIFTMatches(image1, image2);
-    constexpr size_t minGoodMatches = 10;
+    size_t good_matches = computeSIFTMatches(image1, image2);
+    constexpr size_t min_good_matches = 10;
 
-    bool result = goodMatches >= minGoodMatches;
-    spdlog::info("Comparison result: {} ({} good matches, minimum required: {}).", result, goodMatches, minGoodMatches);
-    return result;
+    bool result = good_matches >= min_good_matches;
+    spdlog::info("Comparison result: {} ({} good matches, minimum required: {}).", result, good_matches, min_good_matches);
+    return {result, good_matches};
 }

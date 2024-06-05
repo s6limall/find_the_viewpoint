@@ -42,6 +42,8 @@ void Tasks::task1(const std::string& object_name, int test_num) {
     }
 
     std::set<int> selected_view_indices;
+    ResultsLogger results_logger;
+
     for (int test_id = 0; test_id < test_num; ++test_id) {
         int index;
         while (true) {
@@ -56,7 +58,10 @@ void Tasks::task1(const std::string& object_name, int test_num) {
         View target_view = view_space[index];
         cv::Mat target_image = cv::imread("../task1/viewspace_images/" + object_name + "/rgb_" + fmt::to_string(index) + ".png");
 
-        Simulator simulator(perception_simulator, target_image, view_space);
+        // Save the target image separately for viewing (to debug/verify)
+        cv::imwrite("../task1/selected_views/" + object_name + "/target_image_test_" + fmt::to_string(test_id) + ".png", target_image);
+
+        Simulator simulator(perception_simulator, target_image, view_space, results_logger, test_id);
         simulator.loop();
 
         std::ofstream fout("../task1/selected_views/" + object_name + "/test_" + fmt::to_string(test_id) + ".txt");
@@ -66,6 +71,8 @@ void Tasks::task1(const std::string& object_name, int test_num) {
         }
         fout.close();
     }
+
+    results_logger.saveResults("../task1/selected_views/" + object_name + "/results.log");
 
     delete perception_simulator;
 }

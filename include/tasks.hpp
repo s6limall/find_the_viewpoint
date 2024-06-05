@@ -6,6 +6,7 @@
 #define TASKS_HPP
 
 #include <string>
+#include <opencv2/core.hpp>
 
 class Tasks {
 public:
@@ -13,6 +14,8 @@ public:
 
 private:
     void task1(const std::string& object_name, int test_num);
+    // cv::Mat aggregateDescriptors(const std::vector<std::string>& imagePaths);
+    // cv::Mat performKMeans(const cv::Mat& data, int numClusters);
 };
 
 #endif // TASKS_HPP
