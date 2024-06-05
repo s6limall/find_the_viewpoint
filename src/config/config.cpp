@@ -5,6 +5,19 @@
 #include "../../include/config/config.hpp"
 
 #include <iostream>
+#include <spdlog/spdlog.h>
+
+// Initialize static member variables
+const std::string Config::Paths::logsDirectory = "logs/";
+const std::string Config::Paths::viewSpaceFile = "../view_space/5.txt";
+const std::string Config::Paths::modelDirectory = "../3d_models/";
+const std::string Config::Paths::viewSpaceImagesDirectory = "../task1/viewspace_images/";
+const std::string Config::Paths::selectedViewsDirectory = "../task1/selected_views/";
+
+const double Config::CameraConfig::width = 640;
+const double Config::CameraConfig::height = 480;
+const double Config::CameraConfig::fov_x = 0.95;
+const double Config::CameraConfig::fov_y = 0.75;
 
 void Config::initializeLogging(const std::string &logFilePath) {
     try {
