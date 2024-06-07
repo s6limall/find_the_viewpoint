@@ -6,73 +6,80 @@
 
 #include <iostream>
 #include <fstream>
+#include <random>
 #include <fmt/format.h>
 
 #include "../include/core/perception.hpp"
 #include "../include/core/simulator.hpp"
 
 
-void Tasks::execute(const std::string& taskName, const std::string& object_name, int test_num) {
-    if (taskName == "task1") {
-        task1(object_name, test_num);
+// Helper function to load viewpoints from a file.
+// This function reads viewpoints from a file, computes their poses relative to an object center, and returns them.
+std::vector<View> loadViewpoints(const std::string &filepath) {
+    std::vector<View> views;
+    std::ifstream fin(filepath);
+    if (!fin) {
+        throw std::runtime_error("Failed to open view file: " + filepath);
     }
-    // Additional tasks
+
+    Eigen::Vector3f position;
+    while (fin >> position(0) >> position(1) >> position(2)) {
+        View view;
+        view.computePoseFromPositionAndObjectCenter(position.normalized() * 3.0f, Eigen::Vector3f(0, 0, 0));
+        views.push_back(view);
+    }
+    return views;
 }
 
-void Tasks::task1(const std::string& object_name, int test_num) {
-    auto* perception_simulator = new Perception("../3d_models/" + object_name + ".ply");
+// Function to initialize the Perception object with the model path.
+// This function creates a new Perception object for rendering the 3D model.
+std::unique_ptr<Perception> initializePerception(const std::string &model_path) {
+    return std::make_unique<Perception>(model_path);
+}
 
-    std::vector<View> view_space;
-    std::ifstream fin("../view_space/5.txt");
-    if (!fin.is_open()) {
-        cout << "Open file failed!" << endl;
-        exit(1);
-    }
-    Eigen::Vector3d position;
-    while (fin >> position(0) >> position(1) >> position(2)) {
-        position = position.normalized();
-        View view;
-        view.computePoseFromPositionAndObjectCenter(position * 3.0, Eigen::Vector3d(1e-100, 1e-100, 1e-100));
-        view_space.push_back(view);
-    }
-    fin.close();
+// The function performs a viewpoint evaluation task based on provided parameters.
+// It loads viewpoints, initializes a perception simulator, and performs multiple tests to render views and save results.
+void Tasks::performViewpointEvaluation(const std::string &taskName, const std::string &object_name, int test_num,
+                                       const std::string &view_file_path) {
+    // Define the base directory for tasks
+    std::string task_directory = "../" + taskName; // Assuming task directories are named after the tasks
 
-    for (size_t i = 0; i < view_space.size(); ++i) {
-        perception_simulator->render(view_space[i], "../task1/viewspace_images/" + object_name + "/rgb_" + fmt::to_string(i) + ".png");
-    }
+    // Initialize the Perception Simulator with the object model
+    auto perception_simulator = initializePerception("../3d_models/" + object_name + ".ply");
 
-    std::set<int> selected_view_indices;
-    ResultsLogger results_logger;
+    // Load viewpoints from the specified file
+    std::vector<View> view_space = loadViewpoints(view_file_path);
 
+    std::cerr << "Loaded " << view_space.size() << " viewpoints from " << view_file_path << std::endl;
+
+    // Loop over each test
     for (int test_id = 0; test_id < test_num; ++test_id) {
-        int index;
-        while (true) {
-            index = rand() % view_space.size();
-            if (selected_view_indices.find(index) == selected_view_indices.end()) {
-                selected_view_indices.insert(index);
-                break;
-            }
-        }
+        int index = rand() % view_space.size(); // Select a random view
+        std::cerr << "Select view " << index << " for test " << test_id << std::endl;
 
-        cout << "Select view " << index << " for test " << test_id << endl;
-        View target_view = view_space[index];
-        cv::Mat target_image = cv::imread("../task1/viewspace_images/" + object_name + "/rgb_" + fmt::to_string(index) + ".png");
+        // Define the image path for the rendered view
+        std::string image_path = task_directory + "/viewspace_images/" + object_name + "/rgb_" + std::to_string(index) +
+                                 ".png";
 
-        // Save the target image separately for viewing (to debug/verify)
-        cv::imwrite("../task1/selected_views/" + object_name + "/target_image_test_" + fmt::to_string(test_id) + ".png", target_image);
+        // Render the view and save the image
+        perception_simulator->render(view_space[index].getCameraPose(), image_path);
+        cv::Mat target_image = cv::imread(image_path);
 
-        Simulator simulator(perception_simulator, target_image, view_space, results_logger, test_id);
+        // Save the target image for debugging purposes
+        cv::imwrite(
+            task_directory + "/selected_views/" + object_name + "/target_image_test_" + std::to_string(test_id) +
+            ".png", target_image);
+
+        // Perform the simulation with the selected view and the target image
+        Simulator simulator(perception_simulator.get(), target_image, view_space);
         simulator.loop();
 
-        std::ofstream fout("../task1/selected_views/" + object_name + "/test_" + fmt::to_string(test_id) + ".txt");
-        fout << simulator.selected_views.size() << endl;
-        for (const auto& selected_view : simulator.selected_views) {
-            fout << selected_view.pose_6d << endl;
+        // Save the results of the simulation to a text file
+        std::ofstream fout(
+            task_directory + "/selected_views/" + object_name + "/test_" + std::to_string(test_id) + ".txt");
+        fout << simulator.selected_views.size() << std::endl;
+        for (const auto &selected_view: simulator.selected_views) {
+            fout << selected_view.getCameraPose() << std::endl;
         }
-        fout.close();
     }
-
-    results_logger.saveResults("../task1/selected_views/" + object_name + "/results.log");
-
-    delete perception_simulator;
 }

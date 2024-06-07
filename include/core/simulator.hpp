@@ -12,25 +12,31 @@
 
 #include "../logging/results_logger.hpp"
 
+// Manages simulation of rendering views from different camera positions.
 class Simulator {
 public:
-    Perception* perception_simulator;
-    cv::Mat target_image;
-    std::vector<View> view_space;
-    std::vector<View> selected_views;
-    std::vector<cv::Mat> rendered_images;
-    ResultsLogger& results_logger;
-    int test_id;
+    Perception *perception_simulator; // Simulator for perception.
+    cv::Mat target_image; // Target image to match.
+    std::vector<View> view_space; // List of potential views.
+    std::vector<View> selected_views; // List of selected views.
+    std::vector<cv::Mat> rendered_images; // Rendered images.
+    // ResultsLogger& results_logger;  // Logger for results.
+    int test_id; // Test identifier.
 
-    Simulator(Perception* _perception_simulator, cv::Mat _target_image, std::vector<View> _view_space, ResultsLogger& _results_logger, int _test_id);
+    Simulator(Perception *_perception_simulator, cv::Mat _target_image, std::vector<View> _view_space);
+
     ~Simulator();
 
+    // Renders an image from the specified view.
     cv::Mat renderViewImage(View view);
 
+    // Determines if the rendered image matches the target image.
     std::pair<bool, size_t> isTarget(View view);
 
+    // Finds the next best view based on similarity to the target image.
     View searchNextView();
 
+    // Main loop to find the target view.
     void loop();
 };
 

@@ -6,16 +6,13 @@
 #define TASKS_HPP
 
 #include <string>
-#include <opencv2/core.hpp>
 
+// The Tasks class is responsible for managing and performing viewpoint evaluations for 3D objects.
 class Tasks {
 public:
-    void execute(const std::string& taskName, const std::string& object_name, int test_num);
-
-private:
-    void task1(const std::string& object_name, int test_num);
-    // cv::Mat aggregateDescriptors(const std::vector<std::string>& imagePaths);
-    // cv::Mat performKMeans(const cv::Mat& data, int numClusters);
+    // Performs viewpoint evaluation based on a set of parameters.
+    void performViewpointEvaluation(const std::string &task_name, const std::string &object_name, int test_num,
+                                    const std::string &view_file_path);
 };
 
 #endif // TASKS_HPP
