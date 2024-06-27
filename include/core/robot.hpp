@@ -5,9 +5,11 @@
 #ifndef ROBOT_HPP
 #define ROBOT_HPP
 
-class Robot {
-public:
-    // Add Robot related methods and attributes
-};
+namespace core {
+    class Robot {
+    public:
+        // Add Robot related methods and attributes
+    };
+}
 
 #endif // ROBOT_HPP

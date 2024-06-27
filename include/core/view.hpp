@@ -1,31 +1,34 @@
-//
-// Created by ayush on 5/21/24.
-//
+// File: core/view.hpp
 
 #ifndef VIEW_HPP
 #define VIEW_HPP
 
+#include <memory>
 #include <Eigen/Core>
-#include <Eigen/Dense>
-#include <Eigen/Geometry>
 
-#include "../../include/core/camera.hpp"
+#include "core/camera.hpp"
 
+namespace core {
+    // Represents a camera view with a 6 degrees of freedom (6DoF) pose and viewpoint manipulation.
+    class View {
+    public:
+        View();
 
-// Represents a camera view with a 6 degrees of freedom (6DoF) pose and viewpoint manipulation.
-class View {
-public:
-    Camera camera;  // Camera for the view.
+        ~View();
 
-    View();  // Constructor.
-    ~View();  // Destructor.
+        // Computes the camera pose matrix from a position and the center of the object.
+        void computePoseFromPositionAndObjectCenter(Eigen::Vector3f position, Eigen::Vector3f object_center);
 
-    // Computes the camera pose matrix from a position and the center of the object.
-    void computePoseFromPositionAndObjectCenter(Eigen::Vector3f position, Eigen::Vector3f object_center);
+        // Get the camera pose for rendering.
+        Eigen::Matrix4f getPose() const;
 
-    // Get the camera pose for rendering.
-    Eigen::Matrix4f getCameraPose() const { return camera.getPose(); }
-};
+        Eigen::VectorXd toVector() const;
+
+    private:
+        Eigen::Matrix4f pose_; // Pose of the view relative to the object
+        std::shared_ptr<Camera> camera_; // Unique Camera for this view
+    };
+}
 
 #endif // VIEW_HPP
 
