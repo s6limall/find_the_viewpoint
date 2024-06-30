@@ -2,28 +2,30 @@
 
 #include "config/configuration.hpp"
 
-
 namespace config {
 
+    std::shared_ptr<Configuration> Configuration::instance_;
+    std::once_flag Configuration::init_flag_;
+
     Configuration &Configuration::getInstance(const std::string &filename) {
-        static Configuration instance(filename.empty() ? default_filename_ : filename);
-        return instance;
+        std::call_once(init_flag_, [&filename] {
+            instance_ = std::make_shared<Configuration>(filename.empty() ? default_filename_.data() : filename);
+        });
+        return *instance_;
     }
 
-
     Configuration::Configuration(const std::string &filename) {
-        spdlog::info("Loading configuration from file: {}", filename);
+        LOG_INFO("Loading configuration from file: {}", filename);
 
         try {
-            YAML::Node root = YAML::LoadFile(filename);
-            spdlog::info("Configuration file '{}' loaded successfully.", filename);
+            const YAML::Node root = YAML::LoadFile(filename);
+            LOG_INFO("Configuration file '{}' loaded successfully.", filename);
             load(root);
-            logConfiguration();
         } catch (const YAML::Exception &e) {
-            spdlog::critical("YAML exception while loading configuration: {}", e.what());
+            LOG_CRITICAL("YAML exception while loading configuration: {}", e.what());
             throw std::runtime_error("YAML exception");
         } catch (const std::exception &e) {
-            spdlog::critical("Unknown error loading configuration: {}", e.what());
+            LOG_CRITICAL("Unknown error loading configuration: {}", e.what());
             throw std::runtime_error("Unknown error loading configuration");
         }
     }
@@ -35,34 +37,31 @@ namespace config {
                 load(it.second, key); // Recursively load nested maps
             } else {
                 config_map_[key] = it.second;
-                spdlog::debug("Loaded key: '{}', value: '{}'", key, it.second.as<std::string>());
+                LOG_TRACE("Loaded key: '{}', value: '{}'", key, it.second.as<std::string>());
             }
         }
     }
 
-
-    std::vector<std::string> Configuration::split(const std::string &str, char delimiter) {
+    std::vector<std::string> Configuration::split(const std::string &str, const char delimiter) {
         std::vector<std::string> tokens;
         std::string token;
         std::istringstream tokenStream(str);
         while (std::getline(tokenStream, token, delimiter)) {
             if (!token.empty()) {
-                tokens.push_back(token);
+                tokens.push_back(std::move(token));
             }
         }
         return tokens;
     }
 
-    void Configuration::logConfiguration() const {
-        spdlog::info("Configuration details:");
+    void Configuration::show() const {
+        LOG_INFO("Configuration details:");
         for (const auto &entry: config_map_) {
             try {
-                spdlog::info("{}: {}", entry.first, entry.second.as<std::string>());
+                LOG_INFO("{}: {}", entry.first, entry.second.as<std::string>());
             } catch (const YAML::Exception &e) {
-                spdlog::error("Error logging configuration key '{}': {}", entry.first, e.what());
+                LOG_ERROR("Error logging configuration key '{}': {}", entry.first, e.what());
             }
         }
     }
-
-
 }

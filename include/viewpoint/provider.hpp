@@ -19,9 +19,13 @@ namespace viewpoint {
         // Function to provision viewpoints
         virtual std::vector<core::View> provision() = 0;
 
+
+        virtual void setTargetImage(const cv::Mat &target_image) = 0;
+
+        virtual void setCameraParameters(const core::Camera::CameraParameters &camera_parameters) = 0;
+
         // Factory function to create a provider
-        static std::unique_ptr<Provider> createProvider(bool from_file, const std::string &path, int num_samples,
-                                                        int dimension);
+        static std::unique_ptr<Provider> create(bool from_file, int num_samples, int dimensions);
     };
 
 }

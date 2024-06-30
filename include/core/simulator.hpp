@@ -1,15 +1,16 @@
-//
-// Created by ayush on 5/21/24.
-//
+// File: core/simulator.hpp
 
 #ifndef SIMULATOR_HPP
 #define SIMULATOR_HPP
 
-#include <opencv2/opencv.hpp>
 #include <vector>
-#include "perception.hpp"
-#include "view.hpp"
+#include <stdexcept>
 
+#include <opencv2/opencv.hpp>
+
+#include "core/perception.hpp"
+#include "core/view.hpp"
+#include "processing/image_processor.hpp"
 
 namespace core {
     // Manages simulation of rendering views from different camera positions.

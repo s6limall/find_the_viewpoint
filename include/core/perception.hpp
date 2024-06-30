@@ -5,10 +5,19 @@
 
 #include <string>
 #include <memory>
-#include <pcl/visualization/pcl_visualizer.h>
+
 #include <pcl/PolygonMesh.h>
+#include <pcl/io/ply_io.h>
+#include <pcl/io/vtk_lib_io.h>
+#include <pcl/common/common.h>
+#include <pcl/common/transforms.h>
+#include <pcl/visualization/pcl_visualizer.h>
+
 #include <Eigen/Core>
 #include <opencv2/opencv.hpp>
+
+#include "common/logging/logger.hpp"
+#include "config/configuration.hpp"
 
 #include "core/camera.hpp"
 
@@ -26,8 +35,6 @@ namespace core {
         // Render the object using the given camera pose and save the image.
         void render(const Eigen::Matrix4f &camera_pose, const std::string &image_save_path) const;
 
-        void detectAndSetSphere(const cv::Mat &target_image);
-
         // Provide camera to be used in views
         [[nodiscard]] std::shared_ptr<Camera> getCamera() const;
 
@@ -44,9 +51,6 @@ namespace core {
 
         // Normalize the mesh to fit within a unit cube at the origin.
         void normalizeMesh();
-
-        // Update the intrinsic matrix based on camera parameters.
-        // void updateIntrinsics(int width, int height, float fov_x, float fov_y);
 
         // Center the point cloud at the origin.
         void centerPointCloud(pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud, const Eigen::Vector4f &centroid);

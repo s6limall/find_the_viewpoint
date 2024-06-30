@@ -12,15 +12,15 @@
 
 namespace viewpoint {
 
-    class Generator : public Provider {
+    class Generator final : public Provider {
     public:
         Generator(int num_samples, int dimensions);
 
         std::vector<core::View> provision() override;
 
-        void setTargetImage(const cv::Mat &target_image);
+        void setTargetImage(const cv::Mat &target_image) override;
 
-        void setCameraMatrix(const cv::Mat &camera_matrix);
+        void setCameraParameters(const core::Camera::CameraParameters &camera_parameters) override;
 
         void visualizeSphere(const std::string &window_name) const;
 
@@ -28,15 +28,15 @@ namespace viewpoint {
         int num_samples_;
         int dimensions_;
         cv::Mat target_image_;
-        cv::Mat camera_matrix_;
+        core::Camera::CameraParameters camera_parameters_;
         std::shared_ptr<filtering::HeuristicFilter> filter_chain_;
         double estimated_distance_;
 
         double estimateDistanceToObject();
 
-        std::vector<std::vector<double> > generateInitialViewpoints(double distance) const;
+        [[nodiscard]] std::vector<std::vector<double> > generateInitialViewpoints(double distance) const;
 
-        std::vector<core::View> convertToViews(const std::vector<std::vector<double> > &samples) const;
+        [[nodiscard]] std::vector<core::View> convertToViews(const std::vector<std::vector<double> > &samples) const;
 
         void setupFilters();
 

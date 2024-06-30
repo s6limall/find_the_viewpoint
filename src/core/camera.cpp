@@ -2,95 +2,109 @@
 
 #include "core/camera.hpp"
 
-#include <spdlog/spdlog.h>
 #include <cmath>
+
+#include "common/logging/logger.hpp"
+#include "common/utilities/camera_utils.hpp"
 
 namespace core {
 
     Camera::Camera() {
-        config_.intrinsics.setIdentity();
-        pose_.setIdentity(); // Initialize to the identity matrix.
-        spdlog::info("Camera initialized with identity pose and intrinsics.");
+        parameters_.intrinsics.setIdentity();
+        pose_.setIdentity();
+        object_center_ = Eigen::Vector3f::Zero();
+        LOG_INFO("Camera initialized with identity pose and intrinsics.");
     }
 
-    Camera::~Camera() = default;
+    Eigen::Vector3f Camera::getPosition() const {
+        return pose_.block<3, 1>(0, 3);
+    }
 
     void Camera::setPosition(float x, float y, float z) {
         pose_.setIdentity(); // Reset pose to identity.
         pose_.block<3, 1>(0, 3) = Eigen::Vector3f(x, y, z); // Set translation part.
-        spdlog::debug("Camera position set to: ({}, {}, {})", x, y, z);
+        LOG_DEBUG("Camera position set to: ({}, {}, {})", x, y, z);
     }
 
     void Camera::lookAt(const Eigen::Vector3f &target_center) {
-        const Eigen::Vector3f forward = (target_center - pose_.block<3, 1>(0, 3)).normalized();
+        object_center_ = target_center;
+        const Eigen::Vector3f forward = (object_center_ - pose_.block<3, 1>(0, 3)).normalized();
         const Eigen::Vector3f world_up(0, 1, 0); // Global up direction.
         const Eigen::Vector3f right = world_up.cross(forward).normalized(); // Compute right direction.
         const Eigen::Vector3f up = forward.cross(right).normalized(); // Compute up direction.
 
         pose_.block<3, 3>(0, 0) << right, up, forward;
 
-        spdlog::debug("Camera orientation set to look at: ({}, {}, {})", target_center.x(), target_center.y(),
-                      target_center.z());
+        LOG_DEBUG("Camera orientation set to look at: ({}, {}, {})", target_center.x(), target_center.y(),
+                  target_center.z());
     }
 
-    void Camera::setIntrinsics(int width, int height, float fov_x, float fov_y) {
-        float fov_x_rad = toRadians(fov_x);
-        float fov_y_rad = toRadians(fov_y);
+    Eigen::Vector3f Camera::getObjectCenter() const {
+        return object_center_;
+    }
 
-        float fx = calculateFocalLength(static_cast<float>(width), fov_x_rad);
-        float fy = calculateFocalLength(static_cast<float>(height), fov_y_rad);
+    void Camera::setIntrinsics(const int width, const int height, const float fov_x, const float fov_y) {
+        if (width <= 0 || height <= 0) {
+            throw std::invalid_argument("Width and height must be positive integers.");
+        }
 
-        config_.intrinsics << fx, 0, static_cast<float>(width) / 2,
+        const float fov_x_rad = common::utilities::toRadiansIfDegrees(fov_x);
+        const float fov_y_rad = common::utilities::toRadiansIfDegrees(fov_y);
+
+        LOG_DEBUG("Calculating focal lengths from width={}, height={}, fov_x={}, fov_y={}", width, height, fov_x,
+                  fov_y);
+
+        const float fx = common::utilities::calculateFocalLength(static_cast<float>(width), fov_x_rad);
+        const float fy = common::utilities::calculateFocalLength(static_cast<float>(height), fov_y_rad);
+
+        LOG_DEBUG("Calculated focal lengths: fx={}, fy={}", fx, fy);
+
+        parameters_.intrinsics << fx, 0, static_cast<float>(width) / 2,
                 0, fy, static_cast<float>(height) / 2,
                 0, 0, 1;
 
-        config_.width = width;
-        config_.height = height;
-        config_.fov_x = fov_x_rad;
-        config_.fov_y = fov_y_rad;
+        LOG_DEBUG("Intrinsic matrix set: {}", parameters_.intrinsics);
 
-        spdlog::debug("Camera intrinsics set: fx={}, fy={}, cx={}, cy={}", fx, fy, static_cast<float>(width) / 2,
-                      static_cast<float>(height) / 2);
+        parameters_.width = width;
+        parameters_.height = height;
+        parameters_.fov_x = fov_x_rad;
+        parameters_.fov_y = fov_y_rad;
+
+        LOG_INFO("Camera intrinsics set: fx={}, fy={}, cx={}, cy={}", fx, fy, static_cast<float>(width) / 2,
+                 static_cast<float>(height) / 2);
     }
 
     Eigen::Matrix3f Camera::getIntrinsics() const {
-        spdlog::debug("Returning camera intrinsics.");
-        return config_.intrinsics;
+        return parameters_.intrinsics;
     }
 
     Eigen::Matrix4f Camera::getPose() const {
-        spdlog::debug("Returning camera pose.");
         return pose_;
     }
 
     void Camera::setPose(const Eigen::Matrix4f &pose) {
+        LOG_INFO("Setting camera pose to: {}", pose);
         pose_ = pose;
-        spdlog::info("Camera pose set.");
     }
 
-    std::pair<double, double> Camera::calculateDistanceBounds(double object_scale, double min_scale, double max_scale) {
-        double min_distance = std::max(min_scale / object_scale, 0.1);
-        double max_distance = std::min(max_scale / object_scale, 10.0);
-        spdlog::debug("Calculated distance bounds: min_distance = {}, max_distance = {}", min_distance, max_distance);
-        return {min_distance, max_distance};
+    Camera::CameraParameters Camera::getParameters() const {
+        return parameters_;
     }
 
-    Camera::CameraConfig Camera::getConfig() const {
-        spdlog::debug("Returning camera configuration.");
-        return config_;
+    // Struct function definitions
+    float Camera::CameraParameters::getFocalLengthX() const {
+        return intrinsics(0, 0);
     }
 
-    float Camera::toRadians(float degrees) {
-        if (std::abs(degrees) > 2 * M_PI) {
-            spdlog::debug("Converting degrees to radians: {}", degrees);
-            return degrees * static_cast<float>(M_PI) / 180.0f;
-        }
-        return degrees;
+    float Camera::CameraParameters::getFocalLengthY() const {
+        return intrinsics(1, 1);
     }
 
-    float Camera::calculateFocalLength(float size, float fov_rad) {
-        float focal_length = size / (2.0f * std::tan(fov_rad / 2.0f));
-        spdlog::debug("Calculated focal length: {} for size: {} and fov_rad: {}", focal_length, size, fov_rad);
-        return focal_length;
+    float Camera::CameraParameters::getPrincipalPointX() const {
+        return intrinsics(0, 2);
+    }
+
+    float Camera::CameraParameters::getPrincipalPointY() const {
+        return intrinsics(1, 2);
     }
 }

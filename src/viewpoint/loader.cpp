@@ -6,21 +6,23 @@
 
 #include "core/view.hpp"
 #include "viewpoint/loader.hpp"
+
+#include "common/logging/logger.hpp"
 #include "common/utilities/file_utils.hpp"
 
 namespace viewpoint {
 
     Loader::Loader(std::string filepath) :
         filepath_(std::move(filepath)) {
-        spdlog::debug("Loader initialized with filepath: {}", filepath_);
+        LOG_DEBUG("Loader initialized with filepath: {}", filepath_);
     }
 
     std::vector<core::View> Loader::provision() {
-        spdlog::info("Loading viewpoints from file: {}", filepath_);
+        LOG_INFO("Loading viewpoints from file: {}", filepath_);
         std::vector<core::View> views;
 
         if (!common::utilities::FileUtils::fileExists(filepath_)) {
-            spdlog::error("File does not exist: {}", filepath_);
+            LOG_ERROR("File does not exist: {}", filepath_);
             throw std::runtime_error("File does not exist: " + filepath_);
         }
 
@@ -32,7 +34,7 @@ namespace viewpoint {
             view.computePoseFromPositionAndObjectCenter(position.normalized() * 3.0f, Eigen::Vector3f(0, 0, 0));
             views.push_back(view);
         }
-        spdlog::info("Loaded {} viewpoints from file", views.size());
+        LOG_INFO("Loaded {} viewpoints from file", views.size());
         return views;
     }
 

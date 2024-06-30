@@ -20,13 +20,19 @@ namespace core {
         void computePoseFromPositionAndObjectCenter(Eigen::Vector3f position, Eigen::Vector3f object_center);
 
         // Get the camera pose for rendering.
-        Eigen::Matrix4f getPose() const;
+        [[nodiscard]] Eigen::Matrix4f getPose() const;
 
-        Eigen::VectorXd toVector() const;
+        // Get the camera position.
+        [[nodiscard]] Eigen::Vector3f getPosition() const;
+
+        // Get the object center.
+        [[nodiscard]] Eigen::Vector3f getObjectCenter() const;
+
+        [[nodiscard]] Eigen::VectorXd toVector() const;
 
     private:
         Eigen::Matrix4f pose_; // Pose of the view relative to the object
-        std::shared_ptr<Camera> camera_; // Unique Camera for this view
+        std::shared_ptr<core::Camera> camera_;
     };
 }
 

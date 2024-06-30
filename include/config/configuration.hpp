@@ -5,21 +5,26 @@
 
 #include <string>
 #include <vector>
+#include <unordered_map>
 #include <yaml-cpp/yaml.h>
-#include <spdlog/spdlog.h>
-#include <spdlog/sinks/basic_file_sink.h>
 #include <stdexcept>
+#include <memory>
+#include <mutex>
+#include <optional>
+#include <filesystem>
 
-#include "common/formatting/fmt_vector.hpp"
+#include "common/logging/logger.hpp"
 
 namespace config {
 
     class Configuration {
     public:
-        // Disable copy constructor and assignment operator
+        // Delete copy constructor and assignment operator
         Configuration(const Configuration &) = delete;
 
         Configuration &operator=(const Configuration &) = delete;
+
+        explicit Configuration(const std::string &filename);
 
         // Get the singleton instance with optional filename
         static Configuration &getInstance(const std::string &filename = "");
@@ -28,67 +33,83 @@ namespace config {
         bool contains(const std::string &key) const;
 
         // Helper function to log entire configuration
-        void logConfiguration() const;
+        void show() const;
 
         // Get a value of type T from the configuration
         template<typename T>
-        T get(const std::string &key) const;
+        std::optional<T> get(const std::string &key) const;
 
         // Get a value of type T from the configuration with a default value
         template<typename T>
         T get(const std::string &key, T default_value) const;
 
-    private:
-        explicit Configuration(const std::string &filename);
+        // Specialization to handle const char* as std::string
+        std::string get(const std::string &key, const char *default_value) const;
 
-        ~Configuration() = default;
+    private:
+        std::unordered_map<std::string, YAML::Node> config_map_;
+        static constexpr std::string_view default_filename_ = "configuration.yaml";
+        static std::shared_ptr<Configuration> instance_;
+        static std::once_flag init_flag_;
+
 
         // Load the entire configuration into a map
         void load(const YAML::Node &node, const std::string &prefix = "");
 
-
         // Helper function to split keys
-        static std::vector<std::string> split(const std::string &str, char delimiter);\
-
-        // Configuration map to hold key-value pairs
-        std::unordered_map<std::string, YAML::Node> config_map_;
-
-        static constexpr const char *default_filename_ = "configuration.yaml";
+        static std::vector<std::string> split(const std::string &str, char delimiter);
 
     };
 
-    // Implementation of template methods
-
+    // Template definitions
     template<typename T>
-    T Configuration::get(const std::string &key) const {
-        auto it = config_map_.find(key);
+    std::optional<T> Configuration::get(const std::string &key) const {
+        const auto it = config_map_.find(key);
         if (it == config_map_.end()) {
-            spdlog::warn("Key '{}' not found in configuration", key);
-            throw std::runtime_error("Key not found in configuration");
+            LOG_WARN("Key '{}' not found in configuration", key);
+            return std::nullopt;
         }
         try {
             return it->second.as<T>();
         } catch (const YAML::Exception &e) {
-            spdlog::error("YAML parsing exception for key '{}': {}", key, e.what());
-            throw std::runtime_error("YAML exception for key");
+            LOG_ERROR("YAML parsing exception for key '{}': {}", key, e.what());
+            return std::nullopt;
         } catch (const std::exception &e) {
-            spdlog::error("Error fetching value for key '{}': {}", key, e.what());
-            throw;
+            LOG_ERROR("Error fetching value for key '{}': {}", key, e.what());
+            return std::nullopt;
         }
     }
 
     template<typename T>
     T Configuration::get(const std::string &key, T default_value) const {
-        try {
-            return get<T>(key);
-        } catch (const std::exception &e) {
-            spdlog::info("Returning default value for key '{}': {}", key, default_value);
-            return default_value;
-        }
+        auto value = get<T>(key);
+        return value ? *value : default_value;
     }
+
+    // Specialization to force const char* to std::string
+    inline std::string Configuration::get(const std::string &key, const char *default_value) const {
+        return get<std::string>(key, std::string(default_value));
+    }
+
 
     inline bool Configuration::contains(const std::string &key) const {
         return config_map_.find(key) != config_map_.end();
+    }
+
+    // Convenience functions for getting configuration values
+    template<typename T>
+    std::optional<T> get(const std::string &key) {
+        return Configuration::getInstance().get<T>(key);
+    }
+
+    template<typename T>
+    T get(const std::string &key, T default_value) {
+        return Configuration::getInstance().get<T>(key, default_value);
+    }
+
+    // Specialization to handle const char* as std::string (yaml-cpp misbehaves with const char*)
+    inline std::string get(const std::string &key, const char *default_value) {
+        return Configuration::getInstance().get(key, default_value);
     }
 
 

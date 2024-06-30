@@ -1,11 +1,6 @@
 // File: core/simulator.cpp
 
 #include "core/simulator.hpp"
-#include "processing/image_processor.hpp"
-#include <spdlog/spdlog.h>
-#include <stdexcept>
-
-using namespace std;
 
 namespace core {
     Simulator::Simulator(std::shared_ptr<Perception> perception_simulator, cv::Mat target_image,
@@ -17,7 +12,7 @@ namespace core {
 
 
     Simulator::~Simulator() {
-        spdlog::debug("Simulator destroyed successfully!");
+        LOG_DEBUG("Simulator destroyed successfully!");
     }
 
     // Renders an image from the specified view.
@@ -52,9 +47,8 @@ namespace core {
             cv::Mat rendered_image = renderViewImage(view);
             auto [result, good_matches] =
                     processing::image::ImageProcessor::compareImages(rendered_image, target_image_);
-            // Compare images.
 
-            spdlog::info("View {}: {} good matches", &view - &view_space_[0], good_matches);
+            LOG_INFO("View {}: {} good matches", &view - &view_space_[0], good_matches);
 
             if (good_matches > max_good_matches) {
                 max_good_matches = good_matches;
@@ -72,7 +66,7 @@ namespace core {
             throw std::runtime_error("No available views to select from");
         }
 
-        spdlog::info("Best view found with {} good matches", max_good_matches);
+        LOG_INFO("Best view found with {} good matches", max_good_matches);
         return best_view;
     }
 
@@ -81,7 +75,7 @@ namespace core {
         size_t good_matches = 0;
         int count = 0;
         do {
-            spdlog::info("Simulator loop iteration {}", count++);
+            LOG_INFO("Simulator loop iteration {}", count++);
             View next_view = searchNextView();
             selected_views_.push_back(next_view);
             if (auto [target_found, matches] = isTarget(next_view); target_found) {
@@ -91,6 +85,6 @@ namespace core {
         } while (true);
 
 
-        cout << "Found the target!" << endl;
+        LOG_INFO("Target found with {} good matches", good_matches);
     }
 }

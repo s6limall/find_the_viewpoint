@@ -66,8 +66,6 @@ namespace optimization {
          */
         virtual void setCache(const core::View &view, double score) = 0;
 
-    protected:
-        std::shared_ptr<spdlog::logger> logger = spdlog::default_logger();
     };
 
 }

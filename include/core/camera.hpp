@@ -6,6 +6,7 @@
 #include <Eigen/Core>
 #include <Eigen/Geometry>
 
+
 namespace core {
     /**
      * @brief Manages the camera's position and orientation using yaw, pitch, and roll.
@@ -23,45 +24,48 @@ namespace core {
 
     class Camera {
     public:
-        struct CameraConfig {
+        struct CameraParameters {
             int width, height; // Image dimensions
             float fov_x, fov_y; // Horizontal and vertical field of view in radians
             Eigen::Matrix3f intrinsics; // Intrinsic matrix of the camera
+
+            [[nodiscard]] float getFocalLengthX() const;
+
+            [[nodiscard]] float getFocalLengthY() const;
+
+            [[nodiscard]] float getPrincipalPointX() const;
+
+            [[nodiscard]] float getPrincipalPointY() const;
         };
 
         Camera();
 
-        ~Camera();
+        // Get camera parameters (intrinsics, width, height, fov)
+        [[nodiscard]] CameraParameters getParameters() const;
 
-        // Set camera intrinsics
         void setIntrinsics(int width, int height, float fov_x, float fov_y);
 
         [[nodiscard]] Eigen::Matrix3f getIntrinsics() const;
-
-        // Set and get camera pose
-        void setPosition(float x, float y, float z); // Set the camera position in 3D space.
-        void lookAt(const Eigen::Vector3f &target_center); // face towards target point/center in 3D space.
 
         [[nodiscard]] Eigen::Matrix4f getPose() const; // Returns the current camera pose as a 4x4 matrix of floats.
 
         void setPose(const Eigen::Matrix4f &pose);
 
-        // Get configuration
-        [[nodiscard]] CameraConfig getConfig() const;
+        // Get and set camera position (translation part)
+        [[nodiscard]] Eigen::Vector3f getPosition() const;
 
-        // Calculate distance bounds based on object scale
-        static std::pair<double, double> calculateDistanceBounds(double object_scale, double min_scale = 0.05,
-                                                                 double max_scale = 0.5);
+        void setPosition(float x, float y, float z);
+
+        [[nodiscard]] Eigen::Vector3f getObjectCenter() const;
+
+
+        void lookAt(const Eigen::Vector3f &target_center); // face towards target point/center in 3D space.
 
     private:
-        CameraConfig config_;
+        CameraParameters parameters_; // Camera parameters (intrinsics, width, height, fov)
         Eigen::Matrix4f pose_; // Camera pose (extrinsics)
+        Eigen::Vector3f object_center_; // Object/target center that the camera is looking at
 
-        // Helper function to convert degrees to radians
-        static float toRadians(float degrees);
-
-        // Calculate the focal length based on the field of view
-        static float calculateFocalLength(float size, float fov_rad);
     };
 }
 

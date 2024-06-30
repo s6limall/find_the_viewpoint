@@ -9,20 +9,19 @@
 
 namespace processing::vision {
 
-    class DistanceEstimator : public Estimator {
+    class DistanceEstimator final : public Estimator {
     public:
-        explicit DistanceEstimator(double unit_cube_size = 1.0, int image_width = 640, double fov_x = 60.0);
+        explicit DistanceEstimator(float focal_length, float unit_cube_size = 1.0);
 
         double estimate(const cv::Mat &image) override;
 
     private:
-        double focal_length_;
         double unit_cube_size_;
+        double focal_length_;
+
         std::unique_ptr<image::FeatureExtractor> feature_extractor_;
 
         static double calculateAverageKeypointSize(const std::vector<cv::KeyPoint> &keypoints);
-
-        static double calculateFocalLength(int image_width, double fov_x);
     };
 
 }

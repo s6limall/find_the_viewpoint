@@ -1,7 +1,5 @@
 // File: viewpoint/generator.cpp
 
-
-#include <spdlog/spdlog.h>
 #include <Eigen/Dense>
 #include "viewpoint/generator.hpp"
 #include "processing/vision/distance_estimator.hpp"
@@ -10,54 +8,49 @@
 #include "filtering/heuristics/similarity_heuristic.hpp"
 
 namespace viewpoint {
-
     Generator::Generator(int num_samples, int dimensions) :
-        num_samples_(num_samples), dimensions_(dimensions), estimated_distance_(0.0) {
-        spdlog::info("Generator initialized with {} samples and {} dimensions.", num_samples_, dimensions_);
-        filter_chain_ = std::make_shared<filtering::HeuristicFilter>();
+        num_samples_(num_samples), dimensions_(dimensions), estimated_distance_(0.0),
+        camera_parameters_(), filter_chain_(std::make_shared<filtering::HeuristicFilter>()) {
+        LOG_INFO("Generator initialized with {} samples and {} dimensions.", num_samples_, dimensions_);
     }
 
     void Generator::setTargetImage(const cv::Mat &target_image) {
         target_image_ = target_image;
-        spdlog::debug("Target image set with dimensions: {}x{}", target_image.cols, target_image.rows);
+        LOG_DEBUG("Target image set with dimensions: {}x{}", target_image.cols, target_image.rows);
     }
 
-    void Generator::setCameraMatrix(const cv::Mat &camera_matrix) {
-        camera_matrix_ = camera_matrix;
-        spdlog::debug("Camera matrix set: fx={}, fy={}, cx={}, cy={}",
-                      camera_matrix_.at<double>(0, 0), camera_matrix_.at<double>(1, 1),
-                      camera_matrix_.at<double>(0, 2), camera_matrix_.at<double>(1, 2));
+    void Generator::setCameraParameters(const core::Camera::CameraParameters &camera_parameters) {
+        LOG_DEBUG("Setting camera parameters.");
+        camera_parameters_ = camera_parameters;
     }
 
     double Generator::estimateDistanceToObject() {
-        spdlog::info("Starting distance estimation.");
-        processing::vision::DistanceEstimator distance_estimator(1.0, target_image_.cols,
-                                                                 camera_matrix_.at<double>(0, 0));
+        LOG_INFO("Starting distance estimation.");
+        processing::vision::DistanceEstimator distance_estimator(camera_parameters_.getFocalLengthX());
         estimated_distance_ = distance_estimator.estimate(target_image_);
 
         if (estimated_distance_ <= 0) {
-            spdlog::error("Invalid distance detected: {}", estimated_distance_);
+            LOG_ERROR("Invalid distance detected: {}", estimated_distance_);
             throw std::runtime_error("Failed to estimate distance.");
         }
 
-        spdlog::info("Estimated distance to object: {}", estimated_distance_);
+        LOG_INFO("Estimated distance to object: {}", estimated_distance_);
         return estimated_distance_;
     }
 
     std::vector<std::vector<double> > Generator::generateInitialViewpoints(double distance) const {
-        spdlog::info("Generating initial viewpoints within spherical shell at distance {}", distance);
+        LOG_INFO("Generating initial viewpoints within spherical shell at distance {}", distance);
 
         double thickness_ratio = 0.1; // Adjust this for a thicker or thinner spherical shell
-        sampling::ConstrainedSphericalSampler sampler(distance * (1.0 - thickness_ratio),
-                                                      distance * (1.0 + thickness_ratio));
-        auto samples = sampler.generate(num_samples_, {}, {}, false);
+        sampling::ConstrainedSphericalSampler sampler(distance, thickness_ratio);
+        auto samples = sampler.generate(num_samples_, dimensions_);
 
-        spdlog::info("Generated {} initial viewpoints", samples.size());
+        LOG_INFO("Generated {} initial viewpoints", samples.size());
         return samples;
     }
 
     std::vector<core::View> Generator::convertToViews(const std::vector<std::vector<double> > &samples) const {
-        spdlog::info("Converting samples to views.");
+        LOG_INFO("Converting samples to views.");
         std::vector<core::View> views;
         Eigen::Vector3f object_center(0.0, 0.0, 0.0);
 
@@ -69,29 +62,29 @@ namespace viewpoint {
             views.push_back(view);
         }
 
-        spdlog::info("Converted {} samples to views", views.size());
+        LOG_INFO("Converted {} samples to views", views.size());
         return views;
     }
 
     std::vector<core::View> Generator::provision() {
-        spdlog::info("Starting provision of viewpoints.");
+        LOG_INFO("Starting provision of viewpoints.");
 
         double distance = 0.0;
         try {
             distance = estimateDistanceToObject();
         } catch (const std::runtime_error &e) {
-            spdlog::error("Error estimating distance: {}", e.what());
+            LOG_ERROR("Error estimating distance: {}", e.what());
             return {};
         }
 
-        auto initial_samples = generateInitialViewpoints(distance);
+        const auto initial_samples = generateInitialViewpoints(distance);
 
         setupFilters();
         addHeuristics();
-        auto filtered_samples = filter_chain_->filter(initial_samples, 0.5);
+        const auto filtered_samples = filter_chain_->filter(initial_samples, 0.0);
 
         auto views = convertToViews(filtered_samples);
-        spdlog::info("Generated {} viewpoints after filtering.", views.size());
+        LOG_INFO("Generated {} viewpoints after filtering.", views.size());
 
         return views;
     }
@@ -142,40 +135,40 @@ namespace viewpoint {
 namespace viewpoint {
     Generator::Generator(int num_samples, int dimensions, unsigned int seed) :
         num_samples_(num_samples), dimensions_(dimensions), seed_(seed) {
-        spdlog::info("Generator initialized with {} samples, {} dimensions, and seed {}", num_samples_, dimensions_,
+        LOG_INFO("Generator initialized with {} samples, {} dimensions, and seed {}", num_samples_, dimensions_,
                      seed_);
         heuristic_filter_ = std::make_shared<filtering::HeuristicFilter>();
     }
 
     void Generator::setTargetImage(const cv::Mat &target_image) {
         target_image_ = target_image;
-        spdlog::debug("Target image set with dimensions: {}x{}", target_image.cols, target_image.rows);
+        LOG_DEBUG("Target image set with dimensions: {}x{}", target_image.cols, target_image.rows);
     }
 
     void Generator::setCameraMatrix(const cv::Mat &camera_matrix) {
         camera_matrix_ = camera_matrix;
-        spdlog::debug("Camera matrix set: fx={}, fy={}, cx={}, cy={}",
+        LOG_DEBUG("Camera matrix set: fx={}, fy={}, cx={}, cy={}",
                       camera_matrix_.at<double>(0, 0), camera_matrix_.at<double>(1, 1),
                       camera_matrix_.at<double>(0, 2), camera_matrix_.at<double>(1, 2));
     }
 
     std::pair<float, float> Generator::detectAndEstimateScaleDistance() {
-        spdlog::info("Starting sphere detection and scale/distance estimation.");
+        LOG_INFO("Starting sphere detection and scale/distance estimation.");
         auto sphere_detector = std::make_shared<processing::vision::SphereDetector>();
         processing::vision::ScaleEstimator scale_estimator(camera_matrix_, sphere_detector);
         auto [scale, distance] = scale_estimator.estimateScaleAndDistance(target_image_);
 
         if (distance <= 0 || scale <= 0) {
-            spdlog::error("Invalid scale or distance detected: scale={}, distance={}", scale, distance);
+            LOG_ERROR("Invalid scale or distance detected: scale={}, distance={}", scale, distance);
         } else {
-            spdlog::info("Scale and distance estimation complete: scale={}, distance={}", scale, distance);
+            LOG_INFO("Scale and distance estimation complete: scale={}, distance={}", scale, distance);
         }
 
         return {scale, distance};
     }
 
     std::vector<std::vector<double> > Generator::generateInitialViewpoints(float distance) {
-        spdlog::info("Generating initial viewpoints with distance {}", distance);
+        LOG_INFO("Generating initial viewpoints with distance {}", distance);
 
         double thickness_ratio = 0.1; // Adjust this for a thicker or thinner spherical shell
         double inner_radius = distance * (1.0 - thickness_ratio);
@@ -187,7 +180,7 @@ namespace viewpoint {
         std::vector<double> upper_bounds = {outer_radius, 2 * M_PI, M_PI};
         auto samples = sampler.generate(num_samples_, lower_bounds, upper_bounds, true);
 
-        spdlog::debug("Generated {} initial viewpoints.", samples.size());
+        LOG_DEBUG("Generated {} initial viewpoints.", samples.size());
         return convertToCartesian(samples);
     }
 
@@ -210,7 +203,7 @@ namespace viewpoint {
     }
 
     std::vector<core::View> Generator::convertToViews(const std::vector<std::vector<double> > &samples) {
-        spdlog::info("Converting samples to views.");
+        LOG_INFO("Converting samples to views.");
         std::vector<core::View> views;
         Eigen::Vector3f object_center(0.0, 0.0, 0.0);
 
@@ -225,11 +218,11 @@ namespace viewpoint {
     }
 
     std::vector<core::View> Generator::provision() {
-        spdlog::info("Starting provision of viewpoints.");
+        LOG_INFO("Starting provision of viewpoints.");
 
         auto [scale, distance] = detectAndEstimateScaleDistance();
         if (distance <= 0 || scale <= 0) {
-            spdlog::error("Failed to estimate distance, provisioning aborted. Scale: {}, Distance: {}", scale,
+            LOG_ERROR("Failed to estimate distance, provisioning aborted. Scale: {}, Distance: {}", scale,
                           distance);
             return {};
         }
@@ -241,7 +234,7 @@ namespace viewpoint {
 
         auto views = convertToViews(filtered_samples);
 
-        spdlog::info("Generated {} viewpoints after filtering.", views.size());
+        LOG_INFO("Generated {} viewpoints after filtering.", views.size());
         return views;
     }
 
@@ -254,7 +247,7 @@ namespace viewpoint {
     }*/
 
 /*std::vector<core::View> Generator::provision() {
-    spdlog::info("Generating {} viewpoints...", num_samples_);
+    LOG_INFO("Generating {} viewpoints...", num_samples_);
 
     // Define the dimensionality and bounds for the sampling
     int dimensions = 3; // Assuming 3D space (x, y, z)
@@ -282,7 +275,7 @@ namespace viewpoint {
         views.push_back(view);
     }
 
-    spdlog::info("Generated {} viewpoints", views.size());
+    LOG_INFO("Generated {} viewpoints", views.size());
     return views;
 }*/
 

@@ -17,26 +17,30 @@ namespace tasks {
     class TaskManager {
     public:
         // Returns the singleton instance of TaskManager.
-        static TaskManager &getInstance();
+        static std::shared_ptr<TaskManager> getInstance();
 
         // Executes a specified task by performing operations on a 3D model.
         // - object_name: Name of the 3D object involved in the task.
         // - test_num: The number of tests to perform.
-        void execute(const std::string &object_name, int test_num);
+        void execute(std::string object_name = "obj_000020", size_t test_num = 1);
 
         TaskManager(const TaskManager &) = delete;
 
         TaskManager &operator=(const TaskManager &) = delete;
 
-    private:
-        TaskManager() = default;
-
         ~TaskManager() = default;
 
+    private:
+        TaskManager();
+
+        static cv::Mat target_image_;
+        static std::once_flag init_flag_;
+        static std::shared_ptr<TaskManager> instance_;
+        static core::Camera::CameraParameters camera_parameters_;
+        std::unique_ptr<viewpoint::Provider> provider_;
         std::shared_ptr<core::Perception> perception_simulator_;
 
-        // Initializes the Perception system with a specified 3D model.
-        std::shared_ptr<core::Perception> initializePerception(const std::string &model_path);
+        void prepare();
 
         // Loads viewpoints from a file or generates new viewpoints using sampling.
         std::vector<core::View> loadOrGenerateViewpoints(const std::string &filepath, bool from_file,
@@ -53,11 +57,12 @@ namespace tasks {
         // Generates a unique key for caching based on the view.
         std::string generateCacheKey(const core::View &view) const;
 
-        std::unique_ptr<viewpoint::Generator> initializeGenerator(
-                const cv::Mat &target_image, const cv::Mat &camera_matrix, int num_samples, int dimensions,
-                unsigned int seed);
+        std::unique_ptr<viewpoint::Provider> initializeGenerator(
+                const cv::Mat &target_image, const core::Camera::CameraParameters &camera_parameters, int num_samples,
+                int dimensions);
     };
 
 }
 
 #endif // TASK_MANAGER_HPP
+

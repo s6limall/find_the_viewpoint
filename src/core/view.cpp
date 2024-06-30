@@ -2,14 +2,14 @@
 
 #include "core/view.hpp"
 
-#include <spdlog/spdlog.h>
+#include "common/logging/logger.hpp"
 
 namespace core {
     View::View() :
         camera_(std::make_shared<Camera>()) {
         camera_->setPosition(0, 0, 0); // Initialize camera position to (0, 0, 0)
         pose_.setIdentity();
-        spdlog::debug("View initialized with camera position set to (0, 0, 0).");
+        LOG_DEBUG("View initialized. Camera position and pose set to identity.");
     }
 
     View::~View() = default;
@@ -18,12 +18,20 @@ namespace core {
         camera_->setPosition(position.x(), position.y(), position.z()); // Set camera position
         camera_->lookAt(object_center.cast<float>()); // Orient camera towards the object center
         pose_ = camera_->getPose(); // Update view pose with camera's current pose
-        spdlog::info("Computed view pose for position ({}, {}, {}) with object center ({}, {}, {})",
-                     position.x(), position.y(), position.z(), object_center.x(), object_center.y(), object_center.z());
+        LOG_INFO("Computed view pose for position ({}, {}, {}) with object center ({}, {}, {})",
+                 position.x(), position.y(), position.z(), object_center.x(), object_center.y(), object_center.z());
     }
 
     Eigen::Matrix4f View::getPose() const {
         return pose_;
+    }
+
+    Eigen::Vector3f View::getPosition() const {
+        return camera_->getPosition();
+    }
+
+    Eigen::Vector3f View::getObjectCenter() const {
+        return camera_->getObjectCenter();
     }
 
     Eigen::VectorXd View::toVector() const {

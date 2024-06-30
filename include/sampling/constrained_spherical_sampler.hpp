@@ -3,28 +3,35 @@
 #ifndef CONSTRAINED_SPHERICAL_SAMPLER_HPP
 #define CONSTRAINED_SPHERICAL_SAMPLER_HPP
 
-#include "sampling/sampler.hpp"
 #include "sampling/halton_sampler.hpp"
-#include <vector>
-#include <random>
-#include <functional>
-#include <algorithm>
+#include "common/logging/logger.hpp"
 
 namespace sampling {
 
-    class ConstrainedSphericalSampler : public Sampler {
+    class ConstrainedSphericalSampler {
     public:
-        ConstrainedSphericalSampler(double inner_radius, double outer_radius);
+        ConstrainedSphericalSampler(double radius, double tolerance);
 
-        std::vector<std::vector<double> > generate(int num_samples, const std::vector<double> &lower_bounds,
-                                                   const std::vector<double> &upper_bounds, bool use_halton) override;
-
-        void adapt(std::vector<std::vector<double> > &samples, const std::vector<double> &lower_bounds,
-                   const std::vector<double> &upper_bounds) override;
+        [[nodiscard]] std::vector<std::vector<double> > generate(int num_samples, int dimensions);
 
     private:
+        double radius_;
+        double tolerance_;
         double inner_radius_;
         double outer_radius_;
+        HaltonSampler halton_sampler_;
+
+        // Sets the lower and upper bounds based on the radius and dimensions
+        [[nodiscard]] std::pair<std::vector<double>, std::vector<double> > calculateBounds(int dimensions) const;
+
+        // Transforms unit cube Halton samples to fit within the spherical shell
+        void adaptSample(std::vector<double> &sample) const;
+
+        // Checks if a point lies within the spherical shell
+        [[nodiscard]] bool isWithinShell(const std::vector<double> &point) const;
+
+        // Generate a random radius in range [inner_radius, outer_radius]
+        [[nodiscard]] double generateRandomRadius(std::vector<double> &sample) const;
     };
 
 }

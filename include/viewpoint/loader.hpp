@@ -10,10 +10,17 @@
 
 namespace viewpoint {
 
-    class Loader : public Provider {
+    class Loader final : public Provider {
     public:
-        explicit Loader(std::string  filepath);
+        explicit Loader(std::string filepath);
+
         std::vector<core::View> provision() override;
+
+        void setTargetImage(const cv::Mat &target_image) override {
+        };
+
+        void setCameraParameters(const core::Camera::CameraParameters &camera_parameters) override {
+        };
 
     private:
         std::string filepath_;
