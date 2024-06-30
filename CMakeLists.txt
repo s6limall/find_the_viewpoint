@@ -1,16 +1,17 @@
 # Set the minimum CMake version required
 cmake_minimum_required(VERSION 3.14...3.30)
 
-# Set CMake policies for modern behavior as early as possible
+# Set CMake policies for modern behavior
 cmake_policy(SET CMP0074 NEW)  # FindPackage uses <Package>_ROOT variables
 cmake_policy(SET CMP0079 NEW)  # target_link_libraries() allow PUBLIC/PRIVATE/INTERFACE
 cmake_policy(SET CMP0091 NEW)  # Enable position-independent code for executables
 
+
 # Integrate ccache for faster builds (if available)
 find_program(CCACHE_FOUND ccache)
 if (CCACHE_FOUND)
-    set_property(GLOBAL PROPERTY RULE_LAUNCH_COMPILE ccache)
-    set_property(GLOBAL PROPERTY RULE_LAUNCH_LINK ccache)
+    set(CMAKE_C_COMPILER_LAUNCHER ccache)
+    set(CMAKE_CXX_COMPILER_LAUNCHER ccache)
     message(STATUS "ccache found and integrated.")
 else ()
     message(STATUS "ccache not found. Building without ccache.")
@@ -20,8 +21,9 @@ endif ()
 project(find_the_viewpoint LANGUAGES CXX)
 
 # Set the C++ standard and ensure it is required
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
 
 # Enable C language if MPI is found
 find_package(MPI QUIET)
@@ -39,7 +41,7 @@ find_package(fmt REQUIRED)
 find_package(spdlog REQUIRED)
 find_package(yaml-cpp REQUIRED)
 
-# Set include directories for the project
+# Set include directories and libraries for the project
 set(INCLUDE_DIRS
         ${PROJECT_SOURCE_DIR}/include
         ${OpenCV_INCLUDE_DIRS}
@@ -50,7 +52,6 @@ set(INCLUDE_DIRS
         ${SPDLOG_INCLUDE_DIRS}
 )
 
-# Set libraries to link against
 set(LIBRARIES
         ${OpenCV_LIBS}
         ${PCL_LIBRARIES}
@@ -79,10 +80,8 @@ include(${PROJECT_SOURCE_DIR}/cmake/sources.cmake)
 # Add executable target
 add_executable(${PROJECT_NAME} ${PROJECT_HEADERS} ${PROJECT_SOURCES})
 
-# Include directories for the target
+# Include directories and link libraries for the target
 target_include_directories(${PROJECT_NAME} PRIVATE ${INCLUDE_DIRS})
-
-# Link libraries to the executable
 target_link_libraries(${PROJECT_NAME} PRIVATE ${LIBRARIES})
 
 # Use precompiled headers to reduce compilation time
@@ -93,6 +92,11 @@ target_precompile_headers(${PROJECT_NAME} PRIVATE
         <memory>
         <numeric>
         <functional>
+        <filesystem>
+        <memory>
+        <mutex>
+        <string>
+        <algorithm>
         <Eigen/Geometry>
         <Eigen/Dense>
         <pcl/PolygonMesh.h>
@@ -102,27 +106,18 @@ target_precompile_headers(${PROJECT_NAME} PRIVATE
         <opencv2/opencv.hpp>
 )
 
-# Custom target to copy configuration.yaml to the output directory
-add_custom_target(copy_config ALL
+# Custom targets to copy necessary files to the output directory
+add_custom_target(copy_resources ALL
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
         ${PROJECT_SOURCE_DIR}/configuration.yaml
         $<TARGET_FILE_DIR:${PROJECT_NAME}>
-        DEPENDS ${PROJECT_SOURCE_DIR}/configuration.yaml
-        COMMENT "Copying configuration.yaml to output directory"
-)
-
-# Custom target to copy 3d_models directory to the output directory
-add_custom_target(copy_3d_models ALL
         COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different
         ${PROJECT_SOURCE_DIR}/3d_models
         $<TARGET_FILE_DIR:${PROJECT_NAME}>/3d_models
-        DEPENDS ${PROJECT_SOURCE_DIR}/3d_models
-        COMMENT "Copying 3d_models directory to output directory"
+        COMMENT "Copying configuration.yaml and 3d_models directory to output directory"
 )
 
-# Ensure that configuration.yaml and 3d_models are copied after building the main target
-add_dependencies(${PROJECT_NAME} copy_config)
-add_dependencies(${PROJECT_NAME} copy_3d_models)
+add_dependencies(${PROJECT_NAME} copy_resources)
 
 # Export compile commands for tools like clang-tidy
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
@@ -149,26 +144,18 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 
 # Platform-specific configurations
 if (WIN32)
-    # Windows-specific settings
-    add_compile_definitions(_CRT_SECURE_NO_WARNINGS) # Suppress Windows-specific warnings
+    add_compile_definitions(_CRT_SECURE_NO_WARNINGS)
 elseif (UNIX)
-    # Unix-specific settings
-    # Link with pthread for better multi-threading support on Unix
     find_package(Threads REQUIRED)
     target_link_libraries(${PROJECT_NAME} PRIVATE Threads::Threads)
 endif ()
 
-# Add the tests directory
-# add_subdirectory(tests)
-
-# Add the tests directory conditionally
+# Conditionally add the tests directory
 option(BUILD_TESTS "Build the tests" ON)
 if (BUILD_TESTS)
     add_subdirectory(tests)
+    enable_testing()
 endif ()
-
-# Include testing support
-enable_testing()
 
 # Add custom target to clean up binary directories
 add_custom_target(clean-all
@@ -178,4 +165,30 @@ add_custom_target(clean-all
 )
 
 # Enable Unity builds for faster compilation
-set_target_properties(${PROJECT_NAME} PROPERTIES UNITY_BUILD ON)
+set_target_properties(${PROJECT_NAME} PROPERTIES UNITY_BUILD OFF)
+
+# Compiler optimizations for all build types
+# Apply aggressive compiler optimizations for all build types
+if (CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    add_compile_options(-O3 -flto -march=native)
+    add_link_options(-O3 -flto -march=native)
+elseif (CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
+    add_compile_options(/GL /Ox /O2)
+    add_link_options(/LTCG)
+endif ()
+
+#[[
+if (CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    add_compile_options(-march=native)
+    if (CMAKE_BUILD_TYPE MATCHES "Release")
+        add_compile_options(-O3 -flto)
+        add_link_options(-O3 -flto)
+    endif ()
+elseif (CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
+    add_compile_options(/GL /Ox)
+    if (CMAKE_BUILD_TYPE MATCHES "Release")
+        add_compile_options(/O2)
+        add_link_options(/LTCG)
+    endif ()
+endif ()
+]]
