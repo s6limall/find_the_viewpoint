@@ -1,16 +1,14 @@
+/*
 // File: viewpoint/generator.cpp
 
-#include <Eigen/Dense>
 #include "viewpoint/generator.hpp"
-#include "processing/vision/distance_estimator.hpp"
-#include "sampling/constrained_spherical_sampler.hpp"
-#include "filtering/heuristics/distance_heuristic.hpp"
-#include "filtering/heuristics/similarity_heuristic.hpp"
+
+#include "sampling/sampler/halton_sampler.hpp"
 
 namespace viewpoint {
-    Generator::Generator(int num_samples, int dimensions) :
+    Generator::Generator(const int num_samples, const int dimensions) :
         num_samples_(num_samples), dimensions_(dimensions), estimated_distance_(0.0),
-        camera_parameters_(), filter_chain_(std::make_shared<filtering::HeuristicFilter>()) {
+        filter_chain_(std::make_shared<filtering::HeuristicFilter>()) {
         LOG_INFO("Generator initialized with {} samples and {} dimensions.", num_samples_, dimensions_);
     }
 
@@ -19,16 +17,16 @@ namespace viewpoint {
         LOG_DEBUG("Target image set with dimensions: {}x{}", target_image.cols, target_image.rows);
     }
 
-    void Generator::setCameraParameters(const core::Camera::CameraParameters &camera_parameters) {
+    void Generator::setCameraIntrinsics(const core::Camera::Intrinsics &camera_intrinsics) {
         LOG_DEBUG("Setting camera parameters.");
-        camera_parameters_ = camera_parameters;
+        camera_intrinsics_ = camera_intrinsics;
     }
 
     double Generator::estimateDistanceToObject() {
         LOG_INFO("Starting distance estimation.");
-        processing::vision::DistanceEstimator distance_estimator(camera_parameters_.getFocalLengthX());
-        estimated_distance_ = distance_estimator.estimate(target_image_);
-
+        // processing::vision::DistanceEstimator distance_estimator(camera_intrinsics_.getFocalLengthX());
+        // estimated_distance_ = distance_estimator.estimate(target_image_);
+        estimated_distance_ = 1.0;
         if (estimated_distance_ <= 0) {
             LOG_ERROR("Invalid distance detected: {}", estimated_distance_);
             throw std::runtime_error("Failed to estimate distance.");
@@ -41,9 +39,9 @@ namespace viewpoint {
     std::vector<std::vector<double> > Generator::generateInitialViewpoints(double distance) const {
         LOG_INFO("Generating initial viewpoints within spherical shell at distance {}", distance);
 
-        double thickness_ratio = 0.1; // Adjust this for a thicker or thinner spherical shell
-        sampling::ConstrainedSphericalSampler sampler(distance, thickness_ratio);
-        auto samples = sampler.generate(num_samples_, dimensions_);
+        constexpr double thickness_ratio = 0.5; // Adjust this for a thicker or thinner spherical shell
+        sampling::HaltonSampler sampler;
+        auto samples = sampler.generate(num_samples_, {0, 0, 0}, {1, 1, 1});
 
         LOG_INFO("Generated {} initial viewpoints", samples.size());
         return samples;
@@ -52,13 +50,13 @@ namespace viewpoint {
     std::vector<core::View> Generator::convertToViews(const std::vector<std::vector<double> > &samples) const {
         LOG_INFO("Converting samples to views.");
         std::vector<core::View> views;
-        Eigen::Vector3f object_center(0.0, 0.0, 0.0);
+        const Eigen::Vector3d object_center(0.0, 0.0, 0.0);
 
         views.reserve(samples.size());
         for (const auto &sample: samples) {
-            Eigen::Vector3f position(sample[0], sample[1], sample[2]);
+            Eigen::Vector3d position(sample[0], sample[1], sample[2]);
             core::View view;
-            view.computePoseFromPositionAndObjectCenter(position, object_center);
+            view.computePose(position, object_center);
             views.push_back(view);
         }
 
@@ -93,8 +91,8 @@ namespace viewpoint {
         // Setup the filter chain if needed
     }
 
-    void Generator::addHeuristics() {
-        auto distance_heuristic = std::make_shared<filtering::heuristics::DistanceHeuristic>(
+    void Generator::addHeuristics() const {
+        const auto distance_heuristic = std::make_shared<filtering::heuristics::DistanceHeuristic>(
                 std::vector<double>{0, 0, 0});
         filter_chain_->addHeuristic(distance_heuristic, 0.5);
 
@@ -105,10 +103,10 @@ namespace viewpoint {
 
     void Generator::visualizeSphere(const std::string &window_name) const {
         cv::Mat display_image = target_image_.clone();
-        cv::Point center(display_image.cols / 2, display_image.rows / 2);
+        const cv::Point center(display_image.cols / 2, display_image.rows / 2);
 
-        double inner_radius = estimated_distance_ * 0.9;
-        double outer_radius = estimated_distance_ * 1.1;
+        const double inner_radius = estimated_distance_ * 0.9;
+        const double outer_radius = estimated_distance_ * 1.1;
 
         cv::circle(display_image, center, static_cast<int>(inner_radius), cv::Scalar(255, 0, 0), 1);
         cv::circle(display_image, center, static_cast<int>(outer_radius), cv::Scalar(0, 255, 0), 1);
@@ -211,7 +209,7 @@ namespace viewpoint {
         for (const auto &sample: samples) {
             Eigen::Vector3f position(sample[0], sample[1], sample[2]);
             core::View view;
-            view.computePoseFromPositionAndObjectCenter(position, object_center);
+            view.computePose(position, object_center);
             views.push_back(view);
         }
         return views;
@@ -244,7 +242,7 @@ namespace viewpoint {
         heuristic_filter_->addHeuristic(
                 std::make_shared<filtering::heuristics::SimilarityHeuristic>(
                         std::vector<std::vector<double> >{{1, 1, 1}}), 0.5);
-    }*/
+    }#1#
 
 /*std::vector<core::View> Generator::provision() {
     LOG_INFO("Generating {} viewpoints...", num_samples_);
@@ -270,12 +268,13 @@ namespace viewpoint {
         core::View view;
         // Assuming a fixed object center for simplicity
         Eigen::Vector3f object_center(0.0, 0.0, 0.0);
-        //view.computePoseFromPositionAndObjectCenter(position, Eigen::Vector3f(0, 0, 0));
-        view.computePoseFromPositionAndObjectCenter(position.normalized() * 3.0f, object_center);
+        //view.computePose(position, Eigen::Vector3f(0, 0, 0));
+        view.computePose(position.normalized() * 3.0f, object_center);
         views.push_back(view);
     }
 
     LOG_INFO("Generated {} viewpoints", views.size());
     return views;
-}*/
+}#1#
+*/
 

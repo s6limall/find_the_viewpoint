@@ -1,194 +1,102 @@
-# Set the minimum CMake version required
 cmake_minimum_required(VERSION 3.14...3.30)
 
 # Set CMake policies for modern behavior
 cmake_policy(SET CMP0074 NEW)  # FindPackage uses <Package>_ROOT variables
 cmake_policy(SET CMP0079 NEW)  # target_link_libraries() allow PUBLIC/PRIVATE/INTERFACE
 cmake_policy(SET CMP0091 NEW)  # Enable position-independent code for executables
+cmake_policy(SET CMP0102 NEW)  # Evaluate generator expressions during export
+cmake_policy(SET CMP0114 NEW)  # Enable imported targets for Apple framework dependencies
 
-
-# Integrate ccache for faster builds (if available)
-find_program(CCACHE_FOUND ccache)
-if (CCACHE_FOUND)
-    set(CMAKE_C_COMPILER_LAUNCHER ccache)
-    set(CMAKE_CXX_COMPILER_LAUNCHER ccache)
-    message(STATUS "ccache found and integrated.")
-else ()
-    message(STATUS "ccache not found. Building without ccache.")
-endif ()
-
-# Define the project name and specify the programming languages
+# Define the project
 project(find_the_viewpoint LANGUAGES CXX)
 
-# Set the C++ standard and ensure it is required
+message(STATUS "Setting up the project ${PROJECT_NAME}")
+
+# Set the C++ standard
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-# Enable C language if MPI is found
-find_package(MPI QUIET)
-if (MPI_FOUND)
-    enable_language(C)
-endif ()
+# Include modular CMake files
+message(STATUS "Including modular CMake files")
+include(${CMAKE_SOURCE_DIR}/cmake/CompilerSettings.cmake)    # Compiler and optimization settings
+include(${CMAKE_SOURCE_DIR}/cmake/vcpkg.cmake)               # vcpkg setup and integration
 
-# Find necessary packages
-find_package(OpenCV REQUIRED)
-find_package(PCL REQUIRED COMPONENTS common io visualization)
-find_package(Eigen3 REQUIRED NO_MODULE)
-find_package(jsoncpp CONFIG REQUIRED)
-find_package(Freetype REQUIRED)
-find_package(fmt REQUIRED)
-find_package(spdlog REQUIRED)
-find_package(yaml-cpp REQUIRED)
-
-# Set include directories and libraries for the project
-set(INCLUDE_DIRS
-        ${PROJECT_SOURCE_DIR}/include
-        ${OpenCV_INCLUDE_DIRS}
-        ${PCL_INCLUDE_DIRS}
-        ${Eigen3_INCLUDE_DIRS}
-        ${JSONCPP_INCLUDE_DIRS}
-        ${FREETYPE_INCLUDE_DIRS}
-        ${SPDLOG_INCLUDE_DIRS}
-)
-
-set(LIBRARIES
-        ${OpenCV_LIBS}
-        ${PCL_LIBRARIES}
-        ${JSONCPP_LIBRARIES}
-        ${FREETYPE_LIBRARIES}
-        spdlog::spdlog
-        yaml-cpp
-        fmt::fmt
-)
-
-# Automatically call the script to generate sources.cmake
+# Run the script to generate sources.cmake
 execute_process(
-        COMMAND ${CMAKE_COMMAND} -E env bash ${PROJECT_SOURCE_DIR}/cmake/generate_sources.sh
-        WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
+        COMMAND ${CMAKE_COMMAND} -E env bash ${CMAKE_SOURCE_DIR}/cmake/generate_sources.sh
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
         RESULT_VARIABLE SCRIPT_RESULT
 )
-if (SCRIPT_RESULT)
+if (NOT SCRIPT_RESULT EQUAL "0")
     message(FATAL_ERROR "Failed to generate sources.cmake")
-else ()
-    message(STATUS "sources.cmake generated successfully.")
 endif ()
 
 # Include the generated sources.cmake
-include(${PROJECT_SOURCE_DIR}/cmake/sources.cmake)
+include(${CMAKE_SOURCE_DIR}/cmake/sources.cmake)
 
-# Add executable target
-add_executable(${PROJECT_NAME} ${PROJECT_HEADERS} ${PROJECT_SOURCES})
+include(${CMAKE_SOURCE_DIR}/cmake/Dependencies.cmake)        # External dependencies
+include(${CMAKE_SOURCE_DIR}/cmake/PrecompiledHeaders.cmake)  # Precompiled headers setup
 
-# Include directories and link libraries for the target
-target_include_directories(${PROJECT_NAME} PRIVATE ${INCLUDE_DIRS})
-target_link_libraries(${PROJECT_NAME} PRIVATE ${LIBRARIES})
-
-# Use precompiled headers to reduce compilation time
-target_precompile_headers(${PROJECT_NAME} PRIVATE
-        <iostream>
-        <vector>
-        <string>
-        <memory>
-        <numeric>
-        <functional>
-        <filesystem>
-        <memory>
-        <mutex>
-        <string>
-        <algorithm>
-        <Eigen/Geometry>
-        <Eigen/Dense>
-        <pcl/PolygonMesh.h>
-        <spdlog/spdlog.h>
-        <yaml-cpp/yaml.h>
-        <opencv2/core.hpp>
-        <opencv2/opencv.hpp>
-)
-
-# Custom targets to copy necessary files to the output directory
-add_custom_target(copy_resources ALL
-        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-        ${PROJECT_SOURCE_DIR}/configuration.yaml
-        $<TARGET_FILE_DIR:${PROJECT_NAME}>
-        COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different
-        ${PROJECT_SOURCE_DIR}/3d_models
-        $<TARGET_FILE_DIR:${PROJECT_NAME}>/3d_models
-        COMMENT "Copying configuration.yaml and 3d_models directory to output directory"
-)
-
-add_dependencies(${PROJECT_NAME} copy_resources)
-
-# Export compile commands for tools like clang-tidy
-set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
+# Set output directories for all platforms
+message(STATUS "Setting output directories")
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
+set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 
 # Ensure out-of-source build to keep the source directory clean
 if ("${CMAKE_SOURCE_DIR}" STREQUAL "${CMAKE_BINARY_DIR}")
     message(FATAL_ERROR "In-source builds are not allowed. Please use a separate build directory.")
 endif ()
 
-# Enable compiler warnings for better code quality
-if (CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-    add_compile_options(-Wall -Wextra -Wpedantic -Werror)
-elseif (CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
-    add_compile_options(/W4 /WX)
-endif ()
+# Export compile commands for tools like clang-tidy
+set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-# Set build types to ensure predictable builds
-set(CMAKE_CONFIGURATION_TYPES "Debug;Release;RelWithDebInfo;MinSizeRel" CACHE STRING "Available build types" FORCE)
+# Add the main executable
+message(STATUS "Adding the main executable")
+add_executable(${PROJECT_NAME} ${PROJECT_HEADERS} ${PROJECT_SOURCES})
 
-# Set output directories for all platforms
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
-set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
-set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
+# Include directories and link libraries for the target
+message(STATUS "Setting include directories and link libraries")
+target_include_directories(${PROJECT_NAME} PRIVATE ${INCLUDE_DIRS})
+target_link_libraries(${PROJECT_NAME} PRIVATE ${LIBRARIES})
 
-# Platform-specific configurations
-if (WIN32)
-    add_compile_definitions(_CRT_SECURE_NO_WARNINGS)
-elseif (UNIX)
-    find_package(Threads REQUIRED)
-    target_link_libraries(${PROJECT_NAME} PRIVATE Threads::Threads)
-endif ()
+# Set precompiled headers
+target_precompile_headers(${PROJECT_NAME} PRIVATE ${PRECOMPILED_HEADERS})
 
-# Conditionally add the tests directory
-option(BUILD_TESTS "Build the tests" ON)
-if (BUILD_TESTS)
-    add_subdirectory(tests)
-    enable_testing()
-endif ()
+include(${CMAKE_SOURCE_DIR}/cmake/Utilities.cmake)           # Utility functions and platform-specific settings
 
-# Add custom target to clean up binary directories
-add_custom_target(clean-all
+# Enable Unity builds for faster compilation
+message(STATUS "Enabling Unity builds for faster compilation")
+set_target_properties(${PROJECT_NAME} PROPERTIES UNITY_BUILD ONN)
+
+# Custom target to clean up binary directories
+add_custom_target(clean_all
         COMMAND ${CMAKE_COMMAND} -E remove_directory ${CMAKE_BINARY_DIR}
         COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}
         COMMENT "Cleaning up all build files and directories."
 )
 
-# Enable Unity builds for faster compilation
-set_target_properties(${PROJECT_NAME} PROPERTIES UNITY_BUILD OFF)
-
-# Compiler optimizations for all build types
-# Apply aggressive compiler optimizations for all build types
-if (CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-    add_compile_options(-O3 -flto -march=native)
-    add_link_options(-O3 -flto -march=native)
-elseif (CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
-    add_compile_options(/GL /Ox /O2)
-    add_link_options(/LTCG)
+# Optionally build tests
+option(BUILD_TESTS "Build the tests" ON)
+if (BUILD_TESTS)
+    message(STATUS "Configuring tests")
+    add_subdirectory(tests)
+    enable_testing()
 endif ()
 
-#[[
-if (CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-    add_compile_options(-march=native)
-    if (CMAKE_BUILD_TYPE MATCHES "Release")
-        add_compile_options(-O3 -flto)
-        add_link_options(-O3 -flto)
-    endif ()
-elseif (CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
-    add_compile_options(/GL /Ox)
-    if (CMAKE_BUILD_TYPE MATCHES "Release")
-        add_compile_options(/O2)
-        add_link_options(/LTCG)
-    endif ()
-endif ()
-]]
+# Custom target to copy necessary files to the output directory
+add_custom_target(copy_resources ALL
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        ${PROJECT_SOURCE_DIR}/configuration.yaml
+        $<TARGET_FILE_DIR:${PROJECT_NAME}>
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${PROJECT_SOURCE_DIR}/3d_models
+        $<TARGET_FILE_DIR:${PROJECT_NAME}>/3d_models
+        COMMENT "Copying configuration.yaml and 3d_models directory to output directory"
+)
+
+message(STATUS "Adding dependency: copy_resources")
+add_dependencies(${PROJECT_NAME} copy_resources)
+
+message(STATUS "Configuration complete")

@@ -6,11 +6,16 @@
 #include <vector>
 #include <memory>
 
-#include <spdlog/spdlog.h>
-
 #include "core/view.hpp"
+#include "common/logging/logger.hpp"
+
 
 namespace viewpoint {
+
+    enum ProviderType {
+        LOADER,
+        GENERATOR
+    };
 
     class Provider {
     public:
@@ -19,13 +24,13 @@ namespace viewpoint {
         // Function to provision viewpoints
         virtual std::vector<core::View> provision() = 0;
 
-
         virtual void setTargetImage(const cv::Mat &target_image) = 0;
 
-        virtual void setCameraParameters(const core::Camera::CameraParameters &camera_parameters) = 0;
+        virtual void setCameraIntrinsics(const core::Camera::Intrinsics &camera_intrinsics) = 0;
 
         // Factory function to create a provider
         static std::unique_ptr<Provider> create(bool from_file, int num_samples, int dimensions);
+
     };
 
 }

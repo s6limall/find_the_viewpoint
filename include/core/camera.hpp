@@ -24,47 +24,66 @@ namespace core {
 
     class Camera {
     public:
-        struct CameraParameters {
+        struct Intrinsics {
             int width, height; // Image dimensions
-            float fov_x, fov_y; // Horizontal and vertical field of view in radians
-            Eigen::Matrix3f intrinsics; // Intrinsic matrix of the camera
+            double fov_x, fov_y; // Field of view in radians
+            Eigen::Matrix3d matrix; // Intrinsic matrix
 
-            [[nodiscard]] float getFocalLengthX() const;
+            Intrinsics() noexcept;
 
-            [[nodiscard]] float getFocalLengthY() const;
+            [[nodiscard]] double getFocalLengthX() const noexcept { return matrix(0, 0); }
+            [[nodiscard]] double getFocalLengthY() const noexcept { return matrix(1, 1); }
+            [[nodiscard]] double getPrincipalPointX() const noexcept { return matrix(0, 2); }
+            [[nodiscard]] double getPrincipalPointY() const noexcept { return matrix(1, 2); }
+            [[nodiscard]] Eigen::Matrix3d getMatrix() const noexcept { return matrix; }
 
-            [[nodiscard]] float getPrincipalPointX() const;
-
-            [[nodiscard]] float getPrincipalPointY() const;
+            void setIntrinsics(int width, int height, double fov_x, double fov_y);
         };
 
-        Camera();
+        struct Extrinsics {
+            Eigen::Matrix4d matrix; // Extrinsic matrix (pose)
 
-        // Get camera parameters (intrinsics, width, height, fov)
-        [[nodiscard]] CameraParameters getParameters() const;
+            Extrinsics() noexcept;
 
-        void setIntrinsics(int width, int height, float fov_x, float fov_y);
+            [[nodiscard]] Eigen::Vector3d getTranslation() const noexcept { return matrix.block<3, 1>(0, 3); }
+            [[nodiscard]] Eigen::Matrix3d getOrientation() const noexcept { return matrix.block<3, 3>(0, 0); }
+            [[nodiscard]] Eigen::Matrix4d getMatrix() const noexcept { return matrix; }
 
-        [[nodiscard]] Eigen::Matrix3f getIntrinsics() const;
+            void setTranslation(double x, double y, double z) noexcept;
 
-        [[nodiscard]] Eigen::Matrix4f getPose() const; // Returns the current camera pose as a 4x4 matrix of floats.
+            void setOrientation(const Eigen::Matrix3d &orientation) noexcept;
 
-        void setPose(const Eigen::Matrix4f &pose);
+            void setPose(const Eigen::Matrix4d &pose) noexcept;
 
-        // Get and set camera position (translation part)
-        [[nodiscard]] Eigen::Vector3f getPosition() const;
+            static Extrinsics fromPose(const Eigen::Matrix4d &pose) noexcept;
+        };
 
-        void setPosition(float x, float y, float z);
+        Camera() noexcept;
 
-        [[nodiscard]] Eigen::Vector3f getObjectCenter() const;
+        [[nodiscard]] Intrinsics getIntrinsics() const noexcept;
 
+        void setIntrinsics(int width, int height, double fov_x, double fov_y);
 
-        void lookAt(const Eigen::Vector3f &target_center); // face towards target point/center in 3D space.
+        [[nodiscard]] Extrinsics getExtrinsics() const noexcept;
+
+        void setExtrinsics(const Extrinsics &extrinsics) noexcept;
+
+        [[nodiscard]] Eigen::Vector3d getPosition() const noexcept; // camera position (translation part)
+
+        Camera &setPosition(double x, double y, double z) noexcept;
+
+        [[nodiscard]] Eigen::Matrix3d getRotation() const noexcept;
+
+        Camera &setRotation(const Eigen::Matrix3d &rotation) noexcept;
+
+        [[nodiscard]] Eigen::Vector3d getObjectCenter() const noexcept;
+
+        Camera &lookAt(const Eigen::Vector3d &target_center) noexcept; // face towards target point/center in 3D space.
 
     private:
-        CameraParameters parameters_; // Camera parameters (intrinsics, width, height, fov)
-        Eigen::Matrix4f pose_; // Camera pose (extrinsics)
-        Eigen::Vector3f object_center_; // Object/target center that the camera is looking at
+        Intrinsics intrinsics_; // Camera intrinsics (width, height, fov_x, fov_y, intrinsic matrix)
+        Extrinsics extrinsics_; // Camera extrinsics (pose matrix)
+        Eigen::Vector3d object_center_; // Object/target center that the camera is looking at
 
     };
 }

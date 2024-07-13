@@ -9,6 +9,7 @@
 #include <unordered_map>
 #include "core/view.hpp"
 #include "core/perception.hpp"
+#include "optimization/cma_es_optimizer.hpp"
 #include "optimization/optimizer.hpp"
 #include "viewpoint/generator.hpp"
 
@@ -36,9 +37,8 @@ namespace tasks {
         static cv::Mat target_image_;
         static std::once_flag init_flag_;
         static std::shared_ptr<TaskManager> instance_;
-        static core::Camera::CameraParameters camera_parameters_;
+        static core::Camera::Intrinsics camera_intrinsics_;
         std::unique_ptr<viewpoint::Provider> provider_;
-        std::shared_ptr<core::Perception> perception_simulator_;
 
         void prepare();
 
@@ -46,7 +46,7 @@ namespace tasks {
         std::vector<core::View> loadOrGenerateViewpoints(const std::string &filepath, bool from_file,
                                                          int num_samples, int dimensions, unsigned int seed);
 
-        std::unique_ptr<optimization::Optimizer> createOptimizer();
+        static std::unique_ptr<optimization::CMAESOptimizer> createOptimizer();
 
         // Evaluates a view against the target image and caches the result.
         double evaluateView(const core::View &view, const cv::Mat &target_image);
@@ -55,10 +55,10 @@ namespace tasks {
         std::unordered_map<std::string, double> view_score_cache_;
 
         // Generates a unique key for caching based on the view.
-        std::string generateCacheKey(const core::View &view) const;
+        static std::string generateCacheKey(const core::View &view);
 
-        std::unique_ptr<viewpoint::Provider> initializeGenerator(
-                const cv::Mat &target_image, const core::Camera::CameraParameters &camera_parameters, int num_samples,
+        static std::unique_ptr<viewpoint::Provider> initializeGenerator(
+                const cv::Mat &target_image, const core::Camera::Intrinsics &camera_intrinsics, int num_samples,
                 int dimensions);
     };
 

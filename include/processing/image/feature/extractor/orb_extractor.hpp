@@ -6,9 +6,16 @@
 #include "processing/image/feature/extractor.hpp"
 
 namespace processing::image {
-    class ORBExtractor : public FeatureExtractor {
+
+    class ORBExtractor final : public FeatureExtractor {
     public:
-        [[nodiscard]] std::pair<std::vector<cv::KeyPoint>, cv::Mat> extract(const cv::Mat& image) const override;
+        ORBExtractor();
+
+        // Returns the keypoints and descriptors of the input image. {keypoints, descriptors}
+        [[nodiscard]] std::pair<KeyPoints, Descriptors> extract(const cv::Mat &image) const override;
+
+    private:
+        cv::Ptr<cv::ORB> orb_;
     };
 }
 

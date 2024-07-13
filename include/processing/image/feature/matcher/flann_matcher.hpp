@@ -6,9 +6,21 @@
 #include "processing/image/feature/matcher.hpp"
 
 namespace processing::image {
-    class FLANNMatcher : public FeatureMatcher {
+    class FLANNMatcher final : public FeatureMatcher {
     public:
-        std::vector<cv::DMatch> match(const cv::Mat &descriptors1, const cv::Mat &descriptors2) const override;
+        [[nodiscard]] std::vector<cv::DMatch>
+        match(const cv::Mat &descriptors1, const cv::Mat &descriptors2) const override;
+
+        void knnMatch(const cv::Mat &descriptors1, const cv::Mat &descriptors2,
+                      std::vector<std::vector<cv::DMatch> > &knnMatches, int k) const override;
+
+    private:
+        static cv::Mat convertDescriptorsToFloat(const cv::Mat &descriptors);
+
+        static std::vector<cv::DMatch> filterMatches(const std::vector<std::vector<cv::DMatch> > &knn_matches,
+                                                     float ratio_thresh);
+
+
     };
 }
 

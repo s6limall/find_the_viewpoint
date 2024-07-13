@@ -6,9 +6,15 @@
 #include "processing/image/feature/extractor.hpp"
 
 namespace processing::image {
-    class SIFTExtractor : public FeatureExtractor {
+    class SIFTExtractor final : public FeatureExtractor {
     public:
-        std::pair<std::vector<cv::KeyPoint>, cv::Mat> extract(const cv::Mat& image) const override;
+        SIFTExtractor();
+
+        [[nodiscard]] std::pair<KeyPoints, Descriptors> extract(const cv::Mat &image) const override;
+
+    private:
+        cv::Ptr<cv::SIFT> sift_;
+
     };
 }
 

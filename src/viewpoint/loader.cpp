@@ -1,18 +1,10 @@
-// viewpoint/loader.cpp
+// File: viewpoint/loader.cpp
 
-#include <fstream>
-#include <utility>
-#include <spdlog/spdlog.h>
-
-#include "core/view.hpp"
 #include "viewpoint/loader.hpp"
-
-#include "common/logging/logger.hpp"
-#include "common/utilities/file_utils.hpp"
 
 namespace viewpoint {
 
-    Loader::Loader(std::string filepath) :
+    Loader::Loader(std::string filepath):
         filepath_(std::move(filepath)) {
         LOG_DEBUG("Loader initialized with filepath: {}", filepath_);
     }
@@ -21,17 +13,17 @@ namespace viewpoint {
         LOG_INFO("Loading viewpoints from file: {}", filepath_);
         std::vector<core::View> views;
 
-        if (!common::utilities::FileUtils::fileExists(filepath_)) {
+        if (!common::io::fileExists(filepath_)) {
             LOG_ERROR("File does not exist: {}", filepath_);
             throw std::runtime_error("File does not exist: " + filepath_);
         }
 
         std::ifstream file(filepath_);
-        Eigen::Vector3f position;
+        Eigen::Vector3d position;
         while (file >> position(0) >> position(1) >> position(2)) {
             core::View view;
-            //view.computePoseFromPositionAndObjectCenter(position, Eigen::Vector3f(0, 0, 0));
-            view.computePoseFromPositionAndObjectCenter(position.normalized() * 3.0f, Eigen::Vector3f(0, 0, 0));
+            //view.computePose(position, Eigen::Vector3f(0, 0, 0));
+            view.computePose(position.normalized() * 3.0f, Eigen::Vector3d(0, 0, 0));
             views.push_back(view);
         }
         LOG_INFO("Loaded {} viewpoints from file", views.size());

@@ -1,24 +1,25 @@
-# configuration.yaml
+# File: configuration.yaml
 
 task:
     name: "task1"
     objects: "obj_000020"
-    test_num: 100
+    test_num: 1
 
 viewpoints:
     from_file: false
-    file_path: "../view_space/100.txt"
+    file_path: "../../view_space/5.txt"
     count: 100
     dimensions: 3
 
 paths:
     log_directory: "logs"
-    model_directory: "../3d_models"
-    view_space_file: "../view_space/100.txt"
-    view_space_images_directory: "../task1/viewspace_images"
-    selected_views_directory: "../task1/selected_views"
-    target_image_directory: "../task1/target_images"
-    target_image: "../task1/target_images/obj_000020/target.png"
+    mesh: "./3d_models/obj_000020.ply"
+    model_directory: "./3d_models"
+    view_space_file: "../../view_space/100.txt"
+    view_space_images_directory: "../../task1/viewspace_images"
+    selected_views_directory: "../../task1/selected_views"
+    target_image_directory: "../../task1/target_images"
+    target_image: "../../task1/target_images/obj_000020/target.png"
 
 logging:
     level: "debug" # info, debug, warn, error, critical, warn, trace
@@ -44,7 +45,7 @@ optimizer:
         sigma: 0.5
 
 feature_detector:
-    type: "ORB"           # Default feature detector type (SIFT or ORB)
+    type: "SIFT"           # Default feature detector type (SIFT or ORB)
 
     sift:
         n_features: 0        # Number of best features to retain, 0 means unlimited
@@ -94,3 +95,17 @@ image_comparator:
         good_match_threshold: 100.0   # Distance threshold for considering a match as good
         min_good_matches: 10          # Minimum number of good matches required
         threshold: 20.0               # Lower is better
+
+estimation:
+    distance:
+        max_iterations: 15
+        initial_guess: 1.5
+        step_size: 0.1
+        threshold: 0.05
+
+rendering:
+    duration: 1 # Duration of the rendering in ms
+
+
+sampling:
+    count: 300

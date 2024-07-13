@@ -18,8 +18,6 @@ namespace core {
     public:
         Simulator(std::shared_ptr<Perception> perception_simulator, cv::Mat target_image, std::vector<View> view_space);
 
-        ~Simulator();
-
         // Renders an image from the specified view.
         cv::Mat renderViewImage(View view);
 

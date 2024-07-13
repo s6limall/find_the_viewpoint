@@ -1,29 +1,27 @@
-// File: processing/vision/distance_estimator.hpp
+// File: core/distance_estimator.hpp
 
 #ifndef DISTANCE_ESTIMATOR_HPP
 #define DISTANCE_ESTIMATOR_HPP
 
-#include <opencv2/core.hpp>
-#include "processing/image/feature/extractor.hpp"
-#include "processing/vision/estimator.hpp"
+#include <opencv2/opencv.hpp>
+#include <Eigen/Core>
 
-namespace processing::vision {
+#include "core/view.hpp"
+#include "core/perception.hpp"
+#include "types/viewpoint.hpp"
+#include "common/io/image.hpp"
+#include "processing/image_processor.hpp"
+#include "common/logging/logger.hpp"
 
-    class DistanceEstimator final : public Estimator {
-    public:
-        explicit DistanceEstimator(float focal_length, float unit_cube_size = 1.0);
+class DistanceEstimator {
+public:
+    static double estimateDistance(const cv::Mat &target_image, size_t max_iterations = 10,
+                                   double initial_distance = 1.0);
 
-        double estimate(const cv::Mat &image) override;
+private:
+    static double calculateObjectAreaRatio(const cv::Mat &image);
 
-    private:
-        double unit_cube_size_;
-        double focal_length_;
+    static std::vector<Eigen::Matrix4d> generatePoses(double distance);
+};
 
-        std::unique_ptr<image::FeatureExtractor> feature_extractor_;
-
-        static double calculateAverageKeypointSize(const std::vector<cv::KeyPoint> &keypoints);
-    };
-
-}
-
-#endif //DISTANCE_ESTIMATOR_HPP
+#endif // DISTANCE_ESTIMATOR_HPP

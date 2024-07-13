@@ -3,6 +3,7 @@
 #ifndef LOGGER_HPP
 #define LOGGER_HPP
 
+#include <iostream>
 #include <memory>
 #include <string>
 #include <mutex>
@@ -14,7 +15,7 @@
 #include <spdlog/sinks/stdout_color_sinks.h>
 #include <spdlog/fmt/ostr.h>
 
-
+#include "common/logging/logger.hpp"
 // #include "common/formatting/fmt_camera_parameters.hpp"
 #include "common/formatting/fmt_vector.hpp"
 #include "common/formatting/fmt_view.hpp"
@@ -74,7 +75,11 @@ namespace common::logging {
         std::call_once(init_flag_, []() { init(); });
         if (logger_) {
             spdlog::source_loc source{file, line, func};
-            logger_->log(source, level, fmt, std::forward<Args>(args)...);
+            if constexpr (sizeof...(args) > 0) {
+                logger_->log(source, level, fmt, std::forward<Args>(args)...);
+            } else {
+                logger_->log(source, level, fmt);
+            }
         } else {
             std::cerr << "Logger not initialized!" << std::endl;
         }

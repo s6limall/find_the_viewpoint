@@ -7,7 +7,7 @@
 
 namespace processing::image {
     // Mean Squared Error (MSE) comparator.
-    class MSEComparator : public ImageComparator {
+    class MSEComparator final : public ImageComparator {
     public:
         [[nodiscard]] double compare(const cv::Mat &image1, const cv::Mat &image2) const override;
     };

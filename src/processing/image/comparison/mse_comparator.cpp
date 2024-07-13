@@ -15,7 +15,7 @@ namespace processing::image {
             throw std::invalid_argument("Images must have the same size and type");
         }
 
-        const auto& config = config::Configuration::getInstance();
+        const auto &config = config::Configuration::getInstance();
         bool normalize = config.get<bool>("image_comparator.mse.normalize", true);
 
         cv::Mat diff;

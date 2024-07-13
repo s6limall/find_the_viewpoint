@@ -7,57 +7,62 @@
 #include <spdlog/spdlog.h>
 
 namespace processing::image {
-    std::vector<cv::DMatch> FLANNMatcher::match(const cv::Mat &descriptors1, const cv::Mat &descriptors2) const {
-        // Check if descriptors are empty
-        if (descriptors1.empty() || descriptors2.empty()) {
-            spdlog::error("One or both descriptor matrices are empty");
-            // throw std::invalid_argument("One or both descriptor matrices are empty");
-        }
+    cv::Mat FLANNMatcher::convertDescriptorsToFloat(const cv::Mat &descriptors) {
+        cv::Mat float_descriptors;
+        descriptors.convertTo(float_descriptors, CV_32F);
+        return float_descriptors;
+    }
 
-        // Convert descriptors to floating-point if necessary
-        cv::Mat desc1, desc2;
-        if (descriptors1.type() != CV_32F) {
-            descriptors1.convertTo(desc1, CV_32F);
-        } else {
-            desc1 = descriptors1;
-        }
-
-        if (descriptors2.type() != CV_32F) {
-            descriptors2.convertTo(desc2, CV_32F);
-        } else {
-            desc2 = descriptors2;
-        }
-
-        // Log configuration parameters
-        const auto &config = config::Configuration::getInstance();
-        float ratio_thresh = config.get<float>("feature_matcher.flann.ratio_thresh", 0.75f);
-        int min_good_matches = config.get<int>("feature_matcher.flann.min_good_matches", 10);
-        spdlog::debug("FLANN Matcher Configuration - Ratio Threshold: {}, Min Good Matches: {}", ratio_thresh,
-                      min_good_matches);
-
-        // Perform FLANN matching
-        cv::FlannBasedMatcher flann_matcher;
-        std::vector<std::vector<cv::DMatch> > knn_matches;
-        flann_matcher.knnMatch(desc1, desc2, knn_matches, 2);
-        spdlog::debug("FLANN Matcher - {} keypoints matched with {} keypoints", desc1.rows, desc2.rows);
-
-        // Filter good matches based on ratio threshold
+    std::vector<cv::DMatch> FLANNMatcher::filterMatches(const std::vector<std::vector<cv::DMatch> > &knn_matches,
+                                                        float ratio_thresh) {
         std::vector<cv::DMatch> good_matches;
+        good_matches.reserve(knn_matches.size());
         for (const auto &knn_match: knn_matches) {
             if (knn_match.size() == 2 && knn_match[0].distance < ratio_thresh * knn_match[1].distance) {
                 good_matches.push_back(knn_match[0]);
             }
         }
+        return good_matches;
+    }
 
-        // Check if enough good matches are found
-        if (good_matches.size() < min_good_matches) {
-            spdlog::warn("Not enough good matches found: {}", good_matches.size());
-            // throw std::runtime_error("Not enough good matches found");
+    std::vector<cv::DMatch> FLANNMatcher::match(const cv::Mat &descriptors1, const cv::Mat &descriptors2) const {
+        if (descriptors1.empty() || descriptors2.empty()) {
+            spdlog::error("One or both descriptor matrices are empty");
+            return {};
         }
 
-        // Log number of good matches found
-        spdlog::info("FLANN Matcher - {} good matches found", good_matches.size());
+        const auto desc1 = convertDescriptorsToFloat(descriptors1);
+        const auto desc2 = convertDescriptorsToFloat(descriptors2);
+
+        const auto ratio_thresh = config::get("feature_matcher.flann.ratio_thresh", 0.75f);
+        const auto min_good_matches = config::get("feature_matcher.flann.min_good_matches", 10);
+
+        cv::FlannBasedMatcher flann_matcher;
+        std::vector<std::vector<cv::DMatch> > knn_matches;
+        flann_matcher.knnMatch(desc1, desc2, knn_matches, 2);
+
+        auto good_matches = filterMatches(knn_matches, ratio_thresh);
+
+        if (good_matches.size() < min_good_matches) {
+            spdlog::warn("Not enough good matches found: {}", good_matches.size());
+        } else {
+            spdlog::info("FLANN Matcher - {} good matches found", good_matches.size());
+        }
 
         return good_matches;
+    }
+
+    void FLANNMatcher::knnMatch(const cv::Mat &descriptors1, const cv::Mat &descriptors2,
+                                std::vector<std::vector<cv::DMatch> > &knnMatches, int k) const {
+        if (descriptors1.empty() || descriptors2.empty()) {
+            spdlog::error("One or both descriptor matrices are empty");
+            return;
+        }
+
+        const auto desc1 = convertDescriptorsToFloat(descriptors1);
+        const auto desc2 = convertDescriptorsToFloat(descriptors2);
+
+        cv::FlannBasedMatcher matcher;
+        matcher.knnMatch(desc1, desc2, knnMatches, k);
     }
 }

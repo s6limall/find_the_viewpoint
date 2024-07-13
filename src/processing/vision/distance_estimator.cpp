@@ -1,61 +1,64 @@
-// File: processing/vision/distance_estimator.cpp
+// File: core/distance_estimator.cpp
 
-#include <numeric>
-#include "common/logging/logger.hpp"
 #include "processing/vision/distance_estimator.hpp"
-#include "common/utilities/camera_utils.hpp"
-#include "processing/image/feature/extractor/orb_extractor.hpp"
 
-namespace processing::vision {
+#include "common/utilities/camera.hpp"
+#include "common/utilities/image.hpp"
 
-    DistanceEstimator::DistanceEstimator(const float focal_length, const float unit_cube_size) :
-        focal_length_(focal_length),
-        unit_cube_size_(unit_cube_size),
-        feature_extractor_(image::FeatureExtractor::create<image::ORBExtractor>()) {
-        LOG_INFO("DistanceEstimator initialized with focal_length={}, unit_cube_size={}", focal_length_,
-                 unit_cube_size_);
+
+double DistanceEstimator::estimateDistance(const cv::Mat &target_image,
+                                           const size_t max_iterations,
+                                           const double initial_distance) {
+    const double target_area_ratio = calculateObjectAreaRatio(target_image);
+    LOG_DEBUG("Target Image Area Ratio = {}", target_area_ratio);
+    double distance = initial_distance;
+
+    for (size_t iteration = 0; iteration < max_iterations; ++iteration) {
+        std::vector<Eigen::Matrix4d> poses = generatePoses(distance);
+        double cumulative_area_ratio = 0.0;
+
+        for (const auto &pose: poses) {
+            cv::Mat rendered_image = core::Perception::render(pose);
+            const double current_area_ratio = calculateObjectAreaRatio(rendered_image);
+            cumulative_area_ratio += current_area_ratio;
+        }
+
+        double average_area_ratio = cumulative_area_ratio / static_cast<double>(poses.size());
+        LOG_DEBUG("Iteration {}: Distance = {}, Average Area Ratio = {}", iteration, distance, average_area_ratio);
+
+        if (std::abs(average_area_ratio - target_area_ratio) < 0.05) {
+            break;
+        }
+
+        distance *= std::sqrt(target_area_ratio / average_area_ratio);
     }
 
-    double DistanceEstimator::calculateAverageKeypointSize(const std::vector<cv::KeyPoint> &keypoints) {
-        if (keypoints.empty()) {
-            LOG_WARN("No keypoints to calculate average size.");
-            throw std::runtime_error("No keypoints to calculate average size.");
-        }
+    return distance;
+}
 
-        double avg_keypoint_size = std::accumulate(keypoints.begin(), keypoints.end(), 0.0,
-                                                   [](double sum, const cv::KeyPoint &kp) {
-                                                       return sum + kp.size;
-                                                   }) / static_cast<double>(keypoints.size());
-        LOG_INFO("Calculated average keypoint size: {}", avg_keypoint_size);
-        return avg_keypoint_size;
+double DistanceEstimator::calculateObjectAreaRatio(const cv::Mat &image) {
+    const cv::Mat binary = common::utilities::toBinary(image, 128.0, 255.0);
+    const double object_area = cv::countNonZero(binary);
+
+    return object_area / static_cast<double>(image.rows * image.cols);
+}
+
+std::vector<Eigen::Matrix4d> DistanceEstimator::generatePoses(const double distance) {
+    std::vector<Eigen::Matrix4d> poses;
+    std::vector<std::pair<double, double> > angles = {
+            {0.0, 0.0},
+            {M_PI, 0.0},
+            {M_PI / 2, 0.0},
+            {3 * M_PI / 2, 0.0},
+            {M_PI / 2, M_PI / 2},
+            {M_PI / 2, 3 * M_PI / 2}
+    };
+
+
+    for (const auto &[theta, phi]: angles) {
+        core::View view = ViewPoint<double>::fromSpherical(distance, theta, phi).toView();
+        poses.push_back(view.getPose());
     }
 
-    double DistanceEstimator::estimate(const cv::Mat &image) {
-        LOG_INFO("Starting distance estimation.");
-
-        if (image.empty()) {
-            LOG_ERROR("Input image is empty.");
-            throw std::invalid_argument("Input image is empty.");
-        }
-
-        auto [keypoints, descriptors] = feature_extractor_->extract(image);
-        if (keypoints.empty()) {
-            LOG_WARN("No keypoints detected in the image.");
-            throw std::runtime_error("No keypoints detected in the image.");
-        }
-
-        const double avg_keypoint_size = calculateAverageKeypointSize(keypoints);
-
-        if (avg_keypoint_size == 0.0) {
-            LOG_ERROR("Average keypoint size is zero, cannot estimate distance.");
-            throw std::runtime_error("Average keypoint size is zero, cannot estimate distance.");
-        }
-
-        double distance = (unit_cube_size_ * focal_length_) / avg_keypoint_size;
-        LOG_INFO("Estimated distance to object: {} (unit_cube_size: {}, focal_length: {}, avg_keypoint_size: {})",
-                 distance, unit_cube_size_, focal_length_, avg_keypoint_size);
-
-        return distance;
-    }
-
+    return poses;
 }

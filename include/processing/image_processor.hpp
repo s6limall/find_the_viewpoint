@@ -7,7 +7,8 @@
 #include <opencv2/opencv.hpp>
 #include <spdlog/spdlog.h>
 #include <vector>
-#include "types/image_comparison_result.hpp"
+
+#include "common/logging/logger.hpp"
 
 namespace processing::image {
     class ImageProcessor {
@@ -16,8 +17,9 @@ namespace processing::image {
         // Static method to compare two images, returning a boolean match and a similarity score.
         [[nodiscard]] static std::pair<bool, double> compareImages(const cv::Mat &image1, const cv::Mat &image2);
 
-    private:
     };
+
+
 }
 
 #endif // IMAGE_PROCESSOR_HPP

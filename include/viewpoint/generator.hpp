@@ -1,14 +1,21 @@
+/*
 // File: viewpoint/generator.hpp
 
 #ifndef VIEWPOINT_GENERATOR_HPP
 #define VIEWPOINT_GENERATOR_HPP
 
-#include <opencv2/opencv.hpp>
 #include <memory>
 #include <vector>
-#include "viewpoint/provider.hpp"
-#include "filtering/heuristic_filter.hpp"
+
+#include <Eigen/Dense>
+#include <opencv2/opencv.hpp>
+
 #include "core/view.hpp"
+#include "viewpoint/provider.hpp"
+#include "processing/vision/distance_estimator.hpp"
+// #include "filtering/heuristic_filter.hpp"
+#include "filtering/heuristics/distance_heuristic.hpp"
+#include "filtering/heuristics/similarity_heuristic.hpp"
 
 namespace viewpoint {
 
@@ -20,7 +27,7 @@ namespace viewpoint {
 
         void setTargetImage(const cv::Mat &target_image) override;
 
-        void setCameraParameters(const core::Camera::CameraParameters &camera_parameters) override;
+        void setCameraIntrinsics(const core::Camera::Intrinsics &camera_intrinsics) override;
 
         void visualizeSphere(const std::string &window_name) const;
 
@@ -28,8 +35,8 @@ namespace viewpoint {
         int num_samples_;
         int dimensions_;
         cv::Mat target_image_;
-        core::Camera::CameraParameters camera_parameters_;
-        std::shared_ptr<filtering::HeuristicFilter> filter_chain_;
+        core::Camera::Intrinsics camera_intrinsics_;
+        // std::shared_ptr<filtering::HeuristicFilter> filter_chain_;
         double estimated_distance_;
 
         double estimateDistanceToObject();
@@ -40,52 +47,10 @@ namespace viewpoint {
 
         void setupFilters();
 
-        void addHeuristics();
+        void addHeuristics() const;
     };
 
 }
 
 #endif // VIEWPOINT_GENERATOR_HPP
-
-
-/*#ifndef VIEWPOINT_GENERATOR_HPP
-#define VIEWPOINT_GENERATOR_HPP
-
-#include <opencv2/opencv.hpp>
-
-#include "viewpoint/provider.hpp"
-#include "filtering/heuristic_filter.hpp"
-
-namespace viewpoint {
-    class Generator : public Provider {
-    public:
-        Generator(int num_samples, int dimensions, unsigned int seed);
-
-        std::vector<core::View> provision() override;
-
-        void setTargetImage(const cv::Mat &target_image);
-
-        void setCameraMatrix(const cv::Mat &camera_matrix);
-
-    private:
-        int num_samples_;
-        int dimensions_;
-        unsigned int seed_;
-        cv::Mat target_image_;
-        cv::Mat camera_matrix_;
-        std::shared_ptr<filtering::HeuristicFilter> heuristic_filter_;
-
-        std::pair<float, float> detectAndEstimateScaleDistance();
-
-        std::vector<std::vector<double> > generateInitialViewpoints(float distance);
-
-        std::vector<std::vector<double> > convertToCartesian(const std::vector<std::vector<double> > &spherical_coords);
-
-        std::vector<core::View> convertToViews(const std::vector<std::vector<double> > &samples);
-
-        void addHeuristics();
-    };
-}
-
-#endif // VIEWPOINT_GENERATOR_HPP*/
-
+*/

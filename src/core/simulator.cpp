@@ -10,11 +10,6 @@ namespace core {
         view_space_(std::move(view_space)) {
     }
 
-
-    Simulator::~Simulator() {
-        LOG_DEBUG("Simulator destroyed successfully!");
-    }
-
     // Renders an image from the specified view.
     cv::Mat Simulator::renderViewImage(View view) {
         std::string image_save_path = "../tmp/rgb.png";
@@ -52,7 +47,7 @@ namespace core {
 
             if (good_matches > max_good_matches) {
                 max_good_matches = good_matches;
-                best_view = std::move(view);;
+                best_view = view;;
                 found_best_view = true;
             }
         }

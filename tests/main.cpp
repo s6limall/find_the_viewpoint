@@ -2,9 +2,8 @@
 
 #include <gtest/gtest.h>
 
-// Test runner
+// Test Runner
 int main(int argc, char **argv) {
     ::testing::InitGoogleTest(&argc, argv);
-    std::cout << "Hello";
     return RUN_ALL_TESTS();
 }

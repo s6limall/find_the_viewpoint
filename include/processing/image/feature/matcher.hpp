@@ -21,10 +21,16 @@ namespace processing::image {
         [[nodiscard]] virtual std::vector<cv::DMatch> match(const cv::Mat &descriptors1,
                                                             const cv::Mat &descriptors2) const = 0;
 
-        // Template-based factory method to create a Matcher object.
-        template<typename MatcherType>
+        // K-Nearest Neighbors matching
+        // KNN match features between two images and return the matches.
+        virtual void knnMatch(const cv::Mat &descriptors1,
+                              const cv::Mat &descriptors2,
+                              std::vector<std::vector<cv::DMatch> > &knnMatches,
+                              int k) const = 0;
+
+        template<typename T>
         static std::unique_ptr<FeatureMatcher> create() {
-            return std::make_unique<MatcherType>();
+            return std::make_unique<T>();
         }
     };
 }

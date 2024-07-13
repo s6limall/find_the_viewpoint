@@ -3,10 +3,9 @@
 #ifndef VIEWPOINT_LOADER_HPP
 #define VIEWPOINT_LOADER_HPP
 
+
 #include "viewpoint/provider.hpp"
-#include <string>
-#include <vector>
-#include "core/view.hpp"
+#include "common/io/io.hpp"
 
 namespace viewpoint {
 
@@ -19,11 +18,11 @@ namespace viewpoint {
         void setTargetImage(const cv::Mat &target_image) override {
         };
 
-        void setCameraParameters(const core::Camera::CameraParameters &camera_parameters) override {
+        void setCameraIntrinsics(const core::Camera::Intrinsics &camera_intrinsics) override {
         };
 
     private:
-        std::string filepath_;
+        const std::string filepath_;
     };
 
 }

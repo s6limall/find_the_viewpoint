@@ -4,15 +4,26 @@
 
 namespace sampling {
 
-    Sampler &Sampler::setAdaptive(const bool adaptive,
-                                  std::function<void(std::vector<double> &)> custom_adapt) noexcept {
+    Sampler::Sampler(const Transformation<double> &transform) :
+        transform_(transform) {
+    }
+
+    /*Sampler::Sampler(const std::optional<Transformer<double> > &transformer) {
+        if (transformer) {
+            transform_ = [transformer](const std::vector<double> &sample) {
+                return transformer->transform(sample);
+            };
+        }
+    }*/
+
+    Sampler &Sampler::setAdaptive(const bool adaptive, Adaptation<double> adapt) noexcept {
         LOG_TRACE("Setting adaptive mode to {}.", adaptive);
         adaptive_ = adaptive;
-        custom_adapt_ = std::move(custom_adapt);
+        adapt_ = std::move(adapt);
         return *this;
     }
 
-    void Sampler::reset() {
+    void Sampler::reset() noexcept {
         LOG_TRACE("Resetting sampler, clearing {} samples.", samples_.size());
         samples_.clear();
     }
@@ -38,26 +49,23 @@ namespace sampling {
         return calculateDiscrepancy(this->samples_);
     }
 
-    double Sampler::calculateDiscrepancy(std::vector<std::vector<double> > samples) {
+    double Sampler::calculateDiscrepancy(const std::vector<std::vector<double> > &samples) {
         if (samples.empty() || samples[0].empty()) {
             throw std::invalid_argument("Samples cannot be empty.");
         }
 
-        const size_t num_samples = samples.size();
-
+        const auto num_samples = samples.size();
         double max_discrepancy = 0.0;
 
-        // Iterate over all points to calculate the star discrepancy
         for (const auto &point: samples) {
             const double volume = std::accumulate(point.begin(), point.end(), 1.0, std::multiplies<>());
 
-            const size_t count = std::count_if(samples.begin(), samples.end(),
-                                               [&point](const std::vector<double> &sample) {
-                                                   return std::inner_product(
-                                                           sample.begin(), sample.end(), point.begin(), true,
-                                                           std::logical_and<>(),
-                                                           std::less_equal<>());
-                                               });
+            const auto count = std::count_if(samples.begin(), samples.end(),
+                                             [&point](const std::vector<double> &sample) {
+                                                 return std::inner_product(
+                                                         sample.begin(), sample.end(), point.begin(), true,
+                                                         std::logical_and<>(), std::less_equal<>());
+                                             });
 
             const double term = static_cast<double>(count) / static_cast<double>(num_samples);
             max_discrepancy = std::max(max_discrepancy, std::abs(term - volume));
