@@ -1,4 +1,3 @@
-/*
 // File: viewpoint/generator.hpp
 
 #ifndef VIEWPOINT_GENERATOR_HPP
@@ -12,45 +11,47 @@
 
 #include "core/view.hpp"
 #include "viewpoint/provider.hpp"
-#include "processing/vision/distance_estimator.hpp"
-// #include "filtering/heuristic_filter.hpp"
-#include "filtering/heuristics/distance_heuristic.hpp"
-#include "filtering/heuristics/similarity_heuristic.hpp"
+#include "config/configuration.hpp"
+#include "processing/vision/estimation/distance_estimator.hpp"
+#include "sampling/sampler/halton_sampler.hpp"
+#include "sampling/transformer/spherical_transformer.hpp"
 
 namespace viewpoint {
 
-    class Generator final : public Provider {
+    template<typename T = double>
+    class Generator final : public Provider<T> {
     public:
-        Generator(int num_samples, int dimensions);
+        explicit Generator(const double distance) :
+            distance_(distance) {
+        }
 
-        std::vector<core::View> provision() override;
-
-        void setTargetImage(const cv::Mat &target_image) override;
-
-        void setCameraIntrinsics(const core::Camera::Intrinsics &camera_intrinsics) override;
-
-        void visualizeSphere(const std::string &window_name) const;
+        std::vector<ViewPoint<T> > provision() override;
 
     private:
-        int num_samples_;
-        int dimensions_;
-        cv::Mat target_image_;
-        core::Camera::Intrinsics camera_intrinsics_;
-        // std::shared_ptr<filtering::HeuristicFilter> filter_chain_;
-        double estimated_distance_;
-
-        double estimateDistanceToObject();
-
-        [[nodiscard]] std::vector<std::vector<double> > generateInitialViewpoints(double distance) const;
-
-        [[nodiscard]] std::vector<core::View> convertToViews(const std::vector<std::vector<double> > &samples) const;
-
-        void setupFilters();
-
-        void addHeuristics() const;
+        double distance_;
     };
+
+    template<typename T>
+    std::vector<ViewPoint<T> > Generator<T>::provision() {
+        const size_t num_samples = config::get("sampling.count", 100);
+
+        sampling::SphericalShellTransformer transformer(distance_ * 0.9, distance_ * 1.1);
+        sampling::HaltonSampler haltonSampler([&transformer](const std::vector<double> &sample) {
+            return transformer.transform(sample);
+        });
+        auto halton_sequence = haltonSampler.generate(num_samples,
+                                                      {0.0, 0.0, 0.0},
+                                                      {1.0, 1.0, 1.0});
+
+        std::vector<ViewPoint<> > samples;
+        samples.reserve(halton_sequence.size());
+        for (const auto &data: halton_sequence) {
+            samples.emplace_back(data[0], data[1], data[2]);
+        }
+
+        return samples;
+    }
 
 }
 
 #endif // VIEWPOINT_GENERATOR_HPP
-*/

@@ -9,7 +9,7 @@
 #include <functional>
 
 template<typename T>
-class QuadrantFilter : public Filter<T> {
+class QuadrantFilter final : public Filter<T> {
 public:
     std::vector<T> filter(const std::vector<T> &samples, std::function<double(const T &)> evaluation_function) override;
 
@@ -33,7 +33,7 @@ std::vector<std::vector<T> > QuadrantFilter<T>::partitionIntoQuadrants(const std
     std::vector<std::vector<T> > quadrants(4); // Assuming 4 quadrants for simplicity.
 
     for (const auto &sample: samples) {
-        const auto &position = sample.getPosition();
+        const auto &position = sample.getViewPoint().getPosition();
         // Determine the quadrant based on the position coordinates.
         int quadrant_index = (position.x() >= 0 ? 1 : 0) + (position.y() >= 0 ? 2 : 0);
         quadrants[quadrant_index].push_back(sample);

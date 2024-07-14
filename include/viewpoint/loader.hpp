@@ -1,3 +1,4 @@
+/*
 // File: viewpoint/loader.hpp
 
 #ifndef VIEWPOINT_LOADER_HPP
@@ -28,4 +29,4 @@ namespace viewpoint {
 }
 
 #endif // VIEWPOINT_LOADER_HPP
-
+*/

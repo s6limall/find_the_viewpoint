@@ -101,10 +101,10 @@ estimation:
         max_iterations: 15
         initial_guess: 1.5
         step_size: 0.1
-        threshold: 0.05
+        threshold: 0.005
 
 rendering:
-    duration: 1 # Duration of the rendering in ms
+    duration: 0 # Duration of the rendering in ms
 
 
 sampling:

@@ -5,54 +5,55 @@
 
 #include <vector>
 #include <opencv2/opencv.hpp>
+
+#include "core/perception.hpp"
+#include "processing/image/comparator.hpp"
 #include "processing/image/feature/extractor.hpp"
 #include "processing/image/feature/matcher.hpp"
-#include "processing/image/comparison.hpp"
+#include "types/image.hpp"
 
 namespace viewpoint {
 
+    template<typename T = double>
     class Evaluator {
     public:
-        Evaluator();
+        explicit Evaluator(Image<T> target_image) :
+            target_image_(target_image) {
+        }
 
-        // Evaluates a sample viewpoint and returns a fitness score.
-        double evaluate(const std::vector<double>& sample, const cv::Mat& target_image, const cv::Mat& camera_matrix, const cv::Mat& dist_coeffs) const;
-
-        // Refines the search space based on evaluated samples.
-        std::vector<double> refineSearchSpace(
-            const std::vector<std::vector<double>>& samples,
-            const std::vector<double>& lower_bounds,
-            const std::vector<double>& upper_bounds) const;
-
-        // Evaluates a set of samples and provides feedback for refinement.
-        void evaluateAndRefine(
-            const std::vector<std::vector<double>>& samples,
-            std::vector<double>& lower_bounds,
-            std::vector<double>& upper_bounds,
-            const cv::Mat& target_image,
-            const cv::Mat& camera_matrix,
-            const cv::Mat& dist_coeffs) const;
+        std::vector<Image<T> > evaluate(const std::unique_ptr<processing::image::ImageComparator> &comparator,
+                                        const std::vector<ViewPoint<T> > &samples);
 
     private:
-        // Use existing feature extractors and matchers.
-        std::unique_ptr<processing::image::FeatureExtractor> extractor_;
-        std::unique_ptr<processing::image::FeatureMatcher> matcher_;
+        Image<T> target_image_;
 
-        // Calculate the center of mass of samples to refine the search space.
-        std::vector<double> calculateCenterOfMass(const std::vector<std::vector<double>>& samples) const;
-
-        // Adjusts the bounds based on the feedback from the evaluation.
-        void adjustBounds(
-            std::vector<double>& lower_bounds,
-            std::vector<double>& upper_bounds,
-            const std::vector<double>& center) const;
-
-        // Helper function to compute similarity using SSIM.
-        double computeSSIM(const cv::Mat& image1, const cv::Mat& image2) const;
-
-        // Initialize the feature extractor and matcher.
-        void initializeFeatureTools();
     };
+
+    template<typename T>
+    std::vector<Image<T> > Evaluator<T>::evaluate(
+            const std::unique_ptr<processing::image::ImageComparator> &comparator,
+            const std::vector<ViewPoint<T> > &samples) {
+
+        std::vector<Image<> > evaluated_images;
+        evaluated_images.reserve(samples.size());
+
+        for (const auto &sample: samples) {
+            core::View view = sample.toView();
+            cv::Mat rendered_image = core::Perception::render(view.getPose());
+
+            // Create Image object for the rendered image
+            Image<> rendered_sample_image(rendered_image, cv::ORB::create());
+            rendered_sample_image.setViewPoint(sample);
+
+            // Compute score
+            const double score = comparator->compare(target_image_.getImage(), rendered_image);
+            rendered_sample_image.setScore(score);
+
+            evaluated_images.push_back(rendered_sample_image);
+        }
+
+        return evaluated_images;
+    }
 
 }
 

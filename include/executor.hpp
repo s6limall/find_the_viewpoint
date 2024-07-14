@@ -13,9 +13,8 @@
 
 #include "common/logging/logger.hpp"
 #include "common/utilities/visualizer.hpp"
-#include "processing/vision/distance_estimator.hpp"
+#include "processing/vision/estimation/distance_estimator.hpp"
 #include "processing/image/comparison/ssim_comparator.hpp"
-#include "processing/vision/pose_estimator.hpp"
 #include "sampling/sampler/halton_sampler.hpp"
 #include "sampling/transformer/spherical_transformer.hpp"
 #include "clustering/dbscan.hpp"
@@ -30,6 +29,10 @@
 #include "processing/image/feature/matcher/bf_matcher.hpp"
 #include "processing/image/feature/matcher/flann_matcher.hpp"
 #include "filtering/quadrant_filter.hpp"
+#include "processing/vision/estimation/distance_estimator.hpp"
+#include "types/image.hpp"
+#include "viewpoint/evaluator.hpp"
+#include "viewpoint/provider.hpp"
 
 class Executor {
 public:
@@ -40,23 +43,33 @@ public:
     Executor &operator=(const Executor &) = delete;
 
 private:
+    using ViewPoints = std::vector<ViewPoint<> >;
+
     static std::once_flag init_flag_;
-    static cv::Mat target_image_;
-    static std::shared_ptr<core::Camera> camera_;
+    static Image<> target_;
+    // static std::shared_ptr<core::Camera> camera_;
+    static std::unique_ptr<processing::vision::DistanceEstimator> distance_estimator_;
+    static std::unique_ptr<viewpoint::Provider<> > provider_;
+    static std::unique_ptr<processing::image::ImageComparator> comparator_;
+    static std::unique_ptr<viewpoint::Evaluator<> > evaluator_;
+    static double distance_;
 
     Executor() = default;
 
     static void initialize();
 
-    static double estimateDistance();
+    static std::vector<ViewPoint<> > generateSamples(double estimated_distance);
 
-    static std::vector<ViewPoint<double> > generateSamples(double estimated_distance);
+    static std::vector<Image<> > evaluateSamples(const processing::image::ImageComparator &comparator,
+                                                 const std::vector<ViewPoint<> > &samples, double distance);
 
-    static std::vector<ViewPoint<double> > evaluateSamples(const processing::image::ImageComparator &comparator,
-                                                           const std::vector<ViewPoint<double> > &samples,
-                                                           double distance);
+    static std::vector<Cluster<> > clusterSamples(const std::vector<Image<> > &evaluated_images);
 
-    static std::vector<Cluster<double> > clusterSamples(const std::vector<ViewPoint<double> > &evaluated_samples);
+    // static void poseEstimation(std::vector<Image<> > &images);
+    static std::vector<ViewPoint<> > matchFeaturesAndFilterRANSAC(const std::vector<Image<> > &images,
+                                                                  const Image<> &target);
+
+    static ViewPoint<> predictNextViewpoint(const std::vector<ViewPoint<> > &evaluated_points);
 
 
     struct Defaults {

@@ -8,14 +8,6 @@ namespace sampling {
         transform_(transform) {
     }
 
-    /*Sampler::Sampler(const std::optional<Transformer<double> > &transformer) {
-        if (transformer) {
-            transform_ = [transformer](const std::vector<double> &sample) {
-                return transformer->transform(sample);
-            };
-        }
-    }*/
-
     Sampler &Sampler::setAdaptive(const bool adaptive, Adaptation<double> adapt) noexcept {
         LOG_TRACE("Setting adaptive mode to {}.", adaptive);
         adaptive_ = adaptive;

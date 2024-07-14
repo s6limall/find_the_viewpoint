@@ -1,18 +1,17 @@
-// File: types/viewpoint.hpp
-
 #ifndef VIEWPOINT_HPP
 #define VIEWPOINT_HPP
 
 #include <tuple>
 #include <type_traits>
 #include <cmath>
-#include <Eigen/Core>
 #include <opencv2/core.hpp>
 #include <fmt/core.h>
 #include <vector>
-#include "core/view.hpp"
 
-template<typename T>
+#include "core/view.hpp"
+#include "common/logging/logger.hpp"
+
+template<typename T = double>
 class ViewPoint {
     static_assert(std::is_arithmetic_v<T>, "ViewPoint template must be numeric");
 
@@ -20,16 +19,16 @@ public:
     EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
     // Constructors
-    constexpr ViewPoint() noexcept = default;
+    ViewPoint() = delete;
 
-    constexpr ViewPoint(T x, T y, T z, const double score = 0.0) :
-        position_(x, y, z), score_(score) {
+    constexpr ViewPoint(T x, T y, T z, const double score = 0.0) noexcept :
+        position_(x, y, z), score_(score), cluster_id_(-1) {
         validatePosition();
         view_ = core::View::fromPosition(position_);
     }
 
-    explicit constexpr ViewPoint(const Eigen::Matrix<T, 3, 1> &position, const double score = 0.0) {
-        ViewPoint(position.x(), position.y(), position.z(), score);
+    explicit constexpr ViewPoint(const Eigen::Matrix<T, 3, 1> &position, double score = 0.0) noexcept :
+        ViewPoint(position.x(), position.y(), position.z(), score) {
     }
 
     // Getters
@@ -38,8 +37,8 @@ public:
     [[nodiscard]] constexpr double getScore() const noexcept { return score_; }
 
     // Setters
-    constexpr void setClusterId(const int cluster_id) noexcept { cluster_id_ = cluster_id; }
-    constexpr void setScore(const double score) noexcept { score_ = score; }
+    constexpr void setClusterId(int cluster_id) noexcept { cluster_id_ = cluster_id; }
+    constexpr void setScore(double score) noexcept { score_ = score; }
 
     // Conversion to Cartesian coordinates
     constexpr std::tuple<T, T, T> toCartesian() const noexcept {
@@ -123,10 +122,10 @@ public:
     }
 
 private:
-    Eigen::Matrix<T, 3, 1> position_{T{}, T{}, T{}}; // Default to zero
+    Eigen::Matrix<T, 3, 1> position_;
     core::View view_;
-    int cluster_id_{-1}; // -1 = unset, -2 = noise, >= 0 = cluster_id
-    double score_{0.0};
+    double score_;
+    int cluster_id_; // -1 = unset, -2 = noise, >= 0 = cluster_id
 
     // Validation
     void validatePosition() const {
@@ -138,7 +137,6 @@ private:
             LOG_WARN("ViewPoint's position is the zero vector.");
         }
     }
-
 };
 
 #endif // VIEWPOINT_HPP

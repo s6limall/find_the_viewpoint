@@ -1,3 +1,4 @@
+/*
 // File: viewpoint/loader.cpp
 
 #include "viewpoint/loader.hpp"
@@ -31,3 +32,4 @@ namespace viewpoint {
     }
 
 }
+*/

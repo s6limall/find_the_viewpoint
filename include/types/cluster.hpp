@@ -7,7 +7,7 @@
 #include <optional>
 #include "types/viewpoint.hpp"
 
-template<typename T>
+template<typename T = double>
 class Cluster {
 public:
     constexpr Cluster() noexcept = default;

@@ -72,7 +72,7 @@ namespace clustering {
         int cluster_id = 0;
         clusters_.clear();
         best_cluster_ = {};
-        best_cluster_.average_score = std::numeric_limits<double>::lowest();
+        // best_cluster_.average_score = std::numeric_limits<double>::lowest();
 
         for (auto &point: points) {
             if (point.getClusterId() == UNCLASSIFIED) {
@@ -87,19 +87,12 @@ namespace clustering {
 
         clusters_.resize(cluster_id);
         for (size_t i = 0; i < cluster_id; ++i) {
-            clusters_[i].cluster_id = static_cast<int>(i);
+            clusters_[i].setClusterId(static_cast<int>(i));
         }
 
         for (const auto &point: points) {
             if (point.getClusterId() != NOISE) {
                 clusters_[point.getClusterId()].addPoint(point);
-            }
-        }
-
-        for (auto &cluster: clusters_) {
-            cluster.calculateAverageScore();
-            if (cluster.getAverageScore() > best_cluster_.getAverageScore()) {
-                best_cluster_ = cluster;
             }
         }
 
@@ -176,51 +169,6 @@ namespace clustering {
         return distances[knee_index];
     }
 
-    /*template<typename T>
-    double DBSCAN<T>::estimateEpsilon(const std::vector<ViewPoint<T> > &points) const {
-        const size_t k = min_points_ - 1; // k-distance
-        std::vector<double> k_distances(points.size());
-
-        // Lambda function to calculate k-distance for each point
-        auto compute_k_distance = [&](const ViewPoint<T> &point) {
-            std::vector<double> neighbor_distances;
-            neighbor_distances.reserve(points.size() - 1);
-
-            // Compute distances to all other points
-            for (const auto &other: points) {
-                if (&point != &other) {
-                    neighbor_distances.push_back(metric_(point, other));
-                }
-            }
-
-            // Find the k-th nearest neighbor distance
-            std::nth_element(neighbor_distances.begin(), neighbor_distances.begin() + k, neighbor_distances.end());
-            return neighbor_distances[k];
-        };
-
-        // Compute k-distances
-        std::transform(points.begin(), points.end(), k_distances.begin(), compute_k_distance);
-
-        // Sort k-distances
-        std::sort(k_distances.begin(), k_distances.end());
-
-        // Determine the knee point using the maximum curvature method
-        Eigen::VectorXd distances = Eigen::Map<Eigen::VectorXd>(k_distances.data(), k_distances.size());
-        Eigen::VectorXd indices = Eigen::VectorXd::LinSpaced(k_distances.size(), 0, k_distances.size() - 1);
-
-        // Compute the second derivative of the distances
-        Eigen::VectorXd diff = distances.tail(distances.size() - 1) - distances.head(distances.size() - 1);
-        Eigen::VectorXd second_diff = diff.tail(diff.size() - 1) - diff.head(diff.size() - 1);
-        second_diff = second_diff.array().abs();
-
-        const size_t knee_index = std::distance(second_diff.data(),
-                                                std::max_element(second_diff.data(),
-                                                                 second_diff.data() + second_diff.size()));
-
-        return k_distances[knee_index];
-    }*/
-
-
     template<typename T>
     const Cluster<T> &DBSCAN<T>::getBestCluster() const {
         return best_cluster_;
@@ -229,106 +177,3 @@ namespace clustering {
 }
 
 #endif // DBSCAN_HPP
-
-
-/*template<typename T>
-    double DBSCAN<T>::estimateEpsilon(const std::vector<ViewPoint<T> > &points) const {
-        std::vector<double> distances;
-        distances.reserve(points.size() * (points.size() - 1) / 2);
-
-        for (size_t i = 0; i < points.size(); ++i) {
-            std::vector<double> neighbor_distances;
-            for (size_t j = 0; j < points.size(); ++j) {
-                if (i != j) {
-                    neighbor_distances.push_back(metric_(points[i], points[j]));
-                }
-            }
-            std::sort(neighbor_distances.begin(), neighbor_distances.end());
-            distances.push_back(neighbor_distances[min_points_ - 1]);
-        }
-
-        std::sort(distances.begin(), distances.end());
-        size_t knee_index = distances.size() / 2; // Simple heuristic, can be improved
-        return distances[knee_index];
-    }*/
-
-/*template<typename T>
-void DBSCAN<T>::cluster(std::vector<ViewPoint<T> > &points) {
-    if (epsilon_ < 0) {
-        epsilon_ = estimateEpsilon(points);
-        LOG_INFO("Estimated epsilon: {}", epsilon_);
-    }
-
-    int cluster_id = 0;
-
-    for (size_t i = 0; i < points.size(); ++i) {
-        if (points[i].getClusterId() == UNCLASSIFIED) {
-            const auto neighbors = regionQuery(points, static_cast<int>(i));
-            if (neighbors.size() < min_points_) {
-                points[i].setClusterId(NOISE);
-            } else {
-                expandCluster(points, static_cast<int>(i), cluster_id++);
-            }
-        }
-    }
-}*/
-
-/*template<typename T>
-  void DBSCAN<T>::expandCluster(std::vector<ViewPoint<T> > &points, int point_index, int cluster_id) const {
-      std::queue<int> seeds;
-      seeds.push(point_index);
-      points[point_index].setClusterId(cluster_id);
-
-      while (!seeds.empty()) {
-          int current_point = seeds.front();
-          seeds.pop();
-
-          const auto neighbors = regionQuery(points, current_point);
-          if (neighbors.size() >= min_points_) {
-              for (int neighbor_index: neighbors) {
-                  if (points[neighbor_index].getClusterId() == UNCLASSIFIED || points[neighbor_index].getClusterId()
-                      == NOISE) {
-                      if (points[neighbor_index].getClusterId() == UNCLASSIFIED) {
-                          seeds.push(neighbor_index);
-                      }
-                      points[neighbor_index].setClusterId(cluster_id);
-                  }
-              }
-          }
-      }
-  }*/
-
-
-/*template<typename T>
-std::vector<int> DBSCAN<T>::regionQuery(const std::vector<ViewPoint<T> > &points, int point_index) const {
-    std::vector<int> neighbors;
-    for (size_t i = 0; i < points.size(); ++i) {
-        if (metric_(points[point_index], points[i]) < epsilon_) {
-            neighbors.push_back(static_cast<int>(i));
-        }
-    }
-    return neighbors;
-}*/
-
-/*template<typename T>
-    double DBSCAN<T>::estimateEpsilon(const std::vector<ViewPoint<T> > &points) const {
-        std::vector<double> distances;
-        distances.reserve(points.size() * (points.size() - 1) / 2);
-
-        for (size_t i = 0; i < points.size(); ++i) {
-            std::vector<double> neighbor_distances;
-            for (size_t j = 0; j < points.size(); ++j) {
-                if (i != j) {
-                    neighbor_distances.push_back(metric_(points[i], points[j]));
-                }
-            }
-            std::nth_element(neighbor_distances.begin(), neighbor_distances.begin() + min_points_ - 1,
-                             neighbor_distances.end());
-            distances.push_back(neighbor_distances[min_points_ - 1]);
-        }
-
-        std::sort(distances.begin(), distances.end());
-        const size_t knee_index = distances.size() / 2; // Simple heuristic, can be improved
-        return distances[knee_index];
-    }
-    */
