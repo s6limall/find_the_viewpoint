@@ -62,7 +62,8 @@ std::vector<T> QuadrantFilter<T>::selectBestQuadrants(const std::vector<std::vec
     std::vector<T> filtered_samples;
     for (size_t i = 0; i < quadrants.size() / 2; ++i) {
         // Retain top 50% quadrants.
-        filtered_samples.insert(filtered_samples.end(), quadrants[quadrant_scores[i].second].begin(),
+        filtered_samples.insert(filtered_samples.end(),
+                                quadrants[quadrant_scores[i].second].begin(),
                                 quadrants[quadrant_scores[i].second].end());
     }
 
