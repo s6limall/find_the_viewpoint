@@ -31,6 +31,8 @@ namespace sampling {
                 sample = (*transform_)(sample);
                 LOG_TRACE("Transformed sample: {}", sample);
             }
+
+            LOG_TRACE("Generated sample: {}", sample);
             samples_.emplace_back(sample);
         }
 

@@ -27,8 +27,11 @@ namespace viewpoint {
 
         std::vector<ViewPoint<T> > provision() override;
 
+        ViewPoint<T> next() override;
+
     private:
         double distance_;
+        sampling::HaltonSampler halton_sampler_;
     };
 
     template<typename T>
@@ -36,12 +39,12 @@ namespace viewpoint {
         const size_t num_samples = config::get("sampling.count", 100);
 
         sampling::SphericalShellTransformer transformer(distance_ * 0.9, distance_ * 1.1);
-        sampling::HaltonSampler haltonSampler([&transformer](const std::vector<double> &sample) {
+        halton_sampler_([&transformer](const std::vector<double> &sample) {
             return transformer.transform(sample);
         });
-        auto halton_sequence = haltonSampler.generate(num_samples,
-                                                      {0.0, 0.0, 0.0},
-                                                      {1.0, 1.0, 1.0});
+        auto halton_sequence = halton_sampler_.generate(num_samples,
+                                                        {0.0, 0.0, 0.0},
+                                                        {1.0, 1.0, 1.0});
 
         std::vector<ViewPoint<> > samples;
         samples.reserve(halton_sequence.size());
@@ -50,6 +53,11 @@ namespace viewpoint {
         }
 
         return samples;
+    }
+
+    template<typename T>
+    ViewPoint<T> Generator<T>::next() {
+        return halton_sampler_.next();
     }
 
 }

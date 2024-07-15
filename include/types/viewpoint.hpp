@@ -37,8 +37,8 @@ public:
     [[nodiscard]] constexpr double getScore() const noexcept { return score_; }
 
     // Setters
-    constexpr void setClusterId(int cluster_id) noexcept { cluster_id_ = cluster_id; }
-    constexpr void setScore(double score) noexcept { score_ = score; }
+    constexpr void setClusterId(const int cluster_id) noexcept { cluster_id_ = cluster_id; }
+    constexpr void setScore(const double score) noexcept { score_ = score; }
 
     // Conversion to Cartesian coordinates
     constexpr std::tuple<T, T, T> toCartesian() const noexcept {

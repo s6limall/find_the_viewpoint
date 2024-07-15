@@ -22,7 +22,7 @@ paths:
     target_image: "../../task1/target_images/obj_000020/target.png"
 
 logging:
-    level: "debug" # info, debug, warn, error, critical, warn, trace
+    level: "trace" # info, debug, warn, error, critical, warn, trace
     pattern: "[%Y-%m-%d %H:%M:%S.%e] [%^%l%$] [%n] [%t] [%s:%#] [%!] %v"
 
 camera:
@@ -98,8 +98,8 @@ image_comparator:
 
 estimation:
     distance:
-        max_iterations: 15
-        initial_guess: 1.5
+        max_iterations: 10
+        initial_guess: 1.0
         step_size: 0.1
         threshold: 0.005
 
@@ -108,4 +108,4 @@ rendering:
 
 
 sampling:
-    count: 300
+    count: 20

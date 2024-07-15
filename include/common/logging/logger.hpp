@@ -89,4 +89,3 @@ namespace common::logging {
 }
 
 #endif // LOGGER_HPP
-

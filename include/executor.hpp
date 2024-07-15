@@ -58,11 +58,6 @@ private:
 
     static void initialize();
 
-    static std::vector<ViewPoint<> > generateSamples(double estimated_distance);
-
-    static std::vector<Image<> > evaluateSamples(const processing::image::ImageComparator &comparator,
-                                                 const std::vector<ViewPoint<> > &samples, double distance);
-
     static std::vector<Cluster<> > clusterSamples(const std::vector<Image<> > &evaluated_images);
 
     // static void poseEstimation(std::vector<Image<> > &images);
@@ -70,6 +65,10 @@ private:
                                                                   const Image<> &target);
 
     static ViewPoint<> predictNextViewpoint(const std::vector<ViewPoint<> > &evaluated_points);
+
+    static double objectiveFunction(const ViewPoint<> &point,
+                                    const std::unique_ptr<processing::image::ImageComparator> &comparator,
+                                    viewpoint::Evaluator<> &evaluator);
 
 
     struct Defaults {

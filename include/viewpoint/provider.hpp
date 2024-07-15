@@ -26,6 +26,8 @@ namespace viewpoint {
 
         // Function to provision viewpoints
         virtual std::vector<ViewPoint<T> > provision() = 0;
+
+        virtual ViewPoint<T> next() = 0;
     };
 
 }

@@ -3,12 +3,15 @@
 #include "executor.hpp"
 #include <opencv2/calib3d.hpp>
 #include <opencv2/core/eigen.hpp>
-#include "core/view.hpp"
-#include "core/camera.hpp"
 #include "common/logging/logger.hpp"
+#include "optimization/bayesian_optimizer.hpp"
+#include "optimization/gp/gaussian_process.hpp"
+#include "optimization/gp/acquisition_function.hpp"
+#include "processing/image/comparison/mse_comparator.hpp"
 #include "processing/vision/estimation/distance_estimator.hpp"
 #include "viewpoint/generator.hpp"
 #include "viewpoint/provider.hpp"
+
 
 using Visualizer = common::utilities::Visualizer;
 
@@ -22,7 +25,7 @@ double Executor::distance_;
 
 void Executor::initialize() {
     // const auto target_image = common::io::image::readImage(config::get("paths.target_image", "target.png"));
-    const auto target_image(common::io::image::readImage("../../task1/target_images/obj_000020/img.png"));
+    const auto target_image(common::io::image::readImage("../../task1/target_images/obj_000020/target.png"));
     const auto extractor = FeatureExtractor::create<processing::image::ORBExtractor>();
     target_ = Image<>(target_image, extractor);
     distance_estimator_ = std::make_unique<processing::vision::DistanceEstimator>();
@@ -30,6 +33,15 @@ void Executor::initialize() {
     provider_ = std::make_unique<viewpoint::Generator<> >(distance_);
     comparator_ = std::make_unique<processing::image::SSIMComparator>(); // TODO: SSIM
     evaluator_ = std::make_unique<viewpoint::Evaluator<> >(target_);
+}
+
+
+double Executor::objectiveFunction(const ViewPoint<> &point,
+                                   const std::unique_ptr<processing::image::ImageComparator> &comparator,
+                                   viewpoint::Evaluator<> &evaluator) {
+    const std::vector points = {point};
+    const auto evaluated_images = evaluator.evaluate(comparator, points);
+    return evaluated_images.front().getScore();
 }
 
 void Executor::execute() {
@@ -74,8 +86,6 @@ void Executor::execute() {
             best_images.push_back(image);
         }
 
-        // poseEstimation(best_images);
-
         const auto filtered_points = matchFeaturesAndFilterRANSAC(best_images, target_);
         for (const auto &point: filtered_points) {
             LOG_INFO("Filtered Point: ({}, {}, {}), Score: {}", point.getPosition().x(), point.getPosition().y(),
@@ -93,6 +103,8 @@ void Executor::execute() {
             LOG_INFO("Best Viewpoint: ({}, {}, {}), Score: {}",
                      best_viewpoint.getPosition().x(), best_viewpoint.getPosition().y(),
                      best_viewpoint.getPosition().z(), best_viewpoint.getScore());
+
+            core::Perception::render(best_viewpoint.toView().getPose());
         } else {
             LOG_WARN("No best viewpoint found.");
         }
@@ -129,7 +141,6 @@ std::vector<Cluster<> > Executor::clusterSamples(const std::vector<Image<> > &ev
         LOG_DEBUG("Cluster ID: {}, Number of Points: {}, Average Score: {}", cluster.getClusterId(), cluster.size(),
                   average_score);
         for (const auto &point: cluster.getPoints()) {
-            ;
             auto [x, y, z] = point.toCartesian();
             LOG_DEBUG("Point: ({}, {}, {}), Score: {}", x, y, z, point.getScore());
         }
@@ -184,103 +195,8 @@ std::vector<ViewPoint<> > Executor::matchFeaturesAndFilterRANSAC(const std::vect
 }
 
 
+// Unused
 ViewPoint<> Executor::predictNextViewpoint(const std::vector<ViewPoint<> > &evaluated_points) {
     // Implement Bayesian Optimization to predict the next best viewpoint
-    // Placeholder implementation, needs actual Bayesian Optimization logic
-    return evaluated_points.front(); // Returning the first evaluated point as a placeholder
+    return evaluated_points.front(); // Returning the first evaluated point for now
 }
-
-
-/*void Executor::poseEstimation(std::vector<Image<> > &images) {
-    auto matcher = processing::image::FeatureMatcher::create<processing::image::BFMatcher>();
-    auto camera = core::Perception::getCamera();
-    cv::Mat camera_matrix;
-    cv::eigen2cv(camera->getIntrinsics().getMatrix(), camera_matrix);
-
-    for (auto &image: images) {
-        if (!image.hasViewPoint())
-            continue;
-
-        const auto &target_descriptors = target_.getDescriptors();
-        const auto &image_descriptors = image.getDescriptors();
-        const auto &target_keypoints = target_.getKeypoints();
-        const auto &image_keypoints = image.getKeypoints();
-
-        LOG_DEBUG("Matching features between target and captured image.");
-        std::vector<cv::DMatch> matches = matcher->match(target_descriptors, image_descriptors);
-
-        std::vector<cv::Point2f> target_points, image_points;
-        std::vector<cv::Point3f> object_points; // 3D points in world space
-        for (const auto &match: matches) {
-            target_points.push_back(target_keypoints[match.queryIdx].pt);
-            image_points.push_back(image_keypoints[match.trainIdx].pt);
-
-            // Assuming the keypoints' indices match the 3D points in ViewPoint
-            const auto &viewpoint = image.getViewPoint();
-            object_points.emplace_back(viewpoint.getPosition().x(), viewpoint.getPosition().y(),
-                                       viewpoint.getPosition().z());
-        }
-
-        LOG_DEBUG("Number of matches found: {}", matches.size());
-        if (target_points.size() >= 4 && image_points.size() >= 4 && object_points.size() >= 4) {
-            cv::Mat inliers_mask;
-            std::vector<cv::Point2f> inliers_target_points, inliers_image_points;
-            std::vector<cv::Point3f> inliers_object_points;
-
-            cv::findHomography(target_points, image_points, cv::RANSAC, 3.0, inliers_mask);
-
-            for (size_t i = 0; i < matches.size(); i++) {
-                if (inliers_mask.at<uchar>(i)) {
-                    inliers_target_points.push_back(target_points[i]);
-                    inliers_image_points.push_back(image_points[i]);
-                    inliers_object_points.push_back(object_points[i]);
-                }
-            }
-
-            LOG_DEBUG("Number of inliers after RANSAC: {}", inliers_target_points.size());
-
-            if (inliers_object_points.size() >= 4) {
-                cv::Mat rvec, tvec;
-                bool success = cv::solvePnPRansac(inliers_object_points, inliers_image_points, camera_matrix, cv::Mat(),
-                                                  rvec, tvec, false, 100, 8.0, 0.99, inliers_mask);
-
-                if (success) {
-                    LOG_DEBUG("solvePnPRansac succeeded.");
-                    cv::Mat rotation;
-                    cv::Rodrigues(rvec, rotation);
-
-                    Eigen::Matrix3d rotation_eigen;
-                    Eigen::Vector3d translation_eigen;
-                    cv::cv2eigen(rotation, rotation_eigen);
-                    cv::cv2eigen(tvec, translation_eigen);
-
-                    LOG_DEBUG("Rotation matrix:\n{}", rotation_eigen);
-                    LOG_DEBUG("Translation vector: ({}, {}, {})", translation_eigen.x(), translation_eigen.y(),
-                              translation_eigen.z());
-
-                    Eigen::Matrix4d pose = Eigen::Matrix4d::Identity();
-                    pose.block<3, 3>(0, 0) = rotation_eigen;
-                    pose.block<3, 1>(0, 3) = translation_eigen;
-
-                    core::View view = image.getViewPoint().toView();
-                    view.setPose(core::Camera::Extrinsics::fromPose(pose));
-                    image.setViewPoint(ViewPoint<>(translation_eigen.x(), translation_eigen.y(),
-                                                   translation_eigen.z()));
-
-                    LOG_INFO("Pose estimated for image with score {}: translation = ({}, {}, {}), rotation = \n{}",
-                             image.getScore(), translation_eigen.x(), translation_eigen.y(), translation_eigen.z(),
-                             rotation_eigen);
-                } else {
-                    LOG_WARN("solvePnPRansac failed to estimate pose for image with score {}", image.getScore());
-                }
-            } else {
-                LOG_WARN(
-                        "Insufficient inliers for pose estimation: inliers_target_points = {}, inliers_image_points = {}, inliers_object_points = {}",
-                        inliers_target_points.size(), inliers_image_points.size(), inliers_object_points.size());
-            }
-        } else {
-            LOG_WARN("Insufficient matches for pose estimation: target_points = {}, image_points = {}",
-                     target_points.size(), image_points.size());
-        }
-    }
-}*/
