@@ -98,8 +98,8 @@ image_comparator:
 
 estimation:
     distance:
-        max_iterations: 10
-        initial_guess: 1.0
+        max_iterations: 100
+        initial_guess: 1.7
         step_size: 0.1
         threshold: 0.005
 
@@ -108,4 +108,4 @@ rendering:
 
 
 sampling:
-    count: 20
+    count: 50

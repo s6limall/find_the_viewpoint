@@ -21,13 +21,14 @@ std::unique_ptr<processing::vision::DistanceEstimator> Executor::distance_estima
 std::unique_ptr<viewpoint::Provider<> > Executor::provider_;
 std::unique_ptr<viewpoint::Evaluator<> > Executor::evaluator_;
 std::unique_ptr<processing::image::ImageComparator> Executor::comparator_;
+std::unique_ptr<processing::image::FeatureExtractor> Executor::extractor_;
 double Executor::distance_;
 
 void Executor::initialize() {
     // const auto target_image = common::io::image::readImage(config::get("paths.target_image", "target.png"));
-    const auto target_image(common::io::image::readImage("../../task1/target_images/obj_000020/target.png"));
-    const auto extractor = FeatureExtractor::create<processing::image::ORBExtractor>();
-    target_ = Image<>(target_image, extractor);
+    const auto target_image(common::io::image::readImage("../../task1/target_images/obj_000020/img.png"));
+    extractor_ = FeatureExtractor::create<processing::image::SIFTExtractor>();
+    target_ = Image<>(target_image, extractor_);
     distance_estimator_ = std::make_unique<processing::vision::DistanceEstimator>();
     distance_ = distance_estimator_->estimate(target_.getImage());
     provider_ = std::make_unique<viewpoint::Generator<> >(distance_);
@@ -54,7 +55,7 @@ void Executor::execute() {
 
         QuadrantFilter<Image<> > quadrant_filter;
         const auto filtered_images = quadrant_filter.filter(evaluated_samples, [](const Image<> &image) {
-            return image.getScore() > 0.0;
+            return image.getScore();
         });
 
         auto clusters = clusterSamples(filtered_images);
@@ -73,20 +74,19 @@ void Executor::execute() {
         LOG_INFO("Best cluster: {}, Average score = {}", best_cluster.size(), best_cluster.getAverageScore());
 
         // Convert best cluster points to images
-        const auto extractor = FeatureExtractor::create<processing::image::ORBExtractor>();
         const auto best_points = best_cluster.getPoints();
         std::vector<Image<> > best_images;
         best_images.reserve(best_points.size());
         for (const auto &point: best_points) {
             core::View view = point.toView();
             cv::Mat rendered_image = core::Perception::render(view.getPose());
-            Image<> image(rendered_image, extractor);
+            Image<> image(rendered_image, extractor_);
             image.setViewPoint(point);
             image.setScore(point.getScore());
             best_images.push_back(image);
         }
 
-        const auto filtered_points = matchFeaturesAndFilterRANSAC(best_images, target_);
+        const auto filtered_points = matchAndRansac(best_images, target_);
         for (const auto &point: filtered_points) {
             LOG_INFO("Filtered Point: ({}, {}, {}), Score: {}", point.getPosition().x(), point.getPosition().y(),
                      point.getPosition().z(), point.getScore());
@@ -105,6 +105,8 @@ void Executor::execute() {
                      best_viewpoint.getPosition().z(), best_viewpoint.getScore());
 
             core::Perception::render(best_viewpoint.toView().getPose());
+            LOG_INFO("Best Image ({}) Score: {}", best_viewpoint.getPosition(), best_viewpoint.getScore());
+
         } else {
             LOG_WARN("No best viewpoint found.");
         }
@@ -149,9 +151,9 @@ std::vector<Cluster<> > Executor::clusterSamples(const std::vector<Image<> > &ev
     return clusters;
 }
 
-std::vector<ViewPoint<> > Executor::matchFeaturesAndFilterRANSAC(const std::vector<Image<> > &images,
-                                                                 const Image<> &target) {
-    processing::image::BFMatcher matcher;
+std::vector<ViewPoint<> > Executor::matchAndRansac(const std::vector<Image<> > &images,
+                                                   const Image<> &target) {
+    processing::image::FLANNMatcher matcher;
     std::vector<ViewPoint<> > filtered_points;
 
     for (const auto &image: images) {
