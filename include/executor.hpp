@@ -62,8 +62,7 @@ private:
     static std::vector<Cluster<> > clusterSamples(const std::vector<Image<> > &evaluated_images);
 
     // static void poseEstimation(std::vector<Image<> > &images);
-    static std::vector<ViewPoint<> > matchAndRansac(const std::vector<Image<> > &images,
-                                                    const Image<> &target);
+    static std::vector<ViewPoint<> > matchAndRansac(const std::vector<Image<> > &images);
 
     static ViewPoint<> predictNextViewpoint(const std::vector<ViewPoint<> > &evaluated_points);
 

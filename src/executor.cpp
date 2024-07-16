@@ -49,66 +49,85 @@ void Executor::execute() {
     try {
         std::call_once(init_flag_, &Executor::initialize);
 
-        const auto samples = provider_->provision();
-
+        // Initial sampling and evaluation
+        auto samples = provider_->provision();
         auto evaluated_samples = evaluator_->evaluate(comparator_, samples);
 
         QuadrantFilter<Image<> > quadrant_filter;
-        const auto filtered_images = quadrant_filter.filter(evaluated_samples, [](const Image<> &image) {
+        auto filtered_images = quadrant_filter.filter(evaluated_samples, [](const Image<> &image) {
             return image.getScore();
         });
 
         auto clusters = clusterSamples(filtered_images);
 
-        std::vector<ViewPoint<> > points;
-        for (const auto &cluster: clusters) {
-            points.insert(points.end(), cluster.getPoints().begin(), cluster.getPoints().end());
-            LOG_INFO("Points in cluster: {}, Average score = {}", cluster.size(), cluster.getAverageScore());
-        }
-
-        const Cluster<> &best_cluster = *std::max_element(clusters.begin(), clusters.end(),
-                                                          [](const Cluster<> &a, const Cluster<> &b) {
-                                                              return a.getAverageScore() < b.getAverageScore();
-                                                          });
+        // Find the best cluster
+        const auto &best_cluster = *std::max_element(clusters.begin(), clusters.end(),
+                                                     [](const Cluster<> &a, const Cluster<> &b) {
+                                                         return a.getAverageScore() < b.getAverageScore();
+                                                     });
 
         LOG_INFO("Best cluster: {}, Average score = {}", best_cluster.size(), best_cluster.getAverageScore());
 
         // Convert best cluster points to images
-        const auto best_points = best_cluster.getPoints();
+        const auto &best_points = best_cluster.getPoints();
         std::vector<Image<> > best_images;
         best_images.reserve(best_points.size());
-        for (const auto &point: best_points) {
-            core::View view = point.toView();
+
+        std::transform(best_points.begin(), best_points.end(), std::back_inserter(best_images),
+                       [](const ViewPoint<> &point) {
+                           core::View view = point.toView();
+                           cv::Mat rendered_image = core::Perception::render(view.getPose());
+                           Image<> image(rendered_image, extractor_);
+                           image.setViewPoint(point);
+                           image.setScore(point.getScore());
+                           return image;
+                       });
+
+        // Match and RANSAC on the initial best images
+        auto filtered_points = matchAndRansac(best_images);
+
+        // Continue generating new points until we reach a minimum score
+        const double min_score_threshold = 0.5; // Example threshold value
+        std::optional<ViewPoint<> > best_viewpoint;
+
+        while (true) {
+            auto it = std::find_if(filtered_points.begin(), filtered_points.end(),
+                                   [min_score_threshold](const ViewPoint<> &point) {
+                                       return point.getScore() >= min_score_threshold;
+                                   });
+
+            if (it != filtered_points.end()) {
+                best_viewpoint = *it;
+                break;
+            }
+
+            // Generate next sample viewpoint
+            auto next_sample = provider_->next();
+            core::View view = next_sample.toView();
             cv::Mat rendered_image = core::Perception::render(view.getPose());
-            Image<> image(rendered_image, extractor_);
-            image.setViewPoint(point);
-            image.setScore(point.getScore());
-            best_images.push_back(image);
+
+            // Create Image object for the rendered image
+            Image<> next_image(rendered_image, extractor_);
+            next_image.setViewPoint(next_sample);
+
+            // Perform RANSAC on the new image
+            auto next_filtered_points = matchAndRansac({next_image});
+            if (next_filtered_points.empty()) {
+                break;
+            }
+
+            filtered_points.insert(filtered_points.end(), next_filtered_points.begin(), next_filtered_points.end());
         }
 
-        const auto filtered_points = matchAndRansac(best_images, target_);
-        for (const auto &point: filtered_points) {
-            LOG_INFO("Filtered Point: ({}, {}, {}), Score: {}", point.getPosition().x(), point.getPosition().y(),
-                     point.getPosition().z(), point.getScore());
-        }
-
-        // Find the best viewpoint based on the number of inliers
-        auto best_viewpoint_it = std::max_element(filtered_points.begin(), filtered_points.end(),
-                                                  [](const ViewPoint<> &a, const ViewPoint<> &b) {
-                                                      return a.getScore() < b.getScore();
-                                                  });
-
-        if (best_viewpoint_it != filtered_points.end()) {
-            const auto &best_viewpoint = *best_viewpoint_it;
+        if (best_viewpoint) {
+            const auto &viewpoint = *best_viewpoint;
             LOG_INFO("Best Viewpoint: ({}, {}, {}), Score: {}",
-                     best_viewpoint.getPosition().x(), best_viewpoint.getPosition().y(),
-                     best_viewpoint.getPosition().z(), best_viewpoint.getScore());
+                     viewpoint.getPosition().x(), viewpoint.getPosition().y(), viewpoint.getPosition().z(),
+                     viewpoint.getScore());
 
-            core::Perception::render(best_viewpoint.toView().getPose());
-            LOG_INFO("Best Image ({}) Score: {}", best_viewpoint.getPosition(), best_viewpoint.getScore());
-
+            core::Perception::render(viewpoint.toView().getPose());
         } else {
-            LOG_WARN("No best viewpoint found.");
+            LOG_WARN("No best viewpoint found with a sufficient score.");
         }
 
         Visualizer::visualizeResults(best_cluster.getPoints(), distance_ * 0.9, distance_ * 1.1);
@@ -117,6 +136,7 @@ void Executor::execute() {
         throw;
     }
 }
+
 
 std::vector<Cluster<> > Executor::clusterSamples(const std::vector<Image<> > &evaluated_images) {
     // Extract ViewPoint from evaluated_images
@@ -151,45 +171,58 @@ std::vector<Cluster<> > Executor::clusterSamples(const std::vector<Image<> > &ev
     return clusters;
 }
 
-std::vector<ViewPoint<> > Executor::matchAndRansac(const std::vector<Image<> > &images,
-                                                   const Image<> &target) {
+std::vector<ViewPoint<> > Executor::matchAndRansac(const std::vector<Image<> > &images) {
     processing::image::FLANNMatcher matcher;
     std::vector<ViewPoint<> > filtered_points;
 
-    for (const auto &image: images) {
-        std::vector<cv::Point2f> target_points, image_points;
-        std::vector<cv::DMatch> good_matches;
+    // Get target descriptors and keypoints once
+    const auto &target_descriptors = target_.getDescriptors();
+    const auto &target_keypoints = target_.getKeypoints();
 
+    for (const auto &image: images) {
         // Match features
-        auto matches = matcher.match(target.getDescriptors(), image.getDescriptors());
+        auto matches = matcher.match(target_descriptors, image.getDescriptors());
         LOG_DEBUG("Number of matches found: {}", matches.size());
 
-        // Convert keypoints to points for RANSAC
-        for (const auto &match: matches) {
-            target_points.push_back(target.getKeypoints()[match.queryIdx].pt);
-            image_points.push_back(image.getKeypoints()[match.trainIdx].pt);
+        // Convert keypoints to points for RANSAC if enough matches are found
+        if (matches.size() < 4) {
+            LOG_WARN("Not enough matches for RANSAC. Matches size: {}", matches.size());
+            continue;
         }
 
-        if (target_points.size() >= 4) {
-            // Perform RANSAC to filter matches
-            std::vector<uchar> inliers_mask;
-            cv::Mat homography = cv::findHomography(target_points, image_points, cv::RANSAC, 3.0, inliers_mask);
-            LOG_DEBUG("Homography matrix: {}", homography);
+        std::vector<cv::Point2f> target_points, image_points;
+        target_points.reserve(matches.size());
+        image_points.reserve(matches.size());
 
-            for (size_t i = 0; i < inliers_mask.size(); ++i) {
-                if (inliers_mask[i]) {
-                    good_matches.push_back(matches[i]);
-                }
-            }
-            LOG_DEBUG("Number of inliers after RANSAC: {}", good_matches.size());
+        std::transform(matches.begin(), matches.end(), std::back_inserter(target_points), [&](const auto &match) {
+            return target_keypoints[match.queryIdx].pt;
+        });
 
-            if (!good_matches.empty()) {
-                ViewPoint<> point = image.getViewPoint();
-                point.setScore(static_cast<double>(good_matches.size()) / matches.size());
-                filtered_points.push_back(point);
+        std::transform(matches.begin(), matches.end(), std::back_inserter(image_points), [&](const auto &match) {
+            return image.getKeypoints()[match.trainIdx].pt;
+        });
+
+        // Perform RANSAC to filter matches
+        std::vector<uchar> inliers_mask;
+        cv::Mat homography = cv::findHomography(target_points, image_points, cv::RANSAC, 3.0, inliers_mask);
+        LOG_DEBUG("Homography matrix: {}", homography);
+
+        // Collect good matches based on RANSAC inliers
+        std::vector<cv::DMatch> good_matches;
+        good_matches.reserve(matches.size());
+        for (size_t i = 0; i < inliers_mask.size(); ++i) {
+            if (inliers_mask[i]) {
+                good_matches.push_back(matches[i]);
             }
-        } else {
-            LOG_WARN("Not enough points for RANSAC. Matches size: {}", matches.size());
+        }
+
+        LOG_DEBUG("Number of inliers after RANSAC: {}", good_matches.size());
+
+        // Store the viewpoint if there are good matches
+        if (!good_matches.empty()) {
+            ViewPoint<> point = image.getViewPoint();
+            point.setScore(static_cast<double>(good_matches.size()) / matches.size());
+            filtered_points.push_back(point);
         }
     }
 

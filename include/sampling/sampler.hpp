@@ -78,6 +78,7 @@ namespace sampling {
         std::vector<double> lower_bounds_;
         std::vector<double> upper_bounds_;
         Points<double> samples_;
+        size_t current_index_ = 0;
 
         Transformation<double> transform_;
         Adaptation<double> adapt_;

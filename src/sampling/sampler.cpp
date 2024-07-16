@@ -5,7 +5,7 @@
 namespace sampling {
 
     Sampler::Sampler(const Transformation<double> &transform) :
-        transform_(transform) {
+        transform_(transform), current_index_(0) {
     }
 
     Sampler &Sampler::setAdaptive(const bool adaptive, Adaptation<double> adapt) noexcept {

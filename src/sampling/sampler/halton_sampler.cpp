@@ -4,7 +4,6 @@
 
 namespace sampling {
 
-
     Points<double> HaltonSampler::generate(
             const std::size_t num_samples,
             const std::vector<double> &lower_bounds,
@@ -23,19 +22,13 @@ namespace sampling {
         validateBounds();
         untouched_samples_.clear();
         samples_.clear();
+        current_index_ = 0; // Initialize current index
 
         for (std::size_t i = 0; i < num_samples; ++i) {
             auto sample = next();
-            LOG_TRACE("Generated sample (untransformed): {}", sample);
-            if (transform_) {
-                sample = (*transform_)(sample);
-                LOG_TRACE("Transformed sample: {}", sample);
-            }
-
             LOG_TRACE("Generated sample: {}", sample);
             samples_.emplace_back(sample);
         }
-
 
         LOG_DEBUG("Discrepancy before adaptation: {}", calculateDiscrepancy(untouched_samples_));
         LOG_DEBUG("Discrepancy after adaptation: {}", calculateDiscrepancy(samples_));
@@ -49,10 +42,15 @@ namespace sampling {
             throw std::runtime_error("Sampler not initialized. Call generate() first.");
         }
 
-        const auto index = samples_.size();
-        auto sample = scale(index);
+        auto sample = scale(current_index_); // Use current_index_ instead of samples_.size()
+        current_index_++; // Increment current_index_
 
         untouched_samples_.emplace_back(sample); // For debugging TODO: Remove later
+
+        if (transform_) {
+            sample = (*transform_)(sample); // Apply the transformer
+            LOG_TRACE("Transformed sample: {}", sample);
+        }
 
         if (adaptive_) {
             LOG_TRACE("Before adaptation: {}", sample);
@@ -85,16 +83,17 @@ namespace sampling {
     }
 
     int HaltonSampler::nextPrime(const int after) noexcept {
-        auto isPrime = [](int num) {
-            return std::all_of(primes_.begin(), primes_.end(), [num](const int div) { return num % div != 0; });
+        auto isPrime = [](int number) {
+            return std::all_of(primes_.begin(), primes_.end(), [number](const int divisor) {
+                return number % divisor != 0;
+            });
         };
 
-        for (int num = after + 1;; ++num) {
-            if (isPrime(num)) {
-                return num;
+        for (int i = after + 1; ++i) {
+            if (isPrime(i)) {
+                return i;
             }
         }
-
     }
 
     double HaltonSampler::halton(int index, const int base) noexcept {
@@ -117,7 +116,7 @@ namespace sampling {
         const auto dimension = lower_bounds_.size();
         std::vector<double> sample(dimension);
 
-        for (std::size_t j = 0; j < dimension; ++j) {
+        for (size_t j = 0; j < dimension; ++j) {
             const int base = (j < primes_.size()) ? primes_[j] : nextPrime(primes_.back());
             const double halton_value = halton(static_cast<int>(index) + 1, base);
             sample[j] = lower_bounds_[j] + halton_value * (upper_bounds_[j] - lower_bounds_[j]);
@@ -125,6 +124,5 @@ namespace sampling {
 
         return sample;
     }
-
 
 }

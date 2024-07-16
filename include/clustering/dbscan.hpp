@@ -9,7 +9,6 @@
 #include <cmath>
 #include <algorithm>
 #include <limits>
-#include <execution>
 #include <numeric> // For std::iota
 
 #include <Eigen/Dense>
@@ -30,14 +29,12 @@ namespace clustering {
     public:
         explicit DBSCAN(int min_points, MetricFunction<T> metric = nullptr, double epsilon = -1.0) noexcept;
 
-        // void cluster(std::vector<ViewPoint<T> > &points);
-
         std::vector<Cluster<T> > cluster(std::vector<ViewPoint<T> > &points);
 
         const Cluster<T> &getBestCluster() const;
 
     private:
-        mutable double epsilon_;
+        double epsilon_;
         int min_points_;
         MetricFunction<T> metric_;
         static constexpr int UNCLASSIFIED = -1, NOISE = -2;
@@ -57,13 +54,17 @@ namespace clustering {
     DBSCAN<T>::DBSCAN(const int min_points, MetricFunction<T> metric, const double epsilon) noexcept :
         epsilon_(epsilon), min_points_(min_points), metric_(std::move(metric)) {
         if (!metric_) {
-            metric_ = [this](const ViewPoint<T> &a, const ViewPoint<T> &b) { return defaultMetric(a, b); };
+            metric_ = [](const ViewPoint<T> &a, const ViewPoint<T> &b) { return defaultMetric(a, b); };
         }
     }
 
-
     template<typename T>
     std::vector<Cluster<T> > DBSCAN<T>::cluster(std::vector<ViewPoint<T> > &points) {
+        if (points.empty()) {
+            LOG_ERROR("Input points vector is empty");
+            return {};
+        }
+
         if (epsilon_ < 0) {
             epsilon_ = estimateEpsilon(points);
             LOG_INFO("Estimated epsilon: {}", epsilon_);
@@ -72,7 +73,6 @@ namespace clustering {
         int cluster_id = 0;
         clusters_.clear();
         best_cluster_ = {};
-        // best_cluster_.average_score = std::numeric_limits<double>::lowest();
 
         for (auto &point: points) {
             if (point.getClusterId() == UNCLASSIFIED) {
@@ -99,7 +99,6 @@ namespace clustering {
         return clusters_;
     }
 
-
     template<typename T>
     std::vector<int> DBSCAN<T>::regionQuery(const std::vector<ViewPoint<T> > &points, int point_index) const {
         std::vector<int> neighbors;
@@ -115,7 +114,6 @@ namespace clustering {
         return neighbors;
     }
 
-
     template<typename T>
     void DBSCAN<T>::expandCluster(std::vector<ViewPoint<T> > &points, int point_index, int cluster_id) {
         std::queue<int> seeds;
@@ -128,7 +126,7 @@ namespace clustering {
 
             const auto neighbors = regionQuery(points, current_point);
             if (neighbors.size() >= min_points_) {
-                for (int neighbor_index: neighbors) {
+                for (const auto &neighbor_index: neighbors) {
                     auto &neighbor = points[neighbor_index];
                     if (neighbor.getClusterId() == UNCLASSIFIED || neighbor.getClusterId() == NOISE) {
                         if (neighbor.getClusterId() == UNCLASSIFIED) {
@@ -141,7 +139,6 @@ namespace clustering {
         }
     }
 
-
     template<typename T>
     double DBSCAN<T>::defaultMetric(const ViewPoint<T> &a, const ViewPoint<T> &b) noexcept {
         return (a.getPosition() - b.getPosition()).norm();
@@ -149,6 +146,11 @@ namespace clustering {
 
     template<typename T>
     double DBSCAN<T>::estimateEpsilon(const std::vector<ViewPoint<T> > &points) const {
+        if (points.size() < static_cast<size_t>(min_points_)) {
+            LOG_ERROR("Insufficient points to estimate epsilon");
+            throw std::runtime_error("Insufficient points to estimate epsilon");
+        }
+
         std::vector<double> distances;
         distances.reserve(points.size() * (points.size() - 1) / 2);
 
@@ -174,6 +176,6 @@ namespace clustering {
         return best_cluster_;
     }
 
-}
+} // namespace clustering
 
 #endif // DBSCAN_HPP

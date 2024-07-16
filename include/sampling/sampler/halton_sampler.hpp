@@ -10,8 +10,11 @@
 
 #include <cmath>
 #include <array>
+#include <vector>
 #include <random>
 #include <optional>
+#include <algorithm>
+#include <functional>
 
 #include "sampling/sampler.hpp"
 #include "common/logging/logger.hpp"
@@ -57,5 +60,3 @@ namespace sampling {
 }
 
 #endif // SAMPLING_HALTON_SAMPLER_HPP
-
-
