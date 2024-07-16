@@ -20,6 +20,7 @@
 #include <Eigen/Core>
 #include <Eigen/Dense>
 #include <Eigen/Geometry>
+#include <opencv2/core/eigen.hpp>
 
 #include "../include/config.hpp"
 #include "../include/image.hpp"
@@ -99,11 +100,11 @@ public:
 		intrinsics << fx, 0, width / 2,
 					  0, fy, height / 2,
 					  0, 0, 1;
-		cout << "camrea width: " << width << endl;
-		cout << "camrea height: " << height << endl;
-		cout << "camrea fov_x: " << fov_x << endl;
-		cout << "camrea fov_y: " << fov_y << endl;
-		cout << "camrea intrinsics: " << intrinsics << endl;
+		// cout << "camrea width: " << width << endl;
+		// cout << "camrea height: " << height << endl;
+		// cout << "camrea fov_x: " << fov_x << endl;
+		// cout << "camrea fov_y: " << fov_y << endl;
+		// cout << "camrea intrinsics: " << intrinsics << endl;
 
 		// Load object mesh
 		mesh_ply = pcl::PolygonMesh::Ptr(new pcl::PolygonMesh);
@@ -112,7 +113,7 @@ public:
 			cout << "Load object: " << object_path << " failed!" << endl;
 			exit(1);
 		}
-		cout << "Load object: " << object_path << " successfully!" << endl;
+		// cout << "Load object: " << object_path << " successfully!" << endl;
 		//normalize the object
 		int mesh_data_offset = mesh_ply->cloud.data.size() / mesh_ply->cloud.width / mesh_ply->cloud.height;
 		pcl::PointCloud<pcl::PointXYZ>::Ptr vertex;
@@ -219,10 +220,14 @@ public:
 
 	// check if the view is target
 	bool is_target(View view) {
-		cv::Mat rendered_image = render_view_image(view);
-		return compareImages(rendered_image, target_image);
+		Eigen::Vector3d target_pos = Eigen::Vector3d(-0.879024, 0.427971, 0.210138).normalized() * 3.0;
+		double distance = (target_pos - view.pose_6d.block<3, 1>(0, 3)).norm();
+		spdlog::info("distance to target {}", distance);
+
+		return 0;
 	}
 
+	// calculate centroid between A,B, and C on a sphere
 	View calculate_new_center(const View & A, const View & B, const View & C) {
 		Eigen::Vector3d a = A.getCameraPosition();
 		Eigen::Vector3d b = B.getCameraPosition();
@@ -234,7 +239,7 @@ public:
 
 		Eigen::Vector3d centroid = (a + b + c).normalized();
 
-		std::cout << "(" << centroid(0) << "," << centroid(1) << "," << centroid(2) << ")" << std::endl;
+		// std::cout << "(" << centroid(0) << "," << centroid(1) << "," << centroid(2) << ")" << std::endl;
 
 		View new_center;
 		new_center.compute_pose_from_positon_and_object_center(centroid * 3.0, Eigen::Vector3d(1e-100, 1e-100, 1e-100));
@@ -242,19 +247,66 @@ public:
 		return new_center;
 	}
 
+	// Apply H to candiate_view on the plane that is intersecting the view and has the candiate view as the support vector
+	View applyHomographyToView(const View & candidate_view, Eigen::Matrix3d& H)
+	{
+		Eigen::Matrix3d R = candidate_view.pose_6d.block<3, 3>(0, 0);
+		Eigen::Vector3d t = candidate_view.pose_6d.block<3, 1>(0, 3);
 
-	View dfs_next_view(const View & A, const View & B, const View & C, size_t & best_score) {
+		Eigen::Vector3d n = -t.normalized();  // normal vector
+
+		// Construct the plane transformation matrix P
+		Eigen::Matrix4d P = Eigen::Matrix4d::Identity();
+		P.block<3, 3>(0, 0) = R;  // rotation part remains the same
+		P.block<3, 1>(0, 3) = t;  // translation remains the same
+
+		// Apply H on the plane that is parallel to the plane defined by camera pose
+		Eigen::Matrix2d H_R = H.block<2, 2>(0, 0);
+		Eigen::Vector2d H_t = H.block<2, 1>(0, 2);
+
+		// Project translation vector H_t onto the plane defined by camera pose
+		Eigen::Vector3d H_t_3d = Eigen::Vector3d::Zero();
+		H_t_3d.head(2) = H_t;  // embed 2D translation into 3D
+
+		// Project H_t_3d onto the plane
+		H_t_3d -= H_t_3d.dot(n) * n;  // project onto the plane defined by n
+
+		// Construct the 3D transformation matrix H'
+		Eigen::Matrix4d transform = Eigen::Matrix4d::Identity();
+		transform.block<2, 2>(0, 0) = H_R;  // embed 2D rotation into 3D rotation
+		transform.block<3, 1>(0, 3) = H_t_3d;  // embed translated vector into 3D translation
+
+		// Apply transform to the camera pose to get the transformed camera pose
+		View output_view;
+		output_view.pose_6d = transform * P;
+		return output_view;
+	}
+
+	// distance
+	View fine_registration(const View & candidate_view){
+		spdlog::info("fine registration");
+
+		cv::Mat candidate_image = render_view_image(candidate_view);
+		cv::Mat H_cv = calculateTransformation(candidate_image, target_image);
+		Eigen::Matrix3d H;
+		cv2eigen(H_cv, H);
+		View refined_candiate = applyHomographyToView(candidate_view, H);
+
+		return refined_candiate;
+	}
+
+	View dfs_next_view(const View & A, const View & B, const View & C, double & best_score) {
 		View D = calculate_new_center(A,B,C);
 		View best_view = D;
-		size_t tmp_score = 0;
-		size_t max_score = 0;
+		double tmp_score = 0;
+		double max_score = 0;
 		cv::Mat candidate_image;
 
 		View views[] = { A, B, C, D };
     
 		for (const View & view : views) {
 			candidate_image = render_view_image(view);
-			tmp_score += computeSIFTMatches(target_image, candidate_image);
+			tmp_score = compareImages(target_image, candidate_image);
 			if(tmp_score>max_score)
 				max_score=tmp_score;
 		}
@@ -272,7 +324,7 @@ public:
 		std::vector<std::pair<View, View>> edges = {
 			{A, B},
 			{B, C},
-			{C, D}
+			{C, A}
 		};
 		
 		View candidate_view;
@@ -282,6 +334,9 @@ public:
 			
 			if (max_score > best_score)
 				continue;
+			if (best_score > 1.6)
+				View refined_candiate = fine_registration(candidate_view);
+			is_target(candidate_view);
 			best_view = candidate_view;
 		}
 
@@ -292,7 +347,6 @@ public:
 	// depth first search
 	void dfs() {
 		// Number of triangles to look at (e.g., 4 for a pyramid with a square base)
-
 		size_t base_view_count = 4; // You can change this to any number
 		std::vector<View> search_views(base_view_count + 1); // +1 for the top view
 
@@ -306,13 +360,13 @@ public:
 		// Create top view
 		search_views[base_view_count].compute_pose_from_positon_and_object_center(Eigen::Vector3d(0.0, 0.0, 1.0) * 3.0, Eigen::Vector3d(1e-100, 1e-100, 1e-100));
 
-		size_t best_score = 0;
-		size_t tmp_score = 0;
+		double best_score = 0;
+		double tmp_score = 0;
 		View best_view;
 
 		for (size_t i = 0; i < base_view_count; ++i) {
 			size_t next_index = (i + 1) % base_view_count;
-			tmp_score = 0;
+			//tmp_score = 0;
 			best_view = dfs_next_view(search_views[i], search_views[next_index], search_views[base_view_count], tmp_score);
 
 			spdlog::info("Best score for iteration {} is {}", i, tmp_score);
@@ -333,7 +387,7 @@ void task2(string object_name, int test_num) {
 	set<int> selected_view_indices;
 	for (int test_id = 0; test_id < test_num; test_id++) {
 		View target_view;
-		target_view.compute_pose_from_positon_and_object_center(Eigen::Vector3d(5.0, 0.0, 5.0).normalized() * 3.0, Eigen::Vector3d(1e-100, 1e-100, 1e-100));
+		target_view.compute_pose_from_positon_and_object_center(Eigen::Vector3d(-0.879024, 0.427971, 0.210138).normalized() * 3.0, Eigen::Vector3d(1e-100, 1e-100, 1e-100));
 	
 		View_Planning_Simulator view_planning_simulator(perception_simulator, target_view);
 		view_planning_simulator.dfs();
@@ -343,6 +397,7 @@ void task2(string object_name, int test_num) {
 		for (int i = 0; i < view_planning_simulator.selected_views.size(); i++) {
 			fout << view_planning_simulator.selected_views[i].pose_6d << endl;
 			cout << view_planning_simulator.selected_views[i].pose_6d << endl;
+			perception_simulator->render(view_planning_simulator.selected_views[i], "./task2/" + object_name + "/rgb_" + to_string(i) + ".png");
 		}
 		cout << target_view.pose_6d << endl;
 		fout.close();

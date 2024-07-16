@@ -24,6 +24,7 @@
 #include <Eigen/Core>
 #include <Eigen/Dense>
 #include <Eigen/Geometry>
+#include <opencv2/core/eigen.hpp>
 
 #include "../include/config.hpp"
 #include "../include/image.hpp"
@@ -96,6 +97,15 @@ public:
 
     // Check if the view is target
     bool is_target(View view);
+
+    // calculate centroid between A,B, and C on a sphere
+	View calculate_new_center(const View & A, const View & B, const View & C);
+
+    // Apply H to candiate_view on the plane that is intersecting the view and has the candiate view as the support vector
+	View applyHomographyToView(const View & candidate_view, const Eigen::Matrix3d& H);
+
+    // distance
+	View fine_registration(const View & candidate_view);
 
     // Search for the next view
     View dfs_next_view(const View & A, const View & B, const View & C, size_t & best_score);
