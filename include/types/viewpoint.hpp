@@ -1,15 +1,15 @@
 #ifndef VIEWPOINT_HPP
 #define VIEWPOINT_HPP
 
+#include <cmath>
+#include <fmt/core.h>
+#include <opencv2/core.hpp>
 #include <tuple>
 #include <type_traits>
-#include <cmath>
-#include <opencv2/core.hpp>
-#include <fmt/core.h>
 #include <vector>
 
-#include "core/view.hpp"
 #include "common/logging/logger.hpp"
+#include "core/view.hpp"
 
 template<typename T = double>
 class ViewPoint {
@@ -28,8 +28,7 @@ public:
     }
 
     explicit constexpr ViewPoint(const Eigen::Matrix<T, 3, 1> &position, double score = 0.0) noexcept :
-        ViewPoint(position.x(), position.y(), position.z(), score) {
-    }
+        ViewPoint(position.x(), position.y(), position.z(), score) {}
 
     // Getters
     constexpr const Eigen::Matrix<T, 3, 1> &getPosition() const noexcept { return position_; }
@@ -65,9 +64,7 @@ public:
         return (position_ - other_eigen).norm();
     }
 
-    constexpr T distance(const ViewPoint &other) const noexcept {
-        return (position_ - other.position_).norm();
-    }
+    constexpr T distance(const ViewPoint &other) const noexcept { return (position_ - other.position_).norm(); }
 
     // Static factory methods
     static constexpr ViewPoint fromCartesian(T x, T y, T z, double score = 0.0) noexcept {
@@ -117,8 +114,8 @@ public:
 
     // Serialization to string
     [[nodiscard]] std::string toString() const {
-        return fmt::format("ViewPoint(x: {}, y: {}, z: {}, score: {}, cluster_id: {})",
-                           position_.x(), position_.y(), position_.z(), score_, cluster_id_);
+        return fmt::format("ViewPoint(x: {}, y: {}, z: {}, score: {}, cluster_id: {})", position_.x(), position_.y(),
+                           position_.z(), score_, cluster_id_);
     }
 
 private:

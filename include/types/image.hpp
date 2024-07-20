@@ -3,12 +3,12 @@
 #ifndef TYPE_IMAGE_HPP
 #define TYPE_IMAGE_HPP
 
-#include <utility>
-#include <vector>
+#include <fmt/core.h>
 #include <opencv2/core.hpp>
 #include <opencv2/features2d.hpp>
-#include <fmt/core.h>
 #include <optional>
+#include <utility>
+#include <vector>
 
 #include "common/logging/logger.hpp"
 #include "types/viewpoint.hpp"
@@ -18,11 +18,9 @@ using FeatureExtractor = processing::image::FeatureExtractor;
 template<typename T = double>
 class Image {
 public:
-    // Constructors
     Image() noexcept = default;
 
-    Image(cv::Mat image, const std::unique_ptr<FeatureExtractor> &extractor) :
-        image_{validateImage(std::move(image))} {
+    Image(cv::Mat image, const std::unique_ptr<FeatureExtractor> &extractor) : image_{validateImage(std::move(image))} {
         this->detect(extractor);
     }
 
@@ -32,10 +30,8 @@ public:
     }
 
     Image(cv::Mat image, cv::Mat descriptors, std::vector<cv::KeyPoint> keypoints) :
-        image_{validateImage(std::move(image))},
-        descriptors_{std::move(descriptors)},
-        keypoints_{std::move(keypoints)} {
-    }
+        image_{validateImage(std::move(image))}, descriptors_{std::move(descriptors)},
+        keypoints_{std::move(keypoints)} {}
 
     // Getters
     [[nodiscard]] const cv::Mat &getImage() const noexcept { return image_; }
@@ -56,15 +52,14 @@ public:
 
     // Serialization to string
     [[nodiscard]] std::string toString() const {
-        return fmt::format("Image(size: {}x{}, keypoints: {}, descriptors: {}x{})",
-                           image_.cols, image_.rows, keypoints_.size(),
-                           descriptors_.rows, descriptors_.cols);
+        return fmt::format("Image(size: {}x{}, keypoints: {}, descriptors: {}x{})", image_.cols, image_.rows,
+                           keypoints_.size(), descriptors_.rows, descriptors_.cols);
     }
 
 private:
     cv::Mat image_, descriptors_;
     std::vector<cv::KeyPoint> keypoints_;
-    std::optional<ViewPoint<T> > viewpoint_;
+    std::optional<ViewPoint<T>> viewpoint_;
 
     static cv::Mat validateImage(cv::Mat image) {
         if (image.empty()) {
@@ -86,4 +81,4 @@ private:
     }
 };
 
-#endif //TYPE_IMAGE_HPP
+#endif // TYPE_IMAGE_HPP

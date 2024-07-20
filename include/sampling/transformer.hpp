@@ -3,8 +3,8 @@
 #ifndef TRANSFORMER_HPP
 #define TRANSFORMER_HPP
 
-#include <vector>
 #include <stdexcept>
+#include <vector>
 
 namespace sampling {
 
@@ -38,7 +38,7 @@ namespace sampling {
         }
     };
 
-}
+} // namespace sampling
 
 
-#endif //TRANSFORMER_HPP
+#endif // TRANSFORMER_HPP

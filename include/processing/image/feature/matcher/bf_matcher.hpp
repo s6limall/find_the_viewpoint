@@ -12,7 +12,7 @@ namespace processing::image {
         match(const cv::Mat &descriptors1, const cv::Mat &descriptors2) const override;
 
         void knnMatch(const cv::Mat &descriptors1, const cv::Mat &descriptors2,
-                      std::vector<std::vector<cv::DMatch> > &knnMatches, int k) const override;
+                      std::vector<std::vector<cv::DMatch> > &knnMatches, int k) const;
     };
 }
 

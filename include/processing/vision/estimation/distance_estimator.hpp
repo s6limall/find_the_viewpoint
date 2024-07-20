@@ -15,9 +15,9 @@
 #include "processing/vision/estimator.hpp"
 
 namespace processing::vision {
-    class DistanceEstimator final : public Estimator {
+    class DistanceEstimator final : public Estimator<> {
     public:
-        double estimate(const cv::Mat &image) override;
+        [[nodiscard]] double estimate(const cv::Mat &image) const noexcept override;
 
     private:
         static double calculateObjectAreaRatio(const cv::Mat &image);

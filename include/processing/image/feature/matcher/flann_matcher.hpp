@@ -4,6 +4,8 @@
 #define FEATURE_MATCHER_FLANN_HPP
 
 #include "processing/image/feature/matcher.hpp"
+#include <spdlog/spdlog.h>
+#include <exception>
 
 namespace processing::image {
     class FLANNMatcher final : public FeatureMatcher {
@@ -11,17 +13,15 @@ namespace processing::image {
         [[nodiscard]] std::vector<cv::DMatch>
         match(const cv::Mat &descriptors1, const cv::Mat &descriptors2) const override;
 
-        void knnMatch(const cv::Mat &descriptors1, const cv::Mat &descriptors2,
-                      std::vector<std::vector<cv::DMatch> > &knnMatches, int k) const override;
-
     private:
-        static cv::Mat convertDescriptorsToFloat(const cv::Mat &descriptors);
+        [[nodiscard]] static cv::Mat convertDescriptorsToFloat(const cv::Mat &descriptors) noexcept;
 
-        static std::vector<cv::DMatch> filterMatches(const std::vector<std::vector<cv::DMatch> > &knn_matches,
-                                                     float ratio_thresh);
+        [[nodiscard]] static std::vector<cv::DMatch> filterMatches(
+                const std::vector<std::vector<cv::DMatch> > &knnMatches, float ratioThresh) noexcept;
 
-
+        [[nodiscard]] static std::vector<std::vector<cv::DMatch> > knnMatch(
+                const cv::Mat &desc1, const cv::Mat &desc2, int k);
     };
 }
 
-#endif //FEATURE_MATCHER_FLANN_HPP
+#endif // FEATURE_MATCHER_FLANN_HPP

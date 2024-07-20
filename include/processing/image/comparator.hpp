@@ -3,8 +3,8 @@
 #ifndef IMAGE_COMPARATOR_HPP
 #define IMAGE_COMPARATOR_HPP
 
-#include <opencv2/opencv.hpp>
 #include <Eigen/Dense>
+#include <opencv2/opencv.hpp>
 
 namespace processing::image {
 
@@ -19,9 +19,8 @@ namespace processing::image {
     protected:
         // Default maximum value to indicate errors.
         static constexpr double error_score_ = std::numeric_limits<double>::max();
-
     };
 
-}
+} // namespace processing::image
 
-#endif //IMAGE_COMPARATOR_HPP
+#endif // IMAGE_COMPARATOR_HPP

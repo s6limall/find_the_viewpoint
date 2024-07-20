@@ -5,10 +5,9 @@
 #include "common/utilities/camera.hpp"
 #include "common/utilities/image.hpp"
 
-
 namespace processing::vision {
 
-    double DistanceEstimator::estimate(const cv::Mat &image) {
+    double DistanceEstimator::estimate(const cv::Mat &image) const noexcept {
         const auto initial_distance = config::get("estimation.distance.initial_guess", 1.0);
         const auto max_iterations = config::get("estimation.distance.max_iterations", 10);
         const auto threshold = config::get("estimation.distance.threshold", 0.05);
@@ -16,10 +15,8 @@ namespace processing::vision {
         return estimateDistance(image, max_iterations, initial_distance, threshold);
     }
 
-    double DistanceEstimator::estimateDistance(const cv::Mat &target_image,
-                                               const size_t max_iterations,
-                                               const double initial_distance,
-                                               const double threshold) {
+    double DistanceEstimator::estimateDistance(const cv::Mat &target_image, const size_t max_iterations,
+                                               const double initial_distance, const double threshold) {
         const double target_area_ratio = calculateObjectAreaRatio(target_image);
         LOG_DEBUG("Target Image Area Ratio = {}", target_area_ratio);
         double distance = initial_distance;
@@ -59,14 +56,9 @@ namespace processing::vision {
 
     std::vector<Eigen::Matrix4d> DistanceEstimator::generatePoses(const double distance) {
         std::vector<Eigen::Matrix4d> poses;
-        std::vector<std::pair<double, double> > angles = {
-                {0.0, 0.0},
-                {M_PI, 0.0},
-                {M_PI / 2, 0.0},
-                {3 * M_PI / 2, 0.0},
-                {M_PI / 2, M_PI / 2},
-                {M_PI / 2, 3 * M_PI / 2}
-        };
+        std::vector<std::pair<double, double>> angles = {{0.0, 0.0},           {M_PI, 0.0},
+                                                         {M_PI / 2, 0.0},      {3 * M_PI / 2, 0.0},
+                                                         {M_PI / 2, M_PI / 2}, {M_PI / 2, 3 * M_PI / 2}};
 
 
         for (const auto &[theta, phi]: angles) {
@@ -77,4 +69,4 @@ namespace processing::vision {
         return poses;
     }
 
-}
+} // namespace processing::vision

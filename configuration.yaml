@@ -98,10 +98,10 @@ image_comparator:
 
 estimation:
     distance:
-        max_iterations: 100
+        max_iterations: 5
         initial_guess: 1.7
         step_size: 0.1
-        threshold: 0.005
+        threshold: 0.05
 
 rendering:
     duration: 0 # Duration of the rendering in ms

@@ -3,20 +3,17 @@
 #ifndef VIEWPOINT_PROVIDER_HPP
 #define VIEWPOINT_PROVIDER_HPP
 
-#include <vector>
 #include <memory>
+#include <vector>
 
-#include "core/view.hpp"
 #include "common/logging/logger.hpp"
+#include "core/view.hpp"
 #include "types/viewpoint.hpp"
 
 
 namespace viewpoint {
 
-    enum ProviderType {
-        LOADER,
-        GENERATOR
-    };
+    enum ProviderType { LOADER, GENERATOR };
 
     template<typename T = double> // generator, loader
     class Provider {
@@ -25,11 +22,11 @@ namespace viewpoint {
         virtual ~Provider() = default;
 
         // Function to provision viewpoints
-        virtual std::vector<ViewPoint<T> > provision() = 0;
+        virtual std::vector<ViewPoint<T>> provision() = 0;
 
         virtual ViewPoint<T> next() = 0;
     };
 
-}
+} // namespace viewpoint
 
 #endif // VIEWPOINT_PROVIDER_HPP

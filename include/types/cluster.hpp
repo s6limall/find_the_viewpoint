@@ -3,8 +3,8 @@
 #ifndef CLUSTER_HPP
 #define CLUSTER_HPP
 
-#include <vector>
 #include <optional>
+#include <vector>
 #include "types/viewpoint.hpp"
 
 template<typename T = double>
@@ -13,8 +13,8 @@ public:
     constexpr Cluster() noexcept = default;
 
     [[nodiscard]] constexpr int getClusterId() const noexcept { return cluster_id_; }
-    [[nodiscard]] std::vector<ViewPoint<T> > &getPoints() noexcept { return points_; }
-    [[nodiscard]] const std::vector<ViewPoint<T> > &getPoints() const noexcept { return points_; }
+    [[nodiscard]] std::vector<ViewPoint<T>> &getPoints() noexcept { return points_; }
+    [[nodiscard]] const std::vector<ViewPoint<T>> &getPoints() const noexcept { return points_; }
     [[nodiscard]] constexpr size_t size() const noexcept { return points_.size(); }
     [[nodiscard]] constexpr double getAverageScore() const noexcept { return average_score_; }
 
@@ -36,8 +36,8 @@ private:
     int cluster_id_ = -1; // -1 = unclassified, -2 = noise
     double average_score_ = 0.0;
     double total_score_ = 0.0;
-    std::vector<ViewPoint<T> > points_;
-    std::optional<ViewPoint<T> > best_ = std::nullopt;
+    std::vector<ViewPoint<T>> points_;
+    std::optional<ViewPoint<T>> best_ = std::nullopt;
 };
 
 #endif // CLUSTER_HPP

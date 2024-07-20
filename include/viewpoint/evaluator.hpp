@@ -3,8 +3,8 @@
 #ifndef VIEWPOINT_EVALUATOR_HPP
 #define VIEWPOINT_EVALUATOR_HPP
 
-#include <vector>
 #include <opencv2/opencv.hpp>
+#include <vector>
 
 #include "core/perception.hpp"
 #include "processing/image/comparator.hpp"
@@ -17,24 +17,20 @@ namespace viewpoint {
     template<typename T = double>
     class Evaluator {
     public:
-        explicit Evaluator(Image<T> target_image) :
-            target_image_(target_image) {
-        }
+        explicit Evaluator(Image<T> target_image) : target_image_(target_image) {}
 
-        std::vector<Image<T> > evaluate(const std::unique_ptr<processing::image::ImageComparator> &comparator,
-                                        const std::vector<ViewPoint<T> > &samples);
+        std::vector<Image<T>> evaluate(const std::unique_ptr<processing::image::ImageComparator> &comparator,
+                                       const std::vector<ViewPoint<T>> &samples);
 
     private:
         Image<T> target_image_;
-
     };
 
     template<typename T>
-    std::vector<Image<T> > Evaluator<T>::evaluate(
-            const std::unique_ptr<processing::image::ImageComparator> &comparator,
-            const std::vector<ViewPoint<T> > &samples) {
+    std::vector<Image<T>> Evaluator<T>::evaluate(const std::unique_ptr<processing::image::ImageComparator> &comparator,
+                                                 const std::vector<ViewPoint<T>> &samples) {
 
-        std::vector<Image<> > evaluated_images;
+        std::vector<Image<>> evaluated_images;
         evaluated_images.reserve(samples.size());
 
         for (const auto &sample: samples) {
@@ -55,6 +51,6 @@ namespace viewpoint {
         return evaluated_images;
     }
 
-}
+} // namespace viewpoint
 
 #endif // VIEWPOINT_EVALUATOR_HPP

@@ -1,54 +1,49 @@
-// main.cpp
-
-#include "executor.hpp"
-
 // File: main.cpp
 
+#include <cmath>
 #include <iostream>
+#include <type_traits>
+
+#include <opencv2/imgproc.hpp>
+#include <opencv2/opencv.hpp>
+
+
+#include "common/io/image.hpp"
+#include "executor.hpp"
+#include "filtering/image/bilateral_filter.hpp"
+#include "filtering/image/rpca.hpp"
 #include "optimization/cmaes.hpp"
+#include "processing/image/comparator.hpp"
+#include "processing/image/feature/extractor/akaze_extractor.hpp"
+#include "processing/image/preprocessor.hpp"
+#include "processing/vision/estimation/pose_estimator.hpp"
 #include "types/viewpoint.hpp"
 #include "viewpoint/evaluator.hpp"
-#include "processing/image/comparator.hpp"
-#include "common/io/image.hpp"
 
-double evaluateViewpoint(const ViewPoint<double> &viewpoint, viewpoint::Evaluator<> &evaluator,
-                         const std::unique_ptr<processing::image::ImageComparator> &comparator) {
-    // Wrap the viewpoint in a vector for compatibility with the evaluator
-    std::vector<ViewPoint<double> > sample{viewpoint};
-    auto evaluated_images = evaluator.evaluate(comparator, sample);
 
-    // Return the score of the single evaluated image
-    return evaluated_images[0].getScore();
-}
-
-int main() {
+/*int main() {
     // Load target image and create evaluator
-    auto target_image = common::io::image::readImage("../../task1/target_images/obj_000020/img.png");
-    auto extractor = FeatureExtractor::create<processing::image::SIFTExtractor>();
-    Image<> target(target_image, extractor);
-    auto comparator = std::make_unique<processing::image::SSIMComparator>();
-    auto evaluator = std::make_unique<viewpoint::Evaluator<> >(target);
+    const auto image = common::io::image::readImage("../../task1/target_images/obj_000020/img.png");
 
-    // Define the evaluation function
-    auto evaluation_function = [&](const ViewPoint<double> &viewpoint) {
-        return evaluateViewpoint(viewpoint, *evaluator, comparator);
-    };
+    // Set up camera intrinsics
+    core::Camera::Intrinsics intrinsics;
+    intrinsics.setIntrinsics(640, 480, 0.95, 0.75);
 
-    // Initial guess and bounds for optimization
-    std::vector<double> initial_guess = {1.0, 1.0, 1.0};
-    std::vector<double> lower_bounds = {-10.0, -10.0, -10.0};
-    std::vector<double> upper_bounds = {10.0, 10.0, 10.0};
+    // Create an instance of the PoseEstimator
+    const processing::vision::PoseEstimator poseEstimator(intrinsics);
+    try {
+        const Eigen::Matrix4d pose = poseEstimator.estimate(image);
+        std::cout << "Estimated Pose: \n" << pose << std::endl;
+    } catch (const std::exception &e) {
+        std::cerr << "Error: " << e.what() << std::endl;
+        return EXIT_FAILURE;
+    }
 
-    // Create and run the optimizer
-    ViewpointOptimizer optimizer(evaluation_function);
-    ViewPoint<double> optimal_viewpoint = optimizer.optimize(initial_guess, lower_bounds, upper_bounds);
-
-    std::cout << "Optimal Viewpoint: " << optimal_viewpoint.toString() << std::endl;
 
     return 0;
-}
+    EXIT_SUCCESS;
+}*/
 
-/*
 int main() {
 
     try {
@@ -60,4 +55,3 @@ int main() {
 
     return EXIT_SUCCESS;
 }
-*/

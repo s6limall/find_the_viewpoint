@@ -89,7 +89,7 @@ namespace sampling {
             });
         };
 
-        for (int i = after + 1; ++i) {
+        for (int i = after + 1;; ++i) {
             if (isPrime(i)) {
                 return i;
             }

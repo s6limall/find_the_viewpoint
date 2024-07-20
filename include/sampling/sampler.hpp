@@ -3,27 +3,27 @@
 #ifndef SAMPLING_SAMPLER_HPP
 #define SAMPLING_SAMPLER_HPP
 
-#include <vector>
-#include <functional>
-#include <stdexcept>
 #include <algorithm>
-#include <numeric>
-#include <iterator>
-#include <string_view>
 #include <cmath>
+#include <functional>
+#include <iterator>
+#include <numeric>
 #include <optional>
+#include <stdexcept>
+#include <string_view>
+#include <vector>
 
-#include "transformer.hpp"
 #include "common/logging/logger.hpp"
+#include "transformer.hpp"
 
 namespace sampling {
 
     template<typename T>
     using Adaptation = std::function<void(std::vector<T> &)>;
     template<typename T>
-    using Transformation = std::optional<std::function<std::vector<T>(const std::vector<T> &)> >;
+    using Transformation = std::optional<std::function<std::vector<T>(const std::vector<T> &)>>;
     template<typename T>
-    using Points = std::vector<std::vector<T> >;
+    using Points = std::vector<std::vector<T>>;
 
     class Sampler {
     public:
@@ -41,10 +41,8 @@ namespace sampling {
          * @param upper_bounds Upper bounds of the sample space.
          * @return A vector of generated samples.
          */
-        virtual Points<double> generate(
-                size_t num_samples,
-                const std::vector<double> &lower_bounds,
-                const std::vector<double> &upper_bounds) = 0;
+        virtual Points<double> generate(size_t num_samples, const std::vector<double> &lower_bounds,
+                                        const std::vector<double> &upper_bounds) = 0;
 
         /**
          * @brief Generates the next sample in the sequence.
@@ -92,6 +90,6 @@ namespace sampling {
         void validateBounds() const;
     };
 
-}
+} // namespace sampling
 
 #endif // SAMPLING_SAMPLER_HPP

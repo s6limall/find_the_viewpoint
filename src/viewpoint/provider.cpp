@@ -1,12 +1,17 @@
+// File: viewpoint/provider.cpp
+
+#include "viewpoint/provider.hpp"
+
+
 /*
 // File: viewpoint/provider.cpp
 
 #include "viewpoint/provider.hpp"
 
-#include "config/configuration.hpp"
 #include "common/logging/logger.hpp"
-#include "viewpoint/loader.hpp"
+#include "config/configuration.hpp"
 #include "viewpoint/generator.hpp"
+#include "viewpoint/loader.hpp"
 
 namespace viewpoint {
 

@@ -5,6 +5,7 @@
 
 #include <opencv2/opencv.hpp>
 #include <memory>
+#include <vector>
 
 namespace processing::image {
     enum class MatcherType {
@@ -17,19 +18,12 @@ namespace processing::image {
     public:
         virtual ~FeatureMatcher() = default;
 
-        // Match features between two images and return the matches.
         [[nodiscard]] virtual std::vector<cv::DMatch> match(const cv::Mat &descriptors1,
                                                             const cv::Mat &descriptors2) const = 0;
 
-        // K-Nearest Neighbors matching
-        // KNN match features between two images and return the matches.
-        virtual void knnMatch(const cv::Mat &descriptors1,
-                              const cv::Mat &descriptors2,
-                              std::vector<std::vector<cv::DMatch> > &knnMatches,
-                              int k) const = 0;
-
         template<typename T>
         static std::unique_ptr<FeatureMatcher> create() {
+            static_assert(std::is_base_of_v<FeatureMatcher, T>, "T must derive from FeatureMatcher");
             return std::make_unique<T>();
         }
     };

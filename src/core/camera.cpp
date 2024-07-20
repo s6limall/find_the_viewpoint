@@ -10,14 +10,6 @@
 namespace core {
 
     // Struct function definitions
-    Camera::Intrinsics::Intrinsics() noexcept :
-        width(0), height(0), fov_x(0.0), fov_y(0.0), matrix(Eigen::Matrix3d::Identity()) {
-    }
-
-    Camera::Extrinsics::Extrinsics() noexcept :
-        matrix(Eigen::Matrix4d::Identity()) {
-    }
-
 
     void Camera::Intrinsics::setIntrinsics(const int width, const int height, const double fov_x, const double fov_y) {
         if (width <= 0 || height <= 0) {
@@ -34,9 +26,7 @@ namespace core {
 
         LOG_TRACE("Calculated fx = {}, fy = {}, cx = {}, cy = {}.", fx, fy, cx, cy);
 
-        this->matrix << fx, 0, cx,
-                0, fy, cy,
-                0, 0, 1;
+        this->matrix << fx, 0, cx, 0, fy, cy, 0, 0, 1;
 
         // LOG_DEBUG("Intrinsic matrix set: {}", this->matrix);
 
@@ -70,30 +60,18 @@ namespace core {
     }
 
     // Camera function definitions
-    Camera::Camera() noexcept :
-        object_center_(Eigen::Vector3d::Zero()) {
-        LOG_TRACE("Camera initialized with identity extrinsics (pose) and intrinsics.");
-    }
 
-    Camera::Intrinsics Camera::getIntrinsics() const noexcept {
-        return intrinsics_;
-    }
+    Camera::Intrinsics Camera::getIntrinsics() const noexcept { return intrinsics_; }
 
     void Camera::setIntrinsics(const int width, const int height, const double fov_x, const double fov_y) {
         intrinsics_.setIntrinsics(width, height, fov_x, fov_y);
     }
 
-    Camera::Extrinsics Camera::getExtrinsics() const noexcept {
-        return extrinsics_;
-    }
+    Camera::Extrinsics Camera::getExtrinsics() const noexcept { return extrinsics_; }
 
-    void Camera::setExtrinsics(const Extrinsics &extrinsics) noexcept {
-        extrinsics_ = extrinsics;
-    }
+    void Camera::setExtrinsics(const Extrinsics &extrinsics) noexcept { extrinsics_ = extrinsics; }
 
-    Eigen::Vector3d Camera::getPosition() const noexcept {
-        return extrinsics_.getTranslation();
-    }
+    Eigen::Vector3d Camera::getPosition() const noexcept { return extrinsics_.getTranslation(); }
 
     Camera &Camera::setPosition(const double x, const double y, const double z) noexcept {
         extrinsics_.matrix.setIdentity(); // Reset pose to identity.
@@ -101,18 +79,14 @@ namespace core {
         return *this;
     }
 
-    Eigen::Matrix3d Camera::getRotation() const noexcept {
-        return extrinsics_.getOrientation();
-    }
+    Eigen::Matrix3d Camera::getRotation() const noexcept { return extrinsics_.getOrientation(); }
 
     Camera &Camera::setRotation(const Eigen::Matrix3d &rotation) noexcept {
         extrinsics_.setOrientation(rotation);
         return *this;
     }
 
-    Eigen::Vector3d Camera::getObjectCenter() const noexcept {
-        return object_center_;
-    }
+    Eigen::Vector3d Camera::getObjectCenter() const noexcept { return object_center_; }
 
     Camera &Camera::lookAt(const Eigen::Vector3d &target_center) noexcept {
         object_center_ = target_center;
@@ -128,5 +102,23 @@ namespace core {
         return *this;
     }
 
+    // New methods for projecting points and computing Jacobian
 
-}
+    Eigen::Vector2d Camera::project(const Eigen::Vector3d &point) const noexcept {
+        Eigen::Vector4d homogeneous_point(point.x(), point.y(), point.z(), 1.0);
+        Eigen::Vector3d cam_point = intrinsics_.matrix * homogeneous_point.head<3>();
+        return cam_point.hnormalized();
+    }
+
+    Eigen::Matrix<double, 2, 3> Camera::projectJacobian(const Eigen::Vector3d &point) const noexcept {
+        const double fx = intrinsics_.getFocalLengthX();
+        const double fy = intrinsics_.getFocalLengthY();
+        const double inv_z = 1.0 / point.z();
+        const double inv_z2 = inv_z * inv_z;
+
+        Eigen::Matrix<double, 2, 3> J;
+        J << fx * inv_z, 0, -fx * point.x() * inv_z2, 0, fy * inv_z, -fy * point.y() * inv_z2;
+        return J;
+    }
+
+} // namespace core

@@ -3,11 +3,11 @@
 #ifndef SPHERICAL_TRANSFORMER_HPP
 #define SPHERICAL_TRANSFORMER_HPP
 
-#include <cmath>
 #include <Eigen/Dense>
+#include <cmath>
 
-#include "sampling/transformer.hpp"
 #include "common/logging/logger.hpp"
+#include "sampling/transformer.hpp"
 
 namespace sampling {
 
@@ -28,9 +28,8 @@ namespace sampling {
         static Eigen::Vector3d sphericalToCartesian(double radius, double azimuth, double polar) noexcept;
 
         [[nodiscard]] bool isWithinShell(const Eigen::Vector3d &point) const noexcept;
-
     };
 
-}
+} // namespace sampling
 
-#endif //SPHERICAL_TRANSFORMER_HPP
+#endif // SPHERICAL_TRANSFORMER_HPP

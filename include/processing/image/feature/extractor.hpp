@@ -16,6 +16,7 @@ namespace processing::image {
         SIFT,
         ORB,
         SUPERPOINT,
+        AKAZE,
     };
 
     class FeatureExtractor {
@@ -31,6 +32,6 @@ namespace processing::image {
             return std::make_unique<T>();
         }
     };
-}
+} // namespace processing::image
 
-#endif //FEATURE_EXTRACTOR_HPP
+#endif // FEATURE_EXTRACTOR_HPP
