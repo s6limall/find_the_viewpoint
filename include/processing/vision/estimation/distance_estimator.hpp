@@ -3,16 +3,16 @@
 #ifndef DISTANCE_ESTIMATOR_HPP
 #define DISTANCE_ESTIMATOR_HPP
 
-#include <opencv2/opencv.hpp>
 #include <Eigen/Core>
+#include <opencv2/opencv.hpp>
 
-#include "core/view.hpp"
-#include "core/perception.hpp"
-#include "types/viewpoint.hpp"
 #include "common/io/image.hpp"
-#include "processing/image_processor.hpp"
 #include "common/logging/logger.hpp"
+#include "core/perception.hpp"
+#include "core/view.hpp"
+#include "processing/image_processor.hpp"
 #include "processing/vision/estimator.hpp"
+#include "types/viewpoint.hpp"
 
 namespace processing::vision {
     class DistanceEstimator final : public Estimator<> {
@@ -27,6 +27,6 @@ namespace processing::vision {
         static double estimateDistance(const cv::Mat &target_image, size_t max_iterations = 10,
                                        double initial_distance = 1.0, double threshold = 0.05);
     };
-}
+} // namespace processing::vision
 
 #endif // DISTANCE_ESTIMATOR_HPP

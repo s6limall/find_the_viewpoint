@@ -51,7 +51,7 @@ private:
         static constexpr int width = 640;
         static constexpr int height = 480;
         static constexpr std::string_view mesh_path = "./3d_models/obj_000020.ply";
-        static constexpr std::string_view target_image_path = "../../task1/target_images/obj_000020/img.png";
+        static constexpr std::string_view target_image_path = "../../task1/target_images/obj_000020/target_1.png";
     };
 };
 

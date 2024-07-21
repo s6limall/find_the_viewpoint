@@ -3,10 +3,10 @@
 #ifndef QUADRANT_FILTER_HPP
 #define QUADRANT_FILTER_HPP
 
-#include "filter.hpp"
 #include <Eigen/Core>
-#include <vector>
 #include <functional>
+#include <vector>
+#include "filter.hpp"
 
 template<typename T>
 class QuadrantFilter final : public Filter<T> {
@@ -14,9 +14,9 @@ public:
     std::vector<T> filter(const std::vector<T> &samples, std::function<double(const T &)> evaluation_function) override;
 
 private:
-    std::vector<std::vector<T> > partitionIntoQuadrants(const std::vector<T> &samples);
+    std::vector<std::vector<T>> partitionIntoQuadrants(const std::vector<T> &samples);
 
-    std::vector<T> selectBestQuadrants(const std::vector<std::vector<T> > &quadrants,
+    std::vector<T> selectBestQuadrants(const std::vector<std::vector<T>> &quadrants,
                                        std::function<double(const T &)> evaluation_function);
 };
 
@@ -28,9 +28,9 @@ std::vector<T> QuadrantFilter<T>::filter(const std::vector<T> &samples,
 }
 
 template<typename T>
-std::vector<std::vector<T> > QuadrantFilter<T>::partitionIntoQuadrants(const std::vector<T> &samples) {
+std::vector<std::vector<T>> QuadrantFilter<T>::partitionIntoQuadrants(const std::vector<T> &samples) {
     // Placeholder: Implement logic to partition samples into quadrants.
-    std::vector<std::vector<T> > quadrants(4); // Assuming 4 quadrants for simplicity.
+    std::vector<std::vector<T>> quadrants(4); // Assuming 4 quadrants for simplicity.
 
     for (const auto &sample: samples) {
         const auto &position = sample.getViewPoint().getPosition();
@@ -43,9 +43,9 @@ std::vector<std::vector<T> > QuadrantFilter<T>::partitionIntoQuadrants(const std
 }
 
 template<typename T>
-std::vector<T> QuadrantFilter<T>::selectBestQuadrants(const std::vector<std::vector<T> > &quadrants,
+std::vector<T> QuadrantFilter<T>::selectBestQuadrants(const std::vector<std::vector<T>> &quadrants,
                                                       std::function<double(const T &)> evaluation_function) {
-    std::vector<std::pair<double, size_t> > quadrant_scores(quadrants.size());
+    std::vector<std::pair<double, size_t>> quadrant_scores(quadrants.size());
 
     for (size_t i = 0; i < quadrants.size(); ++i) {
         double total_score = 0;

@@ -55,11 +55,14 @@ namespace processing::vision {
     }
 
     std::vector<Eigen::Matrix4d> DistanceEstimator::generatePoses(const double distance) {
-        std::vector<Eigen::Matrix4d> poses;
-        std::vector<std::pair<double, double>> angles = {{0.0, 0.0},           {M_PI, 0.0},
-                                                         {M_PI / 2, 0.0},      {3 * M_PI / 2, 0.0},
-                                                         {M_PI / 2, M_PI / 2}, {M_PI / 2, 3 * M_PI / 2}};
+        constexpr std::array<std::pair<double, double>, 6> angles = {{{0.0, 0.0},
+                                                                      {M_PI, 0.0},
+                                                                      {M_PI / 2, 0.0},
+                                                                      {3 * M_PI / 2, 0.0},
+                                                                      {M_PI / 2, M_PI / 2},
+                                                                      {M_PI / 2, 3 * M_PI / 2}}};
 
+        std::vector<Eigen::Matrix4d> poses;
 
         for (const auto &[theta, phi]: angles) {
             core::View view = ViewPoint<>::fromSpherical(distance, theta, phi).toView();

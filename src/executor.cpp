@@ -102,6 +102,8 @@ void Executor::execute() {
         Eigen::Matrix4d best_extrinsics = best_view.getPose();
         cv::Mat best_rendered_view = core::Perception::render(best_extrinsics);
 
+        LOG_INFO("Best viewpoint: {}", best_viewpoint.getPosition());
+
         cv::imshow("Best Viewpoint", best_rendered_view);
         cv::waitKey(0);
 

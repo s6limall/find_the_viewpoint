@@ -53,7 +53,7 @@ set(INCLUDE_DIRS
         ${JSONCPP_INCLUDE_DIRS}
         ${FREETYPE_INCLUDE_DIRS}
         ${SPDLOG_INCLUDE_DIRS}
-        ${LIBCMAES_INCLUDE_DIRS}
+        ${libcmaes_INCLUDE_DIRS}
 )
 
 set(LIBRARIES
@@ -61,6 +61,7 @@ set(LIBRARIES
         ${PCL_LIBRARIES}
         ${JSONCPP_LIBRARIES}
         ${FREETYPE_LIBRARIES}
+        ${libcmaes_LIBRARIES}
         spdlog::spdlog
         yaml-cpp
         fmt::fmt
