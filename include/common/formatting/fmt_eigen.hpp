@@ -3,10 +3,10 @@
 #ifndef FMT_EIGEN_HPP
 #define FMT_EIGEN_HPP
 
-#include <fmt/format.h>
 #include <Eigen/Core>
-#include <sstream>
+#include <fmt/format.h>
 #include <iomanip> // For setting precision
+#include <sstream>
 #include <string>
 
 /*
@@ -18,10 +18,10 @@
 
 // Specialize the fmt::formatter for Eigen::Matrix
 template<typename Scalar, int Rows, int Cols>
-struct fmt::formatter<Eigen::Matrix<Scalar, Rows, Cols> > {
+struct fmt::formatter<Eigen::Matrix<Scalar, Rows, Cols>> {
     // Default format specifiers
     char presentation = 'f'; // 'f' for fixed precision (floating point), 'e' for scientific notation, etc
-    int precision = 4; // Default precision
+    int precision = -1; // Default precision to full precision
 
     // Parse format specifications
     constexpr auto parse(fmt::format_parse_context &ctx) {
@@ -57,7 +57,11 @@ struct fmt::formatter<Eigen::Matrix<Scalar, Rows, Cols> > {
         std::ostringstream oss;
 
         // Set precision and format
-        oss << std::setprecision(precision);
+        if (precision >= 0) {
+            oss << std::setprecision(precision);
+        } else {
+            oss << std::setprecision(std::numeric_limits<Scalar>::digits10 + 1);
+        }
         if (presentation == 'f') {
             oss << std::fixed;
         } else if (presentation == 'e') {
@@ -84,10 +88,10 @@ struct fmt::formatter<Eigen::Matrix<Scalar, Rows, Cols> > {
 
 // Specialize the fmt::formatter for Eigen::Transpose<Eigen::Matrix>
 template<typename Scalar, int Rows, int Cols>
-struct fmt::formatter<Eigen::Transpose<Eigen::Matrix<Scalar, Rows, Cols> > > {
+struct fmt::formatter<Eigen::Transpose<Eigen::Matrix<Scalar, Rows, Cols>>> {
     // Default format specifiers
     char presentation = 'f'; // 'f' for fixed precision (floating point), 'e' for scientific notation, etc
-    int precision = 4; // Default precision
+    int precision = -1; // Default precision to full precision
 
     // Parse format specifications
     constexpr auto parse(fmt::format_parse_context &ctx) {
@@ -119,11 +123,15 @@ struct fmt::formatter<Eigen::Transpose<Eigen::Matrix<Scalar, Rows, Cols> > > {
 
     // Format the transpose matrix
     template<typename FormatContext>
-    auto format(const Eigen::Transpose<Eigen::Matrix<Scalar, Rows, Cols> > &mat, FormatContext &ctx) const {
+    auto format(const Eigen::Transpose<Eigen::Matrix<Scalar, Rows, Cols>> &mat, FormatContext &ctx) const {
         std::ostringstream oss;
 
         // Set precision and format
-        oss << std::setprecision(precision);
+        if (precision >= 0) {
+            oss << std::setprecision(precision);
+        } else {
+            oss << std::setprecision(std::numeric_limits<Scalar>::digits10 + 1);
+        }
         if (presentation == 'f') {
             oss << std::fixed;
         } else if (presentation == 'e') {
@@ -147,6 +155,5 @@ struct fmt::formatter<Eigen::Transpose<Eigen::Matrix<Scalar, Rows, Cols> > > {
         return fmt::format_to(ctx.out(), "\n{}", oss.str());
     }
 };
-
 
 #endif // FMT_EIGEN_HPP
