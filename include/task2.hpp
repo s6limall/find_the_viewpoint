@@ -98,6 +98,8 @@ public:
     // Check if the view is target
     bool is_target(View view);
 
+    bool is_test_viewtarget(View src_view, double bst_score);
+
     // calculate centroid between A,B, and C on a sphere
 	View calculate_new_center(const View & A, const View & B, const View & C);
 
@@ -108,7 +110,7 @@ public:
 	View fine_registration(const View & candidate_view);
 
     // Search for the next view
-    View dfs_next_view(const View & A, const View & B, const View & C, size_t & best_score);
+    View dfs_next_view(const View & A, const View & B, const View & C, size_t & bst_score);
 
     // Search the best view until find the target
     void dfs();

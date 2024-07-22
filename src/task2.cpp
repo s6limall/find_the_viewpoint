@@ -22,6 +22,8 @@
 #include <Eigen/Geometry>
 #include <opencv2/core/eigen.hpp>
 
+#include <torch/torch.h>
+
 #include "../include/config.hpp"
 #include "../include/image.hpp"
 
@@ -194,14 +196,15 @@ public:
 class View_Planning_Simulator {
 public:
 	Perception* perception_simulator; // perception simulator
-	cv::Mat target_image; // target image
+	cv::Mat dst_img; // target image
 	vector<View> selected_views; // selected views
+	View output_view;
 	vector<cv::Mat> rendered_images; // rendered images
 
 	// Constructor
 	View_Planning_Simulator(Perception* _perception_simulator, View _target_view) {
 		perception_simulator = _perception_simulator;
-		target_image = render_view_image(_target_view);
+		dst_img = render_view_image(_target_view);
 	}
 
 	// Destructor
@@ -219,10 +222,19 @@ public:
 	}
 
 	// check if the view is target
-	bool is_target(View view) {
-		Eigen::Vector3d target_pos = Eigen::Vector3d(-0.879024, 0.427971, 0.210138).normalized() * 3.0;
-		double distance = (target_pos - view.pose_6d.block<3, 1>(0, 3)).norm();
-		spdlog::info("distance to target {}", distance);
+	bool is_target(View src_view) {
+		Eigen::Vector3d dst_view = Eigen::Vector3d(-0.879024, 0.427971, 0.210138).normalized() * 3.0;
+		double dis = (dst_view - src_view.pose_6d.block<3, 1>(0, 3)).norm();
+		spdlog::info("distance to target {}", dis);
+		return 0;
+	}
+
+
+	bool test_view(View src_view, double max_score) {
+		Eigen::Vector3d dst_view = Eigen::Vector3d(-0.879024, 0.427971, 0.210138).normalized() * 3.0;
+		double dis = (dst_view - src_view.pose_6d.block<3, 1>(0, 3)).norm();
+		spdlog::info("distance to target {}", dis);
+		perception_simulator->render(src_view, "./task2/score/s_" + std::to_string(max_score) + "_dst_" + std::to_string(dis) + ".png");
 
 		return 0;
 	}
@@ -248,12 +260,12 @@ public:
 	}
 
 	// Apply H to candiate_view on the plane that is intersecting the view and has the candiate view as the support vector
-	View applyHomographyToView(const View & candidate_view, Eigen::Matrix3d& H)
+	View applyHomographyToView(const View & can_view, Eigen::Matrix3d& H)
 	{
-		Eigen::Matrix3d R = candidate_view.pose_6d.block<3, 3>(0, 0);
-		Eigen::Vector3d t = candidate_view.pose_6d.block<3, 1>(0, 3);
+		Eigen::Matrix3d R = can_view.pose_6d.block<3, 3>(0, 0);
+		Eigen::Vector3d t = can_view.pose_6d.block<3, 1>(0, 3);
 
-		Eigen::Vector3d n = -t.normalized();  // normal vector
+		Eigen::Vector3d n = t.normalized();  // normal vector
 
 		// Construct the plane transformation matrix P
 		Eigen::Matrix4d P = Eigen::Matrix4d::Identity();
@@ -265,7 +277,7 @@ public:
 		Eigen::Vector2d H_t = H.block<2, 1>(0, 2);
 
 		// Project translation vector H_t onto the plane defined by camera pose
-		Eigen::Vector3d H_t_3d = Eigen::Vector3d::Zero();
+		Eigen::Vector3d H_t_3d = Eigen::Vector3d::Identity();
 		H_t_3d.head(2) = H_t;  // embed 2D translation into 3D
 
 		// Project H_t_3d onto the plane
@@ -277,109 +289,252 @@ public:
 		transform.block<3, 1>(0, 3) = H_t_3d;  // embed translated vector into 3D translation
 
 		// Apply transform to the camera pose to get the transformed camera pose
-		View output_view;
-		output_view.pose_6d = transform * P;
-		return output_view;
+		View applied_view;
+		applied_view.pose_6d = transform * P;
+		return applied_view;
 	}
 
 	// distance
-	View fine_registration(const View & candidate_view){
+	View fine_registration(const View & can_view){
+		View ref_view; // refind view
+		cv::Mat src_img; // cv image from view
+		cv::Mat H_cv; // Homography transform
+		Eigen::Matrix3d H_eigen; // Homography transform as eigen
+
 		spdlog::info("fine registration");
 
-		cv::Mat candidate_image = render_view_image(candidate_view);
-		cv::Mat H_cv = calculateTransformation(candidate_image, target_image);
-		Eigen::Matrix3d H;
-		cv2eigen(H_cv, H);
-		View refined_candiate = applyHomographyToView(candidate_view, H);
+		src_img = render_view_image(can_view);
 
-		return refined_candiate;
+		//H_cv = calculateTransformation(src_img, dst_img, .8f, true);
+		H_cv = alignImages(src_img, dst_img, 100, 1e-4);
+
+		spdlog::info("Homography matrix H_cv:\n{:f} {:f} {:f}\n{:f} {:f} {:f}\n{:f} {:f} {:f}",
+			H_cv.at<double>(0, 0), H_cv.at<double>(0, 1), H_cv.at<double>(0, 2),
+			H_cv.at<double>(1, 0), H_cv.at<double>(1, 1), H_cv.at<double>(1, 2),
+			H_cv.at<double>(2, 0), H_cv.at<double>(2, 1), H_cv.at<double>(2, 2));
+
+		cv2eigen(H_cv, H_eigen);
+		ref_view = applyHomographyToView(can_view, H_eigen);
+		
+		
+
+		is_target(can_view);
+		is_target(ref_view);
+
+		return ref_view;
 	}
 
-	View dfs_next_view(const View & A, const View & B, const View & C, double & best_score) {
-		View D = calculate_new_center(A,B,C);
-		View best_view = D;
-		double tmp_score = 0;
-		double max_score = 0;
-		cv::Mat candidate_image;
+	// Function to load an image using OpenCV
+	torch::Tensor cv2tensor(const cv::Mat & cv_img) {
+		cv_img.convertTo(cv_img, CV_32F, 1.0 / 255.0);
+		torch::Tensor tensor_img = torch::from_blob(cv_img.data, {cv_img.rows, cv_img.cols, 3}, torch::kFloat32);
+		tensor_img = tensor_img.permute({2, 0, 1});
+		return tensor_img.clone();
+	}
 
+	torch::Tensor mat2tensor(const Eigen::Matrix4d &eigen_matrix) {
+		// Extract rotation matrix and translation vector
+		Eigen::Matrix3d rotation_matrix = eigen_matrix.block<3, 3>(0, 0);
+		Eigen::Vector3d translation_vector = eigen_matrix.block<3, 1>(0, 3);
+
+		// Convert rotation matrix to axis-angle representation
+		Eigen::AngleAxisd angle_axis(rotation_matrix);
+		Eigen::Vector3d rotation_vector = angle_axis.axis() * angle_axis.angle();
+
+		// Create a 6D pose tensor
+		torch::Tensor pose = torch::zeros({6}, torch::kCUDA);
+		for (int i = 0; i < 3; ++i) {
+			pose[i] = translation_vector[i];
+			pose[i + 3] = rotation_vector[i];
+		}
+
+		return pose.requires_grad_(true);
+	}
+
+	Eigen::Matrix4d tensor2mat(const torch::Tensor &pose) {
+		// Ensure the tensor is on the CPU and convert to Eigen
+		auto pose_cpu = pose.to(torch::kDouble); // Convert to double precision
+		Eigen::Vector3d translation_vector(pose_cpu[0].item<double>(), pose_cpu[1].item<double>(), pose_cpu[2].item<double>());
+		Eigen::Vector3d rotation_vector(pose_cpu[3].item<double>(), pose_cpu[4].item<double>(), pose_cpu[5].item<double>());
+
+		// Convert rotation vector (axis-angle) to rotation matrix
+		double angle = rotation_vector.norm();
+		Eigen::Vector3d axis = rotation_vector.normalized();
+		Eigen::AngleAxisd angle_axis(angle, axis);
+		Eigen::Matrix3d rotation_matrix = angle_axis.toRotationMatrix();
+
+		// Construct the 4x4 transformation matrix
+		Eigen::Matrix4d eigen_matrix = Eigen::Matrix4d::Identity();
+		eigen_matrix.block<3, 3>(0, 0) = rotation_matrix;
+		eigen_matrix.block<3, 1>(0, 3) = translation_vector;
+
+		return eigen_matrix;
+	}
+
+
+	// Function to save an image using OpenCV
+	void save_image(const torch::Tensor &tensor_img, const std::string &file_path) {
+		torch::Tensor img = tensor_img.permute({1, 2, 0}); // Convert to HxWxC
+		img = img.mul(255).clamp(0, 255).to(torch::kU8);
+		cv::Mat output_img(img.size(0), img.size(1), CV_8UC3, img.data_ptr());
+		cv::imwrite(file_path, output_img);
+	}
+
+	// Loss function to compare rendered image with target image
+	torch::Tensor image_loss(const torch::Tensor &rendered_img, const torch::Tensor &target_img) {
+		return torch::nn::functional::mse_loss(rendered_img, target_img);
+	}
+
+	View fine_regis_diff_rendering(const View can_view){
+		Eigen::Matrix4d can_pos_mat;		
+		torch::Tensor 	can_pos_ten;
+		cv::Mat 		can_img_mat;
+		torch::Tensor 	can_img_ten;
+		torch::Tensor 	dst_img_ten;
+		View ref_view;
+		ref_view.pose_6d = can_view.pose_6d;
+
+		dst_img_ten = cv2tensor(dst_img).to(torch::kCUDA);
+		can_pos_ten = mat2tensor(ref_view.pose_6d);
+
+		torch::optim::Adam optimizer({can_pos_ten}, torch::optim::AdamOptions(1e-2));
+
+		for (int iter = 0; iter < 1000; ++iter) {
+			optimizer.zero_grad();
+
+			can_pos_mat = tensor2mat(can_pos_ten);
+			ref_view.pose_6d = can_pos_mat;
+			can_img_mat = render_view_image(ref_view);
+			can_img_ten = cv2tensor(can_img_mat);
+
+			// Compute the loss
+			torch::Tensor loss = image_loss(can_img_ten, dst_img_ten);
+
+			// Backpropagation
+			loss.backward();
+
+			// Update the pose
+			optimizer.step();
+
+			// Print the loss and current pose
+			std::cout << "Iteration " << iter << ", Loss: " << loss.item<float>() << std::endl;
+			std::cout << "Current Pose: " << can_pos_ten << std::endl;
+		}
+
+
+		// Print the optimized pose
+		std::cout << "Optimized Pose: " << can_pos_ten << std::endl;
+
+		can_pos_mat = tensor2mat(can_pos_ten);
+		ref_view.pose_6d = can_pos_mat;
+
+		is_target(can_view);
+		is_target(ref_view);
+		return ref_view;
+	}
+
+
+	View dfs_next_view(const View & A, const View & B, const View & C, double & max_score) {
+		View D;
+		View max_view;
+		View bst_view;
+		double bst_score = 0;
+		double can_score = 0; // candidate score
+		cv::Mat src_img;
+
+		
+		bst_view = D = calculate_new_center(A,B,C);
 		View views[] = { A, B, C, D };
     
-		for (const View & view : views) {
-			candidate_image = render_view_image(view);
-			tmp_score = compareImages(target_image, candidate_image);
-			if(tmp_score>max_score)
-				max_score=tmp_score;
+		for (const View & can_view : views) {
+			src_img = render_view_image(can_view);
+			can_score = computeSIFTMatchRatio(src_img, dst_img, .8f, true);
+			if(can_score>bst_score)
+				bst_score = can_score;
+				bst_view = can_view;
 		}
 		
-		spdlog::info("max_score {} vs {} best_score",  max_score, best_score);
+		spdlog::info("bst_score {} vs {} max_score",  bst_score, max_score);
 
-		if (best_score >= max_score)
-			return best_view;
+		if (max_score >= bst_score)
+			return bst_view;
+		max_view = bst_view;
+		max_score = bst_score;
 		spdlog::info("going deeper");
-		
-		best_score = max_score;
+		test_view(max_view, max_score);
 
 		//check for final perfect match if done return early
-
 		std::vector<std::pair<View, View>> edges = {
 			{A, B},
 			{B, C},
 			{C, A}
 		};
 		
-		View candidate_view;
+		View can_view;
+		can_score = max_score;
+		bst_score = max_score;
+
 		for (const auto &edge : edges) {
 			// Call new function if better add score if score well 
-			candidate_view = dfs_next_view(edge.first, edge.second, D, best_score);
+			can_view = dfs_next_view(edge.first, edge.second, D, can_score);
 			
-			if (max_score > best_score)
+			if (bst_score >= can_score)
 				continue;
-			if (best_score > 1.6)
-				View refined_candiate = fine_registration(candidate_view);
-			is_target(candidate_view);
-			best_view = candidate_view;
+			
+			bst_view = can_view;
+			bst_score = can_score;
 		}
+		
+		if (max_score >= bst_score)
+			return max_view;
 
-		return best_view;
+		max_view = fine_regis_diff_rendering(bst_view);
+		src_img = render_view_image(bst_view);
+		max_score = computeSIFTMatchRatio(src_img, dst_img, .8f, true);
+		return max_view;
 	}
 
 
 	// depth first search
 	void dfs() {
-		// Number of triangles to look at (e.g., 4 for a pyramid with a square base)
-		size_t base_view_count = 4; // You can change this to any number
-		std::vector<View> search_views(base_view_count + 1); // +1 for the top view
+		size_t view_num = 4; // Number of triangles to look at (e.g., 4 for a pyramid with a square base)
+		std::vector<View> search_views(view_num + 1); // +1 for the top view
 
 		// Create base views dynamically
-		for (size_t i = 0; i < base_view_count; ++i) {
-			double angle = (2.0 * M_PI * i) / base_view_count;
+		for (size_t i = 0; i < view_num; ++i) {
+			double angle = (2.0 * M_PI * i) / view_num;
 			Eigen::Vector3d position(std::cos(angle), std::sin(angle), 0.0);
 			search_views[i].compute_pose_from_positon_and_object_center(position.normalized() * 3.0, Eigen::Vector3d(1e-100, 1e-100, 1e-100));
 		}
 
 		// Create top view
-		search_views[base_view_count].compute_pose_from_positon_and_object_center(Eigen::Vector3d(0.0, 0.0, 1.0) * 3.0, Eigen::Vector3d(1e-100, 1e-100, 1e-100));
+		search_views[view_num].compute_pose_from_positon_and_object_center(Eigen::Vector3d(0.0, 0.0, 1.0) * 3.0, Eigen::Vector3d(1e-100, 1e-100, 1e-100));
 
-		double best_score = 0;
-		double tmp_score = 0;
-		View best_view;
+		View max_view;
+		double max_score = 0;
+		View can_view;
+		double can_score = 0;
 
-		for (size_t i = 0; i < base_view_count; ++i) {
-			size_t next_index = (i + 1) % base_view_count;
-			//tmp_score = 0;
-			best_view = dfs_next_view(search_views[i], search_views[next_index], search_views[base_view_count], tmp_score);
+		for (size_t i = 0; i < view_num; ++i) {
+			size_t next_index = (i + 1) % view_num;
+			//can_score = 0;
+			can_view = dfs_next_view(search_views[i], search_views[next_index], search_views[view_num], can_score);
 
-			spdlog::info("Best score for iteration {} is {}", i, tmp_score);
-			if (tmp_score > best_score){
-				selected_views.push_back(best_view);
-				best_score = tmp_score;
+			spdlog::info("Best score for iteration {} is {}", i, can_score);
+			if (can_score > max_score){
+				max_view = can_view;
+				max_score = can_score;
 			}
 		}
+		is_target(can_view);
+		output_view = fine_registration(can_view);
+		is_target(output_view);
 	}
 
 };
 
 void task2(string object_name, int test_num) {
+	spdlog::info("Version {}", 4);
 	// Create a perception simulator
 	Perception* perception_simulator = new Perception("./3d_models/" + object_name + ".ply");
 
@@ -393,14 +548,10 @@ void task2(string object_name, int test_num) {
 		view_planning_simulator.dfs();
 		// Save the selected views
 		ofstream fout("./task2/selected_views/" + object_name + "/test_" + to_string(test_id) + ".txt");
-		fout << view_planning_simulator.selected_views.size() << endl;
-		for (int i = 0; i < view_planning_simulator.selected_views.size(); i++) {
-			fout << view_planning_simulator.selected_views[i].pose_6d << endl;
-			cout << view_planning_simulator.selected_views[i].pose_6d << endl;
-			perception_simulator->render(view_planning_simulator.selected_views[i], "./task2/" + object_name + "/rgb_" + to_string(i) + ".png");
-		}
-		cout << target_view.pose_6d << endl;
+		fout << view_planning_simulator.output_view.pose_6d << endl;
+		cout << view_planning_simulator.output_view.pose_6d << endl;
 		fout.close();
+		perception_simulator->render(view_planning_simulator.output_view, "./task2/selected_views/" + object_name + "/final.png");
 	}
 	// Delete the perception simulator
 	delete perception_simulator;

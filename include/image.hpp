@@ -16,7 +16,8 @@ std::vector<std::vector<cv::DMatch>> matchSIFTDescriptors(const cv::Mat &des1, c
 std::vector<cv::DMatch> applyRatioTest(const std::vector<std::vector<cv::DMatch>> &knnMatches, float rt = RATIO_THRESH);
 size_t computeSIFTMatches(const cv::Mat &src_img, const cv::Mat &dst_img, float rt = RATIO_THRESH);
 bool compareImages(const cv::Mat &src_img, const cv::Mat &dst_img);
-double computeSIFTMatchRatio(const cv::Mat &src_img, const cv::Mat &dst_img, float rt = RATIO_THRESH);
-cv::Mat calculateTransformation(const cv::Mat &src_img, const cv::Mat &dst_img, float rt = RATIO_THRESH);
+double computeSIFTMatchRatio(const cv::Mat &src_img, const cv::Mat &dst_img, float rt = RATIO_THRESH, bool use_HSV = true);
+cv::Mat calculateTransformation(const cv::Mat &src_img, const cv::Mat &dst_img, float rt = RATIO_THRESH, bool use_HSV = true);
+cv::Mat alignImages(const cv::Mat& src_img, cv::Mat dst_img, int max_iterations = 100, double convergence_threshold = 1e-4);
 
 #endif // IMAGE_PROCESSING_HPP
