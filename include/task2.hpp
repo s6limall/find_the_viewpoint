@@ -105,10 +105,7 @@ public:
 
     // Apply H to candiate_view on the plane that is intersecting the view and has the candiate view as the support vector
 	View applyHomographyToView(const View & candidate_view, const Eigen::Matrix3d& H);
-
-    // distance
-	View fine_registration(const View & candidate_view);
-
+    
     // Search for the next view
     View dfs_next_view(const View & A, const View & B, const View & C, size_t & bst_score);
 
