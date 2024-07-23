@@ -333,12 +333,12 @@ public:
 		return new_view;
 	}
 
-	// distance
-	View fine_registration_naive(const View & src_view, int max_iterations, double convergence_threshold){	
+	// Fine registration
+	View fine_registration_naive(const View& src_view, int max_iterations, double convergence_threshold) { 
 		cv::Mat can_img;
 		double can_loss;
 		View can_view;
-		
+
 		cv::Mat bst_img;
 		double bst_loss;
 		View bst_view;
@@ -346,38 +346,56 @@ public:
 		double max_loss;
 
 		double learning_rate;
-		
 
-		bst_loss = std::numeric_limits<double>::infinity();
 		bst_view = src_view;
 		bst_img = render_view_image(bst_view);
 		max_loss = calculateLoss(bst_img, dst_img);
-
+		bst_loss = max_loss;
+		learning_rate = 0.1;
 		int iterations = 0;
+		double prev_loss = max_loss;
+		int stagnation_counter = 0;
+		const int max_stagnation = 10;
+
 		while (iterations < max_iterations) {
 			iterations++;
+			bool improvement_found = false;
+
 			for (int dy = -1; dy <= 1; dy++) {
 				for (int dx = -1; dx <= 1; dx++) {
-					learning_rate = std::min(max_loss / 1'000'000'000.0, 1.0);
-					can_view = shift_view(bst_view, dy * 0.1, dy * 0.1);
+					if (dy == 0 && dx == 0) continue;
+					can_view = shift_view(bst_view, dy * learning_rate, dx * learning_rate);
 					can_img = render_view_image(can_view);
-					double can_loss = calculateLoss(can_img, dst_img);
-					spdlog::info("loss : {}, lr : {}", can_loss, learning_rate);
-					is_target(can_view);
-					
+					can_loss = calculateLoss(can_img, dst_img);
+
 					if (can_loss < bst_loss) {
 						bst_loss = can_loss;
 						bst_view = can_view;
+						improvement_found = true;
 					}
 				}
 			}
-			
-			// Check for convergence
-			if (abs(max_loss - bst_loss) < convergence_threshold)
-				break;
+
+			if (!improvement_found) {
+				learning_rate *= 0.8;
+			} else {
+				stagnation_counter = 0;
+			}
+
+			spdlog::info("loss: {}, lr: {}", bst_loss, learning_rate);
+			is_target(bst_view);
+
+			if (learning_rate < convergence_threshold || abs(prev_loss - bst_loss) < convergence_threshold) {
+				stagnation_counter++;
+				if (stagnation_counter >= max_stagnation) {
+					spdlog::info("registration converged");
+					break;
+				}
+			}
+
+			prev_loss = bst_loss;
 			max_loss = bst_loss;
 		}
-		
 
 		spdlog::info("Before Fine Registration");
 		is_target(src_view);
@@ -409,8 +427,6 @@ public:
 
 		return ratio;
 	}
-
-
 
 	View dfs_next_view(const View & A, const View & B, const View & C, double & max_score) {
 		View D;
