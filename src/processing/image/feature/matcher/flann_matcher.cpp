@@ -12,7 +12,7 @@ namespace processing::image {
     }
 
     // Ratio Test
-    std::vector<cv::DMatch> FLANNMatcher::filterMatches(const std::vector<std::vector<cv::DMatch> > &knnMatches,
+    std::vector<cv::DMatch> FLANNMatcher::filterMatches(const std::vector<std::vector<cv::DMatch>> &knnMatches,
                                                         const float ratioThresh) noexcept {
         std::vector<cv::DMatch> goodMatches;
         goodMatches.reserve(knnMatches.size());
@@ -24,13 +24,14 @@ namespace processing::image {
         return goodMatches;
     }
 
-    std::vector<std::vector<cv::DMatch> > FLANNMatcher::knnMatch(const cv::Mat &desc1, const cv::Mat &desc2, int k) {
-        int trees = std::min(5, std::max(1, desc1.rows / 1000)); // Adapt the number of trees based on the dataset size
-        cv::Ptr<cv::flann::IndexParams> indexParams = cv::makePtr<cv::flann::KDTreeIndexParams>(trees);
-        cv::Ptr<cv::flann::SearchParams> searchParams = cv::makePtr<cv::flann::SearchParams>();
-        cv::FlannBasedMatcher matcher(indexParams, searchParams);
+    std::vector<std::vector<cv::DMatch>> FLANNMatcher::knnMatch(const cv::Mat &desc1, const cv::Mat &desc2, int k) {
+        const int trees =
+                std::min(5, std::max(1, desc1.rows / 1000)); // Adapt the number of trees based on the dataset size
+        const cv::Ptr<cv::flann::IndexParams> indexParams = cv::makePtr<cv::flann::KDTreeIndexParams>(trees);
+        const cv::Ptr<cv::flann::SearchParams> searchParams = cv::makePtr<cv::flann::SearchParams>();
+        const cv::FlannBasedMatcher matcher(indexParams, searchParams);
 
-        std::vector<std::vector<cv::DMatch> > knnMatches;
+        std::vector<std::vector<cv::DMatch>> knnMatches;
         matcher.knnMatch(desc1, desc2, knnMatches, k);
         return knnMatches;
     }
@@ -58,4 +59,4 @@ namespace processing::image {
 
         return goodMatches;
     }
-}
+} // namespace processing::image
