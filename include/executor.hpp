@@ -35,11 +35,11 @@ private:
     using Images = std::vector<Image<>>;
 
     static std::once_flag init_flag_;
+    static double radius_;
     static Image<> target_;
-    // static std::shared_ptr<core::Camera> camera_;
     static std::unique_ptr<processing::image::ImageComparator> comparator_;
     static std::unique_ptr<processing::image::FeatureExtractor> extractor_;
-    static double distance_;
+    static std::unique_ptr<processing::image::FeatureMatcher> matcher_;
 
     Executor() = default;
 
