@@ -13,7 +13,7 @@ project(find_the_viewpoint LANGUAGES CXX)
 message(STATUS "Setting up the project ${PROJECT_NAME}")
 
 # Set the C++ standard
-set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
@@ -68,7 +68,7 @@ include(${CMAKE_SOURCE_DIR}/cmake/Utilities.cmake)           # Utility functions
 
 # Enable Unity builds for faster compilation
 message(STATUS "Enabling Unity builds for faster compilation")
-set_target_properties(${PROJECT_NAME} PROPERTIES UNITY_BUILD ONN)
+set_target_properties(${PROJECT_NAME} PROPERTIES UNITY_BUILD ON)
 
 # Custom target to clean up binary directories
 add_custom_target(clean_all
