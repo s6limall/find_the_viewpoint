@@ -77,7 +77,8 @@ namespace common::logging {
         if (logger_) {
             spdlog::source_loc source{file, line, func};
             if constexpr (sizeof...(args) > 0) {
-                logger_->log(source, level, fmt, std::forward<Args>(args)...);
+                auto formatted_string = fmt::vformat(fmt, fmt::make_format_args(args...));
+                logger_->log(source, level, formatted_string);
             } else {
                 logger_->log(source, level, fmt);
             }
