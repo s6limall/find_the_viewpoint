@@ -9,7 +9,6 @@
 #find_package(fmt REQUIRED)
 #find_package(spdlog REQUIRED)
 #find_package(yaml-cpp REQUIRED)
-find_package(libcmaes REQUIRED)
 
 # Check if the dependencies have already been included to avoid conflicts
 if (NOT TARGET OpenCV)
@@ -53,7 +52,6 @@ set(INCLUDE_DIRS
         ${JSONCPP_INCLUDE_DIRS}
         ${FREETYPE_INCLUDE_DIRS}
         ${SPDLOG_INCLUDE_DIRS}
-        ${libcmaes_INCLUDE_DIRS}
 )
 
 set(LIBRARIES
@@ -61,7 +59,6 @@ set(LIBRARIES
         ${PCL_LIBRARIES}
         ${JSONCPP_LIBRARIES}
         ${FREETYPE_LIBRARIES}
-        ${libcmaes_LIBRARIES}
         spdlog::spdlog
         yaml-cpp
         fmt::fmt
