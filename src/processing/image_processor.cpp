@@ -1,6 +1,7 @@
 // File: processing/image_processor.cpp
 
 #include "processing/image_processor.hpp"
+#include <memory>
 #include <opencv2/opencv.hpp>
 #include <vector>
 
@@ -9,6 +10,8 @@
 #include "processing/image/comparison/feature_comparator.hpp"
 #include "processing/image/comparison/mse_comparator.hpp"
 #include "processing/image/comparison/ssim_comparator.hpp"
+#include "processing/image/feature/extractor/akaze_extractor.hpp"
+#include "processing/image/feature/matcher/flann_matcher.hpp"
 
 namespace processing::image {
 
@@ -22,11 +25,14 @@ namespace processing::image {
         LOG_TRACE("Using image comparator: {}", comparatorType);
 
         // Factory map for creating the appropriate comparator
-        static const std::map<std::string, std::function<std::unique_ptr<ImageComparator>()> > comparatorFactory = {
+        static const std::map<std::string, std::function<std::unique_ptr<ImageComparator>()>> comparatorFactory = {
                 {"MSE", []() { return std::make_unique<MSEComparator>(); }},
                 {"SSIM", []() { return std::make_unique<SSIMComparator>(); }},
-                {"FeatureBased", []() { return std::make_unique<FeatureComparator>(); }}
-        };
+                {"FeatureBased", []() {
+                     auto extractor = std::make_unique<AKAZEExtractor>();
+                     auto matcher = std::make_unique<FLANNMatcher>();
+                     return std::make_unique<FeatureComparator>(std::move(extractor), std::move(matcher));
+                 }}};
 
         auto it = comparatorFactory.find(comparatorType);
         if (it == comparatorFactory.end()) {
@@ -42,20 +48,18 @@ namespace processing::image {
         const std::map<std::string, double> thresholds = {
                 {"MSE", config::get("image_comparator.mse.threshold", 1000.0)},
                 {"SSIM", config::get("image_comparator.ssim.threshold", 0.5)},
-                {"FeatureBased", config::get("image_comparator.feature_based.threshold", 0.5)}
-        };
+                {"FeatureBased", config::get("image_comparator.feature_based.threshold", 0.5)}};
 
         const double threshold = thresholds.at(comparatorType);
 
         LOG_TRACE("Threshold: {}", threshold);
 
         // Determine if the images match based on the comparator type and threshold
-        const bool isMatch = (comparatorType == "SSIM" || comparatorType == "FeatureBased")
-                                 ? (similarity >= threshold)
-                                 : (similarity <= threshold);
+        const bool isMatch = (comparatorType == "SSIM" || comparatorType == "FeatureBased") ? (similarity >= threshold)
+                                                                                            : (similarity <= threshold);
 
         LOG_DEBUG("Returning with isMatch: {}, similarity: {}", isMatch, similarity);
 
         return std::make_pair(isMatch, similarity);
     }
-}
+} // namespace processing::image
