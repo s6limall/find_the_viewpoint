@@ -1,3 +1,5 @@
+// File: types/viewpoint.hpp
+
 #ifndef VIEWPOINT_HPP
 #define VIEWPOINT_HPP
 
@@ -16,8 +18,6 @@ class ViewPoint {
     static_assert(std::is_arithmetic_v<T>, "ViewPoint template must be numeric");
 
 public:
-    EIGEN_MAKE_ALIGNED_OPERATOR_NEW
-
     // Constructors
     ViewPoint() = delete;
 
@@ -125,13 +125,15 @@ private:
     int cluster_id_; // -1 = unset, -2 = noise, >= 0 = cluster_id
 
     // Validation
-    void validatePosition() const {
+    constexpr void validatePosition() const {
         if (position_.hasNaN()) {
-            LOG_ERROR("Error initializing ViewPoint: position must not contain NaN values.");
+            LOG_ERROR("Error initializing ViewPoint: position must not contain NaN values. Received: ({}, {}, {}).",
+                      position_.x(), position_.y(), position_.z());
             throw std::invalid_argument("Position must not contain NaN values.");
         }
         if (position_.isZero()) {
-            LOG_WARN("ViewPoint's position is the zero vector.");
+            LOG_WARN("ViewPoint's position is the zero vector: ({}, {}, {}).", position_.x(), position_.y(),
+                     position_.z());
         }
     }
 };
