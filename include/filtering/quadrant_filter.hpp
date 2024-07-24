@@ -4,38 +4,39 @@
 #define QUADRANT_FILTER_HPP
 
 #include <Eigen/Core>
+#include <algorithm>
 #include <functional>
 #include <vector>
 #include "filter.hpp"
+#include "types/viewpoint.hpp"
 
-template<typename T>
-class QuadrantFilter final : public Filter<T> {
+template<typename T = double>
+class QuadrantFilter final : public Filter<ViewPoint<T>> {
 public:
-    std::vector<T> filter(const std::vector<T> &samples, std::function<double(const T &)> evaluation_function) override;
+    std::vector<ViewPoint<T>> filter(const std::vector<ViewPoint<T>> &samples,
+                                     std::function<double(const ViewPoint<T> &)> evaluation_function) override;
 
 private:
-    std::vector<std::vector<T>> partitionIntoQuadrants(const std::vector<T> &samples);
-
-    std::vector<T> selectBestQuadrants(const std::vector<std::vector<T>> &quadrants,
-                                       std::function<double(const T &)> evaluation_function);
+    std::vector<std::vector<ViewPoint<T>>> partitionIntoQuadrants(const std::vector<ViewPoint<T>> &samples);
+    std::vector<ViewPoint<T>> selectBestQuadrants(const std::vector<std::vector<ViewPoint<T>>> &quadrants,
+                                                  std::function<double(const ViewPoint<T> &)> evaluation_function);
 };
 
 template<typename T>
-std::vector<T> QuadrantFilter<T>::filter(const std::vector<T> &samples,
-                                         std::function<double(const T &)> evaluation_function) {
+std::vector<ViewPoint<T>> QuadrantFilter<T>::filter(const std::vector<ViewPoint<T>> &samples,
+                                                    std::function<double(const ViewPoint<T> &)> evaluation_function) {
     auto quadrants = partitionIntoQuadrants(samples);
     return selectBestQuadrants(quadrants, evaluation_function);
 }
 
 template<typename T>
-std::vector<std::vector<T>> QuadrantFilter<T>::partitionIntoQuadrants(const std::vector<T> &samples) {
-    // Placeholder: Implement logic to partition samples into quadrants.
-    std::vector<std::vector<T>> quadrants(4); // Assuming 4 quadrants for simplicity.
+std::vector<std::vector<ViewPoint<T>>>
+QuadrantFilter<T>::partitionIntoQuadrants(const std::vector<ViewPoint<T>> &samples) {
+    std::vector<std::vector<ViewPoint<T>>> quadrants(8); // Assuming 8 quadrants for finer granularity
 
     for (const auto &sample: samples) {
-        const auto &position = sample.getViewPoint().getPosition();
-        // Determine the quadrant based on the position coordinates.
-        int quadrant_index = (position.x() >= 0 ? 1 : 0) + (position.y() >= 0 ? 2 : 0);
+        const auto &position = sample.getPosition();
+        int quadrant_index = (position.x() >= 0 ? 1 : 0) + (position.y() >= 0 ? 2 : 0) + (position.z() >= 0 ? 4 : 0);
         quadrants[quadrant_index].push_back(sample);
     }
 
@@ -43,8 +44,9 @@ std::vector<std::vector<T>> QuadrantFilter<T>::partitionIntoQuadrants(const std:
 }
 
 template<typename T>
-std::vector<T> QuadrantFilter<T>::selectBestQuadrants(const std::vector<std::vector<T>> &quadrants,
-                                                      std::function<double(const T &)> evaluation_function) {
+std::vector<ViewPoint<T>>
+QuadrantFilter<T>::selectBestQuadrants(const std::vector<std::vector<ViewPoint<T>>> &quadrants,
+                                       std::function<double(const ViewPoint<T> &)> evaluation_function) {
     std::vector<std::pair<double, size_t>> quadrant_scores(quadrants.size());
 
     for (size_t i = 0; i < quadrants.size(); ++i) {
@@ -55,15 +57,11 @@ std::vector<T> QuadrantFilter<T>::selectBestQuadrants(const std::vector<std::vec
         quadrant_scores[i] = {total_score / quadrants[i].size(), i};
     }
 
-    // Sort quadrants by their average scores.
-    std::sort(quadrant_scores.begin(), quadrant_scores.end(), std::greater<>());
+    std::ranges::sort(quadrant_scores.begin(), quadrant_scores.end(), std::greater<>());
 
-    // Select the best quadrants.
-    std::vector<T> filtered_samples;
+    std::vector<ViewPoint<T>> filtered_samples;
     for (size_t i = 0; i < quadrants.size() / 2; ++i) {
-        // Retain top 50% quadrants.
-        filtered_samples.insert(filtered_samples.end(),
-                                quadrants[quadrant_scores[i].second].begin(),
+        filtered_samples.insert(filtered_samples.end(), quadrants[quadrant_scores[i].second].begin(),
                                 quadrants[quadrant_scores[i].second].end());
     }
 
