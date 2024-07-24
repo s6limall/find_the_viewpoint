@@ -1,29 +1,29 @@
-// File: processing/image/comparison/feature_comparator.hpp
+// File: processing/image/feature_comparator.hpp
 
-#ifndef IMAGE_COMPARATOR_FEATURE_MATCHING_HPP
-#define IMAGE_COMPARATOR_FEATURE_MATCHING_HPP
-
-#include <numeric>
-#include <stdexcept>
-#include <map>
-#include <memory>
-#include <future>
+#ifndef FEATURE_COMPARATOR_HPP
+#define FEATURE_COMPARATOR_HPP
 
 #include "processing/image/comparator.hpp"
 #include "processing/image/feature/extractor.hpp"
 #include "processing/image/feature/matcher.hpp"
-#include "processing/image/feature/extractor/sift_extractor.hpp"
-#include "processing/image/feature/extractor/orb_extractor.hpp"
-#include "processing/image/feature/matcher/flann_matcher.hpp"
-#include "processing/image/feature/matcher/bf_matcher.hpp"
+#include "types/image.hpp"
 
 namespace processing::image {
+
     class FeatureComparator final : public ImageComparator {
     public:
-        ~FeatureComparator() override = default;
+        FeatureComparator(std::unique_ptr<FeatureExtractor> extractor, std::unique_ptr<FeatureMatcher> matcher);
 
         [[nodiscard]] double compare(const cv::Mat &image1, const cv::Mat &image2) const override;
-    };
-}
+        [[nodiscard]] double compare(const Image<> &img1, const Image<> &img2) const;
 
-#endif //IMAGE_COMPARATOR_FEATURE_MATCHING_HPP
+    private:
+        std::unique_ptr<FeatureExtractor> extractor_;
+        std::unique_ptr<FeatureMatcher> matcher_;
+
+        [[nodiscard]] double compareDescriptors(const cv::Mat &descriptors1, const cv::Mat &descriptors2,
+                                                size_t keypoints1, size_t keypoints2) const;
+    };
+} // namespace processing::image
+
+#endif // FEATURE_COMPARATOR_HPP
