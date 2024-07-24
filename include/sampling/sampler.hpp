@@ -3,93 +3,67 @@
 #ifndef SAMPLING_SAMPLER_HPP
 #define SAMPLING_SAMPLER_HPP
 
+#include <Eigen/Dense>
 #include <algorithm>
-#include <cmath>
+#include <cassert>
 #include <functional>
-#include <iterator>
 #include <numeric>
-#include <optional>
-#include <stdexcept>
-#include <string_view>
 #include <vector>
 
-#include "common/logging/logger.hpp"
-#include "transformer.hpp"
+template<typename T = double>
+class Sampler {
+public:
+    using TransformFunction =
+            std::function<Eigen::Matrix<T, Eigen::Dynamic, 1>(const Eigen::Matrix<T, Eigen::Dynamic, 1> &)>;
 
-namespace sampling {
+    Sampler(const std::vector<T> &lower_bounds, const std::vector<T> &upper_bounds) :
+        lower_bounds_(lower_bounds), upper_bounds_(upper_bounds), dimensions_(lower_bounds.size()) {
+        assert(lower_bounds.size() == upper_bounds.size() && "Lower bounds and upper bounds must have the same size.");
+    }
 
-    template<typename T>
-    using Adaptation = std::function<void(std::vector<T> &)>;
-    template<typename T>
-    using Transformation = std::optional<std::function<std::vector<T>(const std::vector<T> &)>>;
-    template<typename T>
-    using Points = std::vector<std::vector<T>>;
+    virtual ~Sampler() = default;
 
-    class Sampler {
-    public:
-        explicit Sampler(const Transformation<double> &transform = std::nullopt);
+    virtual Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic> generate(size_t num_samples,
+                                                                      TransformFunction transform = nullptr) = 0;
 
-        // TODO: std::optional cannot hold abstract types
-        // explicit Sampler(const std::optional<Transformer<double> > &transformer = std::nullopt);
+    T discrepancy(const Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic> &samples) const {
+        size_t num_samples = samples.cols();
+        if (num_samples == 0 || dimensions_ == 0) {
+            throw std::invalid_argument("Samples cannot be empty.");
+        }
 
-        virtual ~Sampler() = default;
+        T max_discrepancy = 0.0;
 
-        /**
-         * @brief Generates a specified number of samples within the given bounds.
-         * @param num_samples Number of samples to generate.
-         * @param lower_bounds Lower bounds of the sample space.
-         * @param upper_bounds Upper bounds of the sample space.
-         * @return A vector of generated samples.
-         */
-        virtual Points<double> generate(size_t num_samples, const std::vector<double> &lower_bounds,
-                                        const std::vector<double> &upper_bounds) = 0;
+        for (size_t i = 0; i < num_samples; ++i) {
+            Eigen::Matrix<T, Eigen::Dynamic, 1> point = samples.col(i);
+            T volume = point.prod();
 
-        /**
-         * @brief Generates the next sample in the sequence.
-         * @return The next generated sample.
-         */
-        virtual std::vector<double> next() = 0;
+            size_t count = 0;
+            for (size_t j = 0; j < num_samples; ++j) {
+                if ((samples.col(j).array() <= point.array()).all()) {
+                    count++;
+                }
+            }
 
-        /**
-         * @brief Resets the sampler to its initial state.
-         */
-        void reset() noexcept;
+            T discrepancy = std::abs(static_cast<T>(count) / num_samples - volume);
+            max_discrepancy = std::max(max_discrepancy, discrepancy);
+        }
 
-        /**
-         * @brief Sets the adaptive mode with an optional custom adaptation function.
-         * @param adaptive Enable or disable adaptive mode.
-         * @param adapt Custom adaptation function.
-         * @return Reference to the Sampler instance.
-         */
-        Sampler &setAdaptive(bool adaptive, Adaptation<double> adapt = nullptr) noexcept;
+        return max_discrepancy;
+    }
 
-        /**
-         * @brief Calculates the star discrepancy of the generated samples.
-         * @return The star discrepancy.
-         */
-        [[nodiscard]] static double calculateDiscrepancy(const Points<double> &samples);
+protected:
+    std::vector<T> lower_bounds_;
+    std::vector<T> upper_bounds_;
+    size_t dimensions_;
+    Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic> samples;
 
-        [[nodiscard]] double discrepancy() const;
-
-    protected:
-        bool adaptive_ = false;
-        std::vector<double> lower_bounds_;
-        std::vector<double> upper_bounds_;
-        Points<double> samples_;
-        size_t current_index_ = 0;
-
-        Transformation<double> transform_;
-        Adaptation<double> adapt_;
-
-        virtual void adapt(std::vector<double> &sample) = 0;
-
-        /**
-         * @brief Validates that the bounds are correct.
-         * @throws std::invalid_argument if bounds are incorrect.
-         */
-        void validateBounds() const;
-    };
-
-} // namespace sampling
-
+    Eigen::Matrix<T, Eigen::Dynamic, 1> mapToBounds(const Eigen::Matrix<T, Eigen::Dynamic, 1> &point) const {
+        Eigen::Matrix<T, Eigen::Dynamic, 1> mapped_point(dimensions_);
+        for (size_t i = 0; i < dimensions_; ++i) {
+            mapped_point(i) = lower_bounds_[i] + point(i) * (upper_bounds_[i] - lower_bounds_[i]);
+        }
+        return mapped_point;
+    }
+};
 #endif // SAMPLING_SAMPLER_HPP
