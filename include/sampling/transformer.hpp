@@ -3,42 +3,36 @@
 #ifndef TRANSFORMER_HPP
 #define TRANSFORMER_HPP
 
+#include <Eigen/Dense>
+#include <algorithm>
 #include <stdexcept>
 #include <vector>
 
-namespace sampling {
+template<typename T = double>
+class Transformer {
+public:
+    virtual ~Transformer() = default;
 
-    template<typename T>
-    class Transformer {
-    public:
-        virtual ~Transformer() = default;
+    /**
+     * @brief Transforms the given sample.
+     * @param sample The sample to be transformed.
+     * @return The transformed sample.
+     * @throws std::runtime_error if transformation fails.
+     */
+    virtual Eigen::Matrix<T, Eigen::Dynamic, 1> transform(const Eigen::Matrix<T, Eigen::Dynamic, 1> &sample) const = 0;
 
-        /**
-         * @brief Transforms the given sample.
-         * @param sample The sample to be transformed.
-         * @return The transformed sample.
-         * @throws std::runtime_error if transformation fails.
-         */
-        virtual std::vector<T> transform(const std::vector<T> &sample) const = 0;
-
-        /**
-         * @brief Validates the given sample.
-         * @param sample The sample to be validated.
-         * @throws std::invalid_argument if the sample is invalid.
-         */
-        virtual void validate(const std::vector<T> &sample) const {
-            if (sample.size() != 3) {
-                throw std::invalid_argument("Sample must have exactly three dimensions.");
-            }
-            for (const auto &value: sample) {
-                if (value < 0.0 || value > 1.0) {
-                    throw std::invalid_argument("Sample values must be in the range [0, 1].");
-                }
-            }
+    /**
+     * @brief Validates the given sample.
+     * @param sample The sample to be validated.
+     * @throws std::invalid_argument if the sample is invalid.
+     */
+    virtual void validate(const Eigen::Matrix<T, Eigen::Dynamic, 1> &sample) const {
+        if (sample.size() < 1) {
+            LOG_ERROR("Sample must have at least one dimension. Received: {}", sample.size());
+            throw std::invalid_argument("Sample must have at least one dimension.");
         }
-    };
-
-} // namespace sampling
-
+        LOG_DEBUG("Sample ({}, {}, {}) validated successfully.", sample.x(), sample.y(), sample.z());
+    }
+};
 
 #endif // TRANSFORMER_HPP
