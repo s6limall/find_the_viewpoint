@@ -26,6 +26,14 @@ public:
     virtual Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic> generate(size_t num_samples,
                                                                       TransformFunction transform = nullptr) = 0;
 
+    T discrepancy() const {
+        if (samples_.cols() == 0) {
+            LOG_ERROR("No samples_ generated.");
+            throw std::invalid_argument("No samples_ generated.");
+        }
+        return discrepancy(samples_);
+    }
+
     T discrepancy(const Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic> &samples) const {
         size_t num_samples = samples.cols();
         if (num_samples == 0 || dimensions_ == 0) {
@@ -56,7 +64,7 @@ protected:
     std::vector<T> lower_bounds_;
     std::vector<T> upper_bounds_;
     size_t dimensions_;
-    Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic> samples;
+    Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic> samples_;
 
     Eigen::Matrix<T, Eigen::Dynamic, 1> mapToBounds(const Eigen::Matrix<T, Eigen::Dynamic, 1> &point) const {
         Eigen::Matrix<T, Eigen::Dynamic, 1> mapped_point(dimensions_);
