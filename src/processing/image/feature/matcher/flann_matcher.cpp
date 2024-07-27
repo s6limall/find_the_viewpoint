@@ -1,7 +1,6 @@
 // File: processing/image/feature/matcher/flann.cpp
 
 #include "processing/image/feature/matcher/flann_matcher.hpp"
-#include "config/configuration.hpp"
 
 namespace processing::image {
 

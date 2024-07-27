@@ -4,7 +4,7 @@
 #define FEATURE_MATCHER_FLANN_HPP
 
 #include <exception>
-#include <spdlog/spdlog.h>
+#include "config/configuration.hpp"
 #include "processing/image/feature/matcher.hpp"
 
 namespace processing::image {

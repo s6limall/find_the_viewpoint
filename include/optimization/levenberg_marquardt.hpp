@@ -2,11 +2,11 @@
 #define LEVENBERG_MARQUARDT_HPP
 
 #include <Eigen/Dense>
-#include <vector>
-#include <optional>
 #include <algorithm>
 #include <cmath>
 #include <limits>
+#include <optional>
+#include <vector>
 
 namespace optimization {
 
@@ -34,18 +34,17 @@ namespace optimization {
             bool converged;
         };
 
-        explicit LevenbergMarquardt(const Options &options = Options{}) :
-            options_{options} {
-        }
+        explicit LevenbergMarquardt(const Options &options = Options{}) : options_{options} {}
 
         template<typename Camera>
-        std::optional<Result> optimize(const IsometryType &initial_pose,
-                                       const std::vector<VectorType> &world_points,
-                                       const std::vector<Eigen::Matrix<Scalar, 2, 1> > &image_points,
+        std::optional<Result> optimize(const IsometryType &initial_pose, const std::vector<VectorType> &world_points,
+                                       const std::vector<Eigen::Matrix<Scalar, 2, 1>> &image_points,
                                        const Camera &camera) const noexcept {
             if (world_points.size() != image_points.size() || world_points.empty()) {
-                return std::nullopt;;
+                return std::nullopt;
             }
+
+            LOG_DEBUG("Optimizing using Levenberg-Marquardt...");
 
             auto current_pose = initial_pose;
             auto lambda = options_.initial_lambda;
@@ -94,6 +93,9 @@ namespace optimization {
             result.pose = current_pose;
             result.final_error = computeError(current_pose, world_points, image_points, camera);
 
+            LOG_DEBUG("Optimization completed in {} iterations. Final error: {}", result.iterations,
+                      result.final_error);
+
             return result;
         }
 
@@ -101,24 +103,21 @@ namespace optimization {
         Options options_;
 
         template<typename Camera>
-        static Scalar computeError(const IsometryType &pose,
-                                   const std::vector<VectorType> &world_points,
-                                   const std::vector<Eigen::Matrix<Scalar, 2, 1> > &image_points,
+        static Scalar computeError(const IsometryType &pose, const std::vector<VectorType> &world_points,
+                                   const std::vector<Eigen::Matrix<Scalar, 2, 1>> &image_points,
                                    const Camera &camera) noexcept {
-            return std::transform_reduce(world_points.begin(), world_points.end(), image_points.begin(),
-                                         static_cast<Scalar>(0.0),
-                                         std::plus<>(),
-                                         [&pose, &camera](const auto &wp, const auto &ip) {
-                                             return (camera.project(pose * wp) - ip).squaredNorm();
-                                         }) / world_points.size();
+            Scalar total_error = 0;
+            for (size_t i = 0; i < world_points.size(); ++i) {
+                total_error += (camera.project(pose * world_points[i]) - image_points[i]).squaredNorm();
+            }
+            return total_error / world_points.size();
         }
 
+
         template<typename Camera>
-        static Scalar computeErrorAndJacobian(const IsometryType &pose,
-                                              const std::vector<VectorType> &world_points,
-                                              const std::vector<Eigen::Matrix<Scalar, 2, 1> > &image_points,
-                                              const Camera &camera,
-                                              Eigen::Matrix<Scalar, Eigen::Dynamic, 6> &jacobian,
+        static Scalar computeErrorAndJacobian(const IsometryType &pose, const std::vector<VectorType> &world_points,
+                                              const std::vector<Eigen::Matrix<Scalar, 2, 1>> &image_points,
+                                              const Camera &camera, Eigen::Matrix<Scalar, Eigen::Dynamic, 6> &jacobian,
                                               Eigen::Matrix<Scalar, Eigen::Dynamic, 1> &error_vector) noexcept {
             Scalar total_error = 0.0;
             for (size_t i = 0; i < world_points.size(); ++i) {
@@ -145,9 +144,7 @@ namespace optimization {
 
         static MatrixType skewSymmetric(const VectorType &v) noexcept {
             MatrixType m;
-            m << Scalar(0), -v.z(), v.y(),
-                    v.z(), Scalar(0), -v.x(),
-                    -v.y(), v.x(), Scalar(0);
+            m << Scalar(0), -v.z(), v.y(), v.z(), Scalar(0), -v.x(), -v.y(), v.x(), Scalar(0);
             return m;
         }
 
@@ -166,8 +163,8 @@ namespace optimization {
                 const MatrixType phi_hat = skewSymmetric(phi);
                 R = MatrixType::Identity() + std::sin(theta) / theta * phi_hat +
                     (Scalar(1) - std::cos(theta)) / (theta * theta) * phi_hat * phi_hat;
-                const MatrixType V = MatrixType::Identity() + (Scalar(1) - std::cos(theta)) / (theta * theta) * phi_hat
-                                     +
+                const MatrixType V = MatrixType::Identity() +
+                                     (Scalar(1) - std::cos(theta)) / (theta * theta) * phi_hat +
                                      (theta - std::sin(theta)) / (theta * theta * theta) * phi_hat * phi_hat;
                 t = V * rho;
             }
@@ -179,6 +176,6 @@ namespace optimization {
         }
     };
 
-}
+} // namespace optimization
 
 #endif // LEVENBERG_MARQUARDT_HPP

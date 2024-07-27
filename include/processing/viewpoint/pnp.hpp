@@ -7,7 +7,6 @@
 #include <opencv2/core/eigen.hpp>
 #include <opencv2/opencv.hpp>
 #include <optional>
-
 #include "common/utilities/matrix.hpp"
 #include "core/camera.hpp"
 
@@ -16,7 +15,7 @@ namespace processing::viewpoint {
     class PnPSolver {
     public:
         struct Config {
-            int ransacIterations = 100;
+            int ransacIterations = 10; // Reduced number of iterations
             double reprojectionError = 8.0;
             double confidence = 0.99;
             cv::SolvePnPMethod pnpMethod = cv::SOLVEPNP_EPNP;
@@ -34,6 +33,8 @@ namespace processing::viewpoint {
                 return std::nullopt;
             }
 
+
+            // TODO: USE .toView()
             std::vector<cv::Point3f> cvObjectPoints;
             std::vector<cv::Point2f> cvImagePoints;
 
@@ -60,14 +61,9 @@ namespace processing::viewpoint {
             // Create distortion coefficients (assume no distortion for now)
             cv::Mat distCoeffs = cv::Mat::zeros(5, 1, CV_64F);
 
-            // Adjust RANSAC parameters
-            int iterationsCount = 500; // Increase iterations
-            float reprojectionError = 8.0; // Increase reprojection error threshold
-            double confidence = 0.99;
-
-            bool success =
-                    cv::solvePnPRansac(cvObjectPoints, cvImagePoints, camera_matrix, distCoeffs, rvec, tvec, false,
-                                       iterationsCount, reprojectionError, confidence, inliers, config_.pnpMethod);
+            bool success = cv::solvePnPRansac(cvObjectPoints, cvImagePoints, camera_matrix, distCoeffs, rvec, tvec,
+                                              false, config_.ransacIterations, config_.reprojectionError,
+                                              config_.confidence, inliers, config_.pnpMethod);
 
             LOG_DEBUG("PnP solution found: {}", success);
 

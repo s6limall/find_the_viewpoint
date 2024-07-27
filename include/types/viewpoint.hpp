@@ -19,8 +19,8 @@ class ViewPoint {
 
 public:
     // Constructors
-    ViewPoint() = delete;
-
+    // ViewPoint() = delete;
+    constexpr ViewPoint() noexcept : position_(Eigen::Matrix<T, 3, 1>::Zero()), score_(0.0), cluster_id_(-1) {}
     constexpr ViewPoint(T x, T y, T z, const double score = 0.0) noexcept :
         position_(x, y, z), score_(score), cluster_id_(-1) {
         validatePosition();
@@ -111,6 +111,16 @@ public:
     [[nodiscard]] core::View toView(const Eigen::Vector3d &object_center = Eigen::Vector3d::Zero()) const noexcept {
         return core::View::fromPosition(position_, object_center);
     }
+
+    // Conversion to Isometry
+    [[nodiscard]] Eigen::Isometry3d toIsometry() const {
+        Eigen::Isometry3d isometry = Eigen::Isometry3d::Identity();
+        const core::View view = toView();
+        isometry.translation() = position_.template cast<double>();
+        isometry.linear() = view.getPose().block<3, 3>(0, 0);
+        return isometry;
+    }
+
 
     // Serialization to string
     [[nodiscard]] std::string toString() const {
