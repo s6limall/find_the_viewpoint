@@ -106,6 +106,20 @@ estimation:
 rendering:
     duration: 0 # Duration of the rendering in ms
 
-
 sampling:
     count: 50
+
+optimization:
+    pso:
+        swarm_size: 10
+        max_iterations: 3
+        local_search_iterations: 5
+        inertia_weight: 0.7
+        cognitive_coefficient: 1.5
+        social_coefficient: 1.5
+        tolerance: 0.2
+        inertia_min: 0.3
+        inertia_max: 0.9
+        early_termination_window: 10
+        early_termination_threshold: 0.2
+        velocity_max: 1.0
