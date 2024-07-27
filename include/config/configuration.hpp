@@ -3,15 +3,15 @@
 #ifndef CONFIGURATION_HPP
 #define CONFIGURATION_HPP
 
-#include <string>
-#include <vector>
-#include <unordered_map>
-#include <yaml-cpp/yaml.h>
-#include <stdexcept>
+#include <filesystem>
 #include <memory>
 #include <mutex>
 #include <optional>
-#include <filesystem>
+#include <stdexcept>
+#include <string>
+#include <unordered_map>
+#include <vector>
+#include <yaml-cpp/yaml.h>
 
 #include "common/logging/logger.hpp"
 
@@ -58,7 +58,6 @@ namespace config {
 
         // Helper function to split keys
         static std::vector<std::string> split(const std::string &str, char delimiter);
-
     };
 
     // Template definitions
@@ -113,6 +112,6 @@ namespace config {
     }
 
 
-}
+} // namespace config
 
 #endif // CONFIGURATION_HPP
