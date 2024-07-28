@@ -1,15 +1,11 @@
-// File: processing/image/feature_comparator.cpp
+// File: processing/image/comparison/feature_comparator.cpp
 
 #include "processing/image/comparison/feature_comparator.hpp"
-#include <algorithm> // for std::clamp
-#include <opencv2/core.hpp>
-#include <opencv2/features2d.hpp>
-#include <stdexcept>
 
 namespace processing::image {
 
-    FeatureComparator::FeatureComparator(std::unique_ptr<FeatureExtractor> extractor,
-                                         std::unique_ptr<FeatureMatcher> matcher) :
+    FeatureComparator::FeatureComparator(std::shared_ptr<FeatureExtractor> extractor,
+                                         std::shared_ptr<FeatureMatcher> matcher) :
         extractor_(std::move(extractor)), matcher_(std::move(matcher)) {}
 
     double FeatureComparator::compare(const cv::Mat &image1, const cv::Mat &image2) const {
@@ -32,24 +28,24 @@ namespace processing::image {
         // Check if descriptors are empty
         if (descriptors1.empty() || descriptors2.empty()) {
             LOG_WARN("Descriptors are empty for one or both images");
-            // throw std::invalid_argument("Descriptors are empty for one or both images");
+            return 0.0;
         }
 
         // Match descriptors
         const auto matches = matcher_->match(descriptors1, descriptors2);
 
-        // Calculate total number of keypoints
-        const size_t totalKeypoints = keypoints1 + keypoints2;
-
-        // Avoid division by zero
-        if (totalKeypoints == 0) {
+        if (matches.empty()) {
+            LOG_WARN("No matches found.");
             return 0.0;
         }
 
-        // Calculate match ratio
-        const double matchRatio = static_cast<double>(matches.size()) / static_cast<double>(totalKeypoints);
+        // Calculate the match quality score
+        const double max_matches = std::min(keypoints1, keypoints2);
+        double score = static_cast<double>(matches.size()) / max_matches;
 
-        // Normalize match ratio to range [0, 1]
-        return std::clamp(matchRatio * 2.0, 0.0, 1.0);
+        // Clamp score to [0, 1]
+        score = std::clamp(score, 0.0, 1.0);
+
+        return score;
     }
 } // namespace processing::image

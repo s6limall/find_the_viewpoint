@@ -28,8 +28,9 @@ namespace processing::image {
 
         // Static factory method to create an extractor object.
         template<typename T>
-        static std::unique_ptr<FeatureExtractor> create() {
-            return std::make_unique<T>();
+        static std::shared_ptr<FeatureExtractor> create() {
+            static_assert(std::is_base_of_v<FeatureExtractor, T>, "T must derive from FeatureMatcher");
+            return std::make_shared<T>();
         }
     };
 } // namespace processing::image

@@ -68,7 +68,7 @@ include(${CMAKE_SOURCE_DIR}/cmake/Utilities.cmake)           # Utility functions
 
 # Enable Unity builds for faster compilation
 message(STATUS "Enabling Unity builds for faster compilation")
-set_target_properties(${PROJECT_NAME} PROPERTIES UNITY_BUILD ON)
+set_target_properties(${PROJECT_NAME} PROPERTIES UNITY_BUILD OFF)
 
 # Custom target to clean up binary directories
 add_custom_target(clean_all

@@ -20,9 +20,10 @@ class Image {
 public:
     Image() noexcept = default;
 
-    Image(cv::Mat image, const std::unique_ptr<FeatureExtractor> &extractor) : image_{validateImage(std::move(image))} {
+    Image(cv::Mat image, const std::shared_ptr<FeatureExtractor> &extractor) : image_{validateImage(std::move(image))} {
         this->detect(extractor);
     }
+
 
     explicit Image(cv::Mat image, const cv::Ptr<cv::Feature2D> &detector = cv::ORB::create()) :
         image_{validateImage(std::move(image))} {
@@ -69,7 +70,7 @@ private:
         return image;
     }
 
-    void detect(const std::unique_ptr<FeatureExtractor> &extractor) {
+    void detect(const std::shared_ptr<FeatureExtractor> &extractor) {
         auto [keypoints, descriptors] = extractor->extract(image_);
         keypoints_ = std::move(keypoints);
         descriptors_ = std::move(descriptors);

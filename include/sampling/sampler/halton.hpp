@@ -22,11 +22,12 @@ public:
 
     Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic> generate(size_t num_samples,
                                                               TransformFunction transform = nullptr) override {
-        this->samples.resize(this->dimensions_, num_samples);
-        fillSamples(this->samples, num_samples, transform);
+        this->samples_.resize(this->dimensions_, num_samples);
+        fillSamples(this->samples_, num_samples, transform);
         LOG_INFO("Generated {} samples.", num_samples);
-        LOG_DEBUG("Discrepancy: {}", this->discrepancy(this->samples));
-        return this->samples;
+        LOG_DEBUG("Discrepancy: {}", this->discrepancy(this->samples_));
+
+        return this->samples_;
     }
 
 private:

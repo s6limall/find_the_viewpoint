@@ -37,9 +37,9 @@ private:
     static std::once_flag init_flag_;
     static double radius_;
     static Image<> target_;
-    static std::unique_ptr<processing::image::ImageComparator> comparator_;
-    static std::unique_ptr<processing::image::FeatureExtractor> extractor_;
-    static std::unique_ptr<processing::image::FeatureMatcher> matcher_;
+    static std::shared_ptr<processing::image::ImageComparator> comparator_;
+    static std::shared_ptr<processing::image::FeatureExtractor> extractor_;
+    static std::shared_ptr<processing::image::FeatureMatcher> matcher_;
 
     Executor() = default;
 

@@ -3,9 +3,12 @@
 #ifndef FEATURE_MATCHER_HPP
 #define FEATURE_MATCHER_HPP
 
-#include <opencv2/opencv.hpp>
 #include <memory>
 #include <vector>
+
+#include <opencv2/opencv.hpp>
+
+#include "common/logging/logger.hpp"
 
 namespace processing::image {
     enum class MatcherType {
@@ -22,11 +25,11 @@ namespace processing::image {
                                                             const cv::Mat &descriptors2) const = 0;
 
         template<typename T>
-        static std::unique_ptr<FeatureMatcher> create() {
+        static std::shared_ptr<FeatureMatcher> create() {
             static_assert(std::is_base_of_v<FeatureMatcher, T>, "T must derive from FeatureMatcher");
-            return std::make_unique<T>();
+            return std::make_shared<T>();
         }
     };
-}
+} // namespace processing::image
 
-#endif //FEATURE_MATCHER_HPP
+#endif // FEATURE_MATCHER_HPP
