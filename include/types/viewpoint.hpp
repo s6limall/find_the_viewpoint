@@ -19,25 +19,29 @@ class ViewPoint {
 
 public:
     // Constructors
-    // ViewPoint() = delete;
-    constexpr ViewPoint() noexcept : position_(Eigen::Matrix<T, 3, 1>::Zero()), score_(0.0), cluster_id_(-1) {}
-    constexpr ViewPoint(T x, T y, T z, const double score = 0.0) noexcept :
-        position_(x, y, z), score_(score), cluster_id_(-1) {
+    constexpr ViewPoint() noexcept :
+        position_(Eigen::Matrix<T, 3, 1>::Zero()), score_(0.0), uncertainty_(1.0), cluster_id_(-1) {}
+    constexpr ViewPoint(T x, T y, T z, const double score = 0.0, const double uncertainty = 1.0) noexcept :
+        position_(x, y, z), score_(score), uncertainty_(uncertainty), cluster_id_(-1) {
         validatePosition();
         view_ = core::View::fromPosition(position_);
     }
 
-    explicit constexpr ViewPoint(const Eigen::Matrix<T, 3, 1> &position, double score = 0.0) noexcept :
-        ViewPoint(position.x(), position.y(), position.z(), score) {}
+    explicit constexpr ViewPoint(const Eigen::Matrix<T, 3, 1> &position, double score = 0.0,
+                                 double uncertainty = 1.0) noexcept :
+        ViewPoint(position.x(), position.y(), position.z(), score, uncertainty) {}
 
     // Getters
     constexpr const Eigen::Matrix<T, 3, 1> &getPosition() const noexcept { return position_; }
     [[nodiscard]] constexpr int getClusterId() const noexcept { return cluster_id_; }
     [[nodiscard]] constexpr double getScore() const noexcept { return score_; }
+    [[nodiscard]] constexpr double getUncertainty() const noexcept { return uncertainty_; }
 
     // Setters
     constexpr void setClusterId(const int cluster_id) noexcept { cluster_id_ = cluster_id; }
     constexpr void setScore(const double score) noexcept { score_ = score; }
+    constexpr void setUncertainty(const double uncertainty) noexcept { uncertainty_ = uncertainty; }
+
 
     // Conversion to Cartesian coordinates
     constexpr std::tuple<T, T, T> toCartesian() const noexcept {
@@ -132,6 +136,7 @@ private:
     Eigen::Matrix<T, 3, 1> position_;
     core::View view_;
     double score_;
+    double uncertainty_;
     int cluster_id_; // -1 = unset, -2 = noise, >= 0 = cluster_id
 
     // Validation
