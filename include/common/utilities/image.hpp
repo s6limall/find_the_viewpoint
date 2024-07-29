@@ -3,7 +3,9 @@
 #ifndef COMMON_UTILITIES_IMAGE_HPP
 #define COMMON_UTILITIES_IMAGE_HPP
 
+#include <opencv2/img_hash.hpp>
 #include <opencv2/opencv.hpp>
+
 #include "common/logging/logger.hpp"
 
 namespace common::utilities {
@@ -118,6 +120,18 @@ namespace common::utilities {
         }
 
         return pyramid;
+    }
+
+    /**
+     * @brief Computes the perceptual hash of an image using the average hashing method.
+     *
+     * @param image Input image.
+     * @return cv::Mat The perceptual hash.
+     */
+    inline cv::Mat computePerceptualHash(const cv::Mat &image) {
+        cv::Mat hash;
+        cv::img_hash::averageHash(image, hash);
+        return hash;
     }
 
 } // namespace common::utilities
