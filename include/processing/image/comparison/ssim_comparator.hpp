@@ -5,8 +5,8 @@
 
 #include <tuple>
 
-#include <opencv2/opencv.hpp>
 #include <Eigen/Dense>
+#include <opencv2/opencv.hpp>
 
 #include "processing/image/comparator.hpp"
 
@@ -18,6 +18,8 @@ namespace processing::image {
 
         [[nodiscard]] double compare(const cv::Mat &image1, const cv::Mat &image2) const override;
 
+        [[nodiscard]] double compare(const Image<> &image1, const Image<> &image2) const override;
+
     private:
         [[nodiscard]] static double computeSSIM(const cv::Mat &img1, const cv::Mat &img2) noexcept;
 
@@ -27,6 +29,6 @@ namespace processing::image {
     };
 
 
-}
+} // namespace processing::image
 
-#endif //IMAGE_COMPARATOR_SSIM_HPP
+#endif // IMAGE_COMPARATOR_SSIM_HPP

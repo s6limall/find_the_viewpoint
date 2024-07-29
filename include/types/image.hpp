@@ -15,6 +15,7 @@
 
 #include "common/logging/logger.hpp"
 #include "common/utilities/image.hpp"
+#include "core/perception.hpp"
 #include "processing/image/feature/extractor.hpp"
 #include "types/viewpoint.hpp"
 
@@ -25,14 +26,14 @@ class Image {
 public:
     Image() noexcept = default;
 
-    Image(cv::Mat image, const std::shared_ptr<FeatureExtractor> &extractor) :
-        image_{validateImage(std::move(image))}, hash_once_flag_(std::make_shared<std::once_flag>()) {
-        detect(extractor);
-    }
-
     explicit Image(cv::Mat image, const cv::Ptr<cv::Feature2D> &detector = cv::ORB::create()) :
         image_{validateImage(std::move(image))}, hash_once_flag_(std::make_shared<std::once_flag>()) {
         detect(detector);
+    }
+
+    Image(cv::Mat image, const std::shared_ptr<FeatureExtractor> &extractor) :
+        image_{validateImage(std::move(image))}, hash_once_flag_(std::make_shared<std::once_flag>()) {
+        detect(extractor);
     }
 
     Image(cv::Mat image, cv::Mat descriptors, std::vector<cv::KeyPoint> keypoints) :
@@ -93,8 +94,23 @@ public:
             viewpoint_->setUncertainty(uncertainty);
     }
 
-    // Helper methods
+    // boolean methods
     [[nodiscard]] bool hasViewPoint() const noexcept { return viewpoint_.has_value(); }
+
+    // static factory methods
+    [[nodiscard]] static Image<T> fromViewPoint(ViewPoint<T> viewpoint) {
+        cv::Mat rendered_image = core::Perception::render(viewpoint.toView().getPose());
+        Image<T> image(std::move(rendered_image));
+        image.setViewPoint(std::move(viewpoint));
+        return image;
+    }
+
+    [[nodiscard]] static Image<T> fromViewPoint(ViewPoint<T> viewpoint, std::shared_ptr<FeatureExtractor> extractor) {
+        cv::Mat rendered_image = core::Perception::render(viewpoint.toView().getPose());
+        Image<T> image(std::move(rendered_image), extractor);
+        image.setViewPoint(std::move(viewpoint));
+        return image;
+    }
 
     // Serialization to string
     [[nodiscard]] std::string toString() const {

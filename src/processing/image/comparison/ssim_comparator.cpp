@@ -10,6 +10,10 @@
 
 namespace processing::image {
 
+    double SSIMComparator::compare(const Image<> &image1, const Image<> &image2) const {
+        return compare(image1.getImage(), image2.getImage());
+    }
+
     double SSIMComparator::compare(const cv::Mat &image1, const cv::Mat &image2) const {
         try {
             if (!validateImages(image1, image2)) {

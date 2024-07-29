@@ -1,32 +1,21 @@
 // File: viewpoint/provider.hpp
 
-#ifndef VIEWPOINT_PROVIDER_HPP
-#define VIEWPOINT_PROVIDER_HPP
+#ifndef PROVIDER_HPP
+#define PROVIDER_HPP
 
-#include <memory>
 #include <vector>
-
-#include "common/logging/logger.hpp"
-#include "core/view.hpp"
-#include "types/viewpoint.hpp"
-
+#include "types/image.hpp"
 
 namespace viewpoint {
 
-    enum ProviderType { LOADER, GENERATOR };
-
-    template<typename T = double> // generator, loader
+    // Interface
+    template<typename T = double>
     class Provider {
-
     public:
         virtual ~Provider() = default;
-
-        // Function to provision viewpoints
-        virtual std::vector<ViewPoint<T>> provision() = 0;
-
-        virtual ViewPoint<T> next() = 0;
+        virtual std::vector<Image<T>> provision(size_t num_points) = 0;
+        virtual Image<T> next() = 0;
     };
-
 } // namespace viewpoint
 
-#endif // VIEWPOINT_PROVIDER_HPP
+#endif // PROVIDER_HPP

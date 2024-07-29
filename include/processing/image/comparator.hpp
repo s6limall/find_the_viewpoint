@@ -6,6 +6,8 @@
 #include <Eigen/Dense>
 #include <opencv2/opencv.hpp>
 
+#include "types/image.hpp"
+
 namespace processing::image {
 
     class ImageComparator {
@@ -15,6 +17,7 @@ namespace processing::image {
         // Compare two images and return a score indicating their similarity.
         // Lower scores indicate more similar images.
         [[nodiscard]] virtual double compare(const cv::Mat &image1, const cv::Mat &image2) const = 0;
+        [[nodiscard]] virtual double compare(const Image<> &image1, const Image<> &image2) const = 0;
 
     protected:
         // Default maximum value to indicate errors.

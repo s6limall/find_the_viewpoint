@@ -20,7 +20,8 @@ class ViewPoint {
 public:
     // Constructors
     constexpr ViewPoint() noexcept :
-        position_(Eigen::Matrix<T, 3, 1>::Zero()), score_(0.0), uncertainty_(1.0), cluster_id_(-1) {}
+        position_(Eigen::Matrix<T, 3, 1>::Zero()), view_(core::View::fromPosition(position_)), score_(0.0),
+        uncertainty_(1.0), cluster_id_(-1) {}
     constexpr ViewPoint(T x, T y, T z, const double score = 0.0, const double uncertainty = 1.0) noexcept :
         position_(x, y, z), score_(score), uncertainty_(uncertainty), cluster_id_(-1) {
         validatePosition();
@@ -32,7 +33,8 @@ public:
         ViewPoint(position.x(), position.y(), position.z(), score, uncertainty) {}
 
     // Getters
-    constexpr const Eigen::Matrix<T, 3, 1> &getPosition() const noexcept { return position_; }
+    [[nodiscard]] constexpr const Eigen::Matrix<T, 3, 1> &getPosition() const noexcept { return position_; }
+    [[nodiscard]] constexpr const core::View &getView() const noexcept { return view_.value(); }
     [[nodiscard]] constexpr int getClusterId() const noexcept { return cluster_id_; }
     [[nodiscard]] constexpr double getScore() const noexcept { return score_; }
     [[nodiscard]] constexpr double getUncertainty() const noexcept { return uncertainty_; }
@@ -87,6 +89,10 @@ public:
         return ViewPoint(position.x(), position.y(), position.z(), score);
     }
 
+    [[nodiscard]] static ViewPoint fromPosition(const Eigen::Vector3d &position, double score = 0.0) noexcept {
+        return ViewPoint(position.x(), position.y(), position.z(), score);
+    }
+
     // Conversion from Eigen
     template<typename Derived>
     static constexpr std::enable_if_t<std::is_base_of_v<Eigen::DenseBase<Derived>, Derived>, ViewPoint>
@@ -113,7 +119,10 @@ public:
     }
 
     [[nodiscard]] core::View toView(const Eigen::Vector3d &object_center = Eigen::Vector3d::Zero()) const noexcept {
-        return core::View::fromPosition(position_, object_center);
+        /*if (!view_) {
+            view_ = core::View::fromPosition(position_, object_center);
+        }*/
+        return view_.value();
     }
 
     // Conversion to Isometry
@@ -134,7 +143,7 @@ public:
 
 private:
     Eigen::Matrix<T, 3, 1> position_;
-    core::View view_;
+    std::optional<core::View> view_;
     double score_;
     double uncertainty_;
     int cluster_id_; // -1 = unset, -2 = noise, >= 0 = cluster_id

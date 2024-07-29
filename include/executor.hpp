@@ -19,6 +19,7 @@
 #include "processing/image/comparison/ssim_comparator.hpp"
 #include "processing/image/feature/extractor.hpp"
 #include "processing/image/feature/extractor/akaze_extractor.hpp"
+#include "processing/image/occlusion_detector.hpp"
 #include "types/image.hpp"
 #include "types/viewpoint.hpp"
 
@@ -40,6 +41,13 @@ private:
     static std::shared_ptr<processing::image::ImageComparator> comparator_;
     static std::shared_ptr<processing::image::FeatureExtractor> extractor_;
     static std::shared_ptr<processing::image::FeatureMatcher> matcher_;
+
+    static std::vector<ViewPoint<>> generateInitialViewPoints(size_t num_points);
+    static std::vector<double> computeSimilarityScores(const std::vector<ViewPoint<>> &viewpoints,
+                                                       const Image<> &target_image);
+    static void adjustUncertaintyEstimates(std::vector<ViewPoint<>> &viewpoints,
+                                           const std::vector<double> &similarity_scores,
+                                           const processing::image::OcclusionDetector<> &occlusion_detector);
 
     Executor() = default;
 

@@ -17,7 +17,7 @@ namespace processing::image {
         FeatureComparator(std::shared_ptr<FeatureExtractor> extractor, std::shared_ptr<FeatureMatcher> matcher);
 
         [[nodiscard]] double compare(const cv::Mat &image1, const cv::Mat &image2) const override;
-        [[nodiscard]] double compare(const Image<> &img1, const Image<> &img2) const;
+        [[nodiscard]] double compare(const Image<> &img1, const Image<> &img2) const override;
 
     private:
         std::shared_ptr<FeatureExtractor> extractor_;

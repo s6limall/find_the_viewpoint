@@ -23,14 +23,22 @@ include(${CMAKE_SOURCE_DIR}/cmake/CompilerSettings.cmake)    # Compiler and opti
 include(${CMAKE_SOURCE_DIR}/cmake/vcpkg.cmake)               # vcpkg setup and integration
 
 # Run the script to generate sources.cmake
+# Run script to generate sources.cmake on every build
+add_custom_command(
+        OUTPUT ${CMAKE_BINARY_DIR}/sources.cmake
+        COMMAND ${CMAKE_COMMAND} -E env bash ${CMAKE_SOURCE_DIR}/cmake/generate_sources.sh
+        WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+        COMMENT "Generating sources.cmake"
+        VERBATIM
+        DEPENDS ${CMAKE_SOURCE_DIR}/cmake/generate_sources.sh
+)
+
 execute_process(
         COMMAND ${CMAKE_COMMAND} -E env bash ${CMAKE_SOURCE_DIR}/cmake/generate_sources.sh
         WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-        RESULT_VARIABLE SCRIPT_RESULT
 )
-if (NOT SCRIPT_RESULT EQUAL "0")
-    message(FATAL_ERROR "Failed to generate sources.cmake")
-endif ()
+
+add_custom_target(generate_sources ALL DEPENDS ${CMAKE_BINARY_DIR}/sources.cmake)
 
 # Include the generated sources.cmake
 include(${CMAKE_SOURCE_DIR}/cmake/sources.cmake)
@@ -58,7 +66,7 @@ add_executable(${PROJECT_NAME} ${PROJECT_HEADERS} ${PROJECT_SOURCES})
 
 # Include directories and link libraries for the target
 message(STATUS "Setting include directories and link libraries")
-target_include_directories(${PROJECT_NAME} PRIVATE ${INCLUDE_DIRS})
+target_include_directories(${PROJECT_NAME} SYSTEM PRIVATE ${INCLUDE_DIRS})
 target_link_libraries(${PROJECT_NAME} PRIVATE ${LIBRARIES})
 
 # Set precompiled headers
@@ -68,7 +76,7 @@ include(${CMAKE_SOURCE_DIR}/cmake/Utilities.cmake)           # Utility functions
 
 # Enable Unity builds for faster compilation
 message(STATUS "Enabling Unity builds for faster compilation")
-set_target_properties(${PROJECT_NAME} PROPERTIES UNITY_BUILD OFF)
+set_target_properties(${PROJECT_NAME} PROPERTIES UNITY_BUILD ON)
 
 # Custom target to clean up binary directories
 add_custom_target(clean_all
@@ -96,7 +104,7 @@ add_custom_target(copy_resources ALL
         COMMENT "Copying configuration.yaml and 3d_models directory to output directory"
 )
 
-message(STATUS "Adding dependency: copy_resources")
-add_dependencies(${PROJECT_NAME} copy_resources)
+message(STATUS "Adding dependencies: copy_resources, generate_sources")
+add_dependencies(${PROJECT_NAME} copy_resources generate_sources)
 
 message(STATUS "Configuration complete")
