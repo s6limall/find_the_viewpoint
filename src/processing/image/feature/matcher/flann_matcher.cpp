@@ -53,7 +53,7 @@ namespace processing::image {
         if (goodMatches.size() < static_cast<size_t>(minGoodMatches)) {
             LOG_WARN("Not enough good matches found: {}", goodMatches.size());
         } else {
-            LOG_INFO("FLANN Matcher - {} good matches found", goodMatches.size());
+            LOG_TRACE("FLANN Matcher - {} good matches found", goodMatches.size());
         }
 
         return goodMatches;
