@@ -45,10 +45,10 @@ public:
     constexpr void setUncertainty(const double uncertainty) noexcept { uncertainty_ = uncertainty; }
 
 
-    // Conversion to Cartesian coordinates
-    constexpr std::tuple<T, T, T> toCartesian() const noexcept {
-        return std::make_tuple(position_.x(), position_.y(), position_.z());
-    }
+    // Check if optional values are set
+    constexpr bool hasScore() const noexcept { return score_ != 0.0; }
+    constexpr bool hasUncertainty() const noexcept { return uncertainty_ != 1.0; }
+    constexpr bool hasClusterId() const noexcept { return cluster_id_ != -1; }
 
     // Distance calculation
     template<typename Derived>
@@ -108,6 +108,11 @@ public:
                       "OpenCV Point type must match ViewPoint template type");
         Eigen::Matrix<T, 3, 1> position(cvPoint.x, cvPoint.y, cvPoint.z);
         return ViewPoint(position, score);
+    }
+
+    // Conversion to Cartesian coordinates
+    constexpr std::tuple<T, T, T> toCartesian() const noexcept {
+        return std::make_tuple(position_.x(), position_.y(), position_.z());
     }
 
     // Conversion to Spherical coordinates
