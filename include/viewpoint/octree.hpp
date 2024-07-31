@@ -29,7 +29,6 @@ namespace viewpoint {
         }
     };
 
-
     template<typename T = double>
     class Octree {
     public:
@@ -39,9 +38,10 @@ namespace viewpoint {
             std::vector<ViewPoint<T>> points;
             std::array<std::unique_ptr<Node>, 8> children;
             bool explored;
+            T similarity_gradient;
 
             Node(const Eigen::Matrix<T, 3, 1> &center, T size) noexcept :
-                center(center), size(size), points(), children{}, explored(false) {}
+                center(center), size(size), points(), children{}, explored(false), similarity_gradient(0) {}
             bool isLeaf() const noexcept { return children[0] == nullptr; }
         };
 
@@ -56,12 +56,17 @@ namespace viewpoint {
         std::vector<ViewPoint<T>> sampleNewViewpoints(
                 size_t n, const Image<> &target, const std::shared_ptr<processing::image::ImageComparator> &comparator,
                 const optimization::GaussianProcessRegression<optimization::kernel::Matern52Kernel<T>> &gpr) const;
+        bool checkConvergence() const;
+        void failureRecovery();
 
     private:
         std::unique_ptr<Node> root_;
         T resolution_;
         size_t max_points_per_node_;
         std::set<Eigen::Matrix<T, 3, 1>, EigenMatrixComparator> explored_points_;
+        int stuck_count_ = 0;
+        int max_stuck_iterations_ = 10;
+        T best_score_ = std::numeric_limits<T>::lowest();
 
         void insert(Node *node, const ViewPoint<T> &point);
         void refineNode(Node &node, int depth, int max_depth, const Image<> &target,
@@ -72,6 +77,10 @@ namespace viewpoint {
         void subdivide(Node &node);
         void traverseTree(const std::function<void(const Node &)> &visit) const;
         bool isExplored(const Eigen::Matrix<T, 3, 1> &point) const noexcept;
+        T computeSimilarityGradient(const Node &node, const Image<> &target,
+                                    const std::shared_ptr<processing::image::ImageComparator> &comparator) const;
+        T getBestScore() const;
+        void exploreDiscardedRegions();
     };
 
     template<typename T>
@@ -140,7 +149,10 @@ namespace viewpoint {
             }
         }
 
-        if (node.isLeaf() && node.points.size() > max_points_per_node_ && node.size > resolution_) {
+        node.similarity_gradient = computeSimilarityGradient(node, target, comparator);
+
+        if (node.isLeaf() && (node.points.size() > max_points_per_node_ || node.similarity_gradient > 0.1) &&
+            node.size > resolution_) {
             subdivide(node);
             LOG_DEBUG("Subdivided node at depth {} with center ({}, {}, {})", depth, node.center.x(), node.center.y(),
                       node.center.z());
@@ -163,7 +175,7 @@ namespace viewpoint {
 
         traverseTree([&](const Node &node) {
             for (const auto &point: node.points) {
-                T weight = point.getUncertainty() * point.getScore();
+                T weight = point.getUncertainty() * point.getScore() * node.similarity_gradient;
                 weighted_points.emplace_back(point, weight);
                 LOG_DEBUG("Weight for point ({}, {}, {}): {}", point.getPosition().x(), point.getPosition().y(),
                           point.getPosition().z(), weight);
@@ -254,6 +266,84 @@ namespace viewpoint {
     template<typename T>
     bool Octree<T>::isExplored(const Eigen::Matrix<T, 3, 1> &point) const noexcept {
         return explored_points_.find(point) != explored_points_.end();
+    }
+
+    template<typename T>
+    T Octree<T>::computeSimilarityGradient(
+            const Node &node, const Image<> &target,
+            const std::shared_ptr<processing::image::ImageComparator> &comparator) const {
+        if (node.points.size() < 2)
+            return 0;
+
+        T max_similarity = std::numeric_limits<T>::lowest();
+        T min_similarity = std::numeric_limits<T>::max();
+
+        for (const auto &point: node.points) {
+            T similarity = comparator->compare(target, Image<T>::fromViewPoint(point));
+            max_similarity = std::max(max_similarity, similarity);
+            min_similarity = std::min(min_similarity, similarity);
+        }
+
+        return max_similarity - min_similarity;
+    }
+
+    template<typename T>
+    T Octree<T>::getBestScore() const {
+        T best_score = std::numeric_limits<T>::lowest();
+        traverseTree([&](const Node &node) {
+            for (const auto &point: node.points) {
+                best_score = std::max(best_score, point.getScore());
+            }
+        });
+        return best_score;
+    }
+
+    template<typename T>
+    void Octree<T>::failureRecovery() {
+        T current_best_score = getBestScore();
+        if (current_best_score > best_score_) {
+            best_score_ = current_best_score;
+            stuck_count_ = 0;
+        } else {
+            stuck_count_++;
+        }
+
+        if (stuck_count_ > max_stuck_iterations_) {
+            LOG_INFO("Search stuck. Initiating failure recovery.");
+            exploreDiscardedRegions();
+            stuck_count_ = 0;
+        }
+    }
+
+    template<typename T>
+    void Octree<T>::exploreDiscardedRegions() {
+        std::vector<ViewPoint<T>> discarded_points;
+        traverseTree([&](const Node &node) {
+            if (node.explored && node.points.empty()) {
+                ViewPoint<T> new_point(node.center);
+                discarded_points.push_back(new_point);
+            }
+        });
+
+        for (const auto &point: discarded_points) {
+            insert(point);
+        }
+    }
+
+    template<typename T>
+    bool Octree<T>::checkConvergence() const {
+        T avg_score = 0;
+        int count = 0;
+        traverseTree([&](const Node &node) {
+            for (const auto &point: node.points) {
+                avg_score += point.getScore();
+                count++;
+            }
+        });
+
+        avg_score /= count;
+        LOG_DEBUG("Average score: {}", avg_score);
+        return avg_score >= best_score_ - 1e-3; // Convergence threshold
     }
 
 } // namespace viewpoint
