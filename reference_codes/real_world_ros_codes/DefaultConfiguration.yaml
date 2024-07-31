@@ -1,0 +1,42 @@
+%YAML:1.0
+pre_path: "/home/user/pan/PRV/src/ma_scvp_real/data/"
+orginalviews_path: "/home/user/pan/PRV/src/ma_scvp_real/view_space/Hemisphere/"
+viewspace_path: "/home/user/pan/PRV/src/ma_scvp_real/data/gt_view_space/"
+instant_ngp_path: "/home/user/pan/PRV/src/Networks_pytorch/instant-ngp/scripts/"
+pvb_path: "/home/user/pan/PRV/src/Networks_pytorch/ConvNeXt-V2/"
+
+mode: 2
+name_of_pcd: "Cube"
+object_center_world(0): -0.0453796
+object_center_world(1): 0.44164
+object_center_world(2): 0.090000
+predicted_size: 0.130
+view_space_radius : 0.22
+
+height_of_ground: 0.015
+height_to_filter_arm: 0.200
+move_dis_pre_point: 0.05
+min_z_table: 0.075
+up_shift: 0.130
+
+method_of_IG : 4
+test_id: 0
+num_of_max_iteration: 64
+n_steps: 2500
+evaluate: 1
+ensemble_num: -1
+num_of_views : 144
+ray_casting_aabb_scale : 1
+color_width: 1280
+color_height: 720
+color_fx: 919.4124755859375
+color_fy: 919.3323364257812
+color_ppx: 625.5408325195312
+color_ppy: 347.3991394042969
+color_model: 2
+color_k1: 0.
+color_k2: 0.
+color_k3: 0.
+color_p1: 0.
+color_p2: 0.
+depth_scale: 0.001
