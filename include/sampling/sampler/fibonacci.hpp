@@ -1,4 +1,4 @@
-// File: sampling/fibonacci_lattice_sampler.hpp
+// File: sampling/fibonacci.hpp
 
 #ifndef SAMPLING_FIBONACCI_LATTICE_SAMPLER_HPP
 #define SAMPLING_FIBONACCI_LATTICE_SAMPLER_HPP
