@@ -42,13 +42,6 @@ private:
     static std::shared_ptr<processing::image::FeatureExtractor> extractor_;
     static std::shared_ptr<processing::image::FeatureMatcher> matcher_;
 
-    static std::vector<ViewPoint<>> generateInitialViewPoints(size_t num_points);
-    static std::vector<double> computeSimilarityScores(const std::vector<ViewPoint<>> &viewpoints,
-                                                       const Image<> &target_image);
-    static void adjustUncertaintyEstimates(std::vector<ViewPoint<>> &viewpoints,
-                                           const std::vector<double> &similarity_scores,
-                                           const processing::image::OcclusionDetector<> &occlusion_detector);
-
     Executor() = default;
 
     static void initialize();
@@ -59,7 +52,7 @@ private:
         static constexpr int width = 640;
         static constexpr int height = 480;
         static constexpr std::string_view mesh_path = "./3d_models/obj_000020.ply";
-        static constexpr std::string_view target_image_path = "../../task1/target_images/obj_000020/target_1.png";
+        static constexpr std::string_view target_image_path = "../../task1/target_images/obj_000020/target_2.png";
     };
 };
 
