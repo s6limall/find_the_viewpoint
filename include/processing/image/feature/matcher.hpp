@@ -4,19 +4,11 @@
 #define FEATURE_MATCHER_HPP
 
 #include <memory>
-#include <vector>
-
 #include <opencv2/opencv.hpp>
-
+#include <vector>
 #include "common/logging/logger.hpp"
 
 namespace processing::image {
-    enum class MatcherType {
-        FLANN,
-        BF,
-        SUPERGLUE,
-    };
-
     class FeatureMatcher {
     public:
         virtual ~FeatureMatcher() = default;

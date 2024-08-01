@@ -14,8 +14,7 @@ namespace processing::image {
     public:
         virtual ~ImageComparator() = default;
 
-        // Compare two images and return a score indicating their similarity.
-        // Lower scores indicate more similar images.
+        // Compare two images and return a score indicating their similarity. [0, 1] where 0 means no similarity.
         [[nodiscard]] virtual double compare(const cv::Mat &image1, const cv::Mat &image2) const = 0;
         [[nodiscard]] virtual double compare(const Image<> &image1, const Image<> &image2) const = 0;
 

@@ -19,7 +19,7 @@ paths:
     view_space_images_directory: "../../task1/viewspace_images"
     selected_views_directory: "../../task1/selected_views"
     target_image_directory: "../../task1/target_images"
-    target_image: "../../task1/target_images/obj_000020/target_2.png"
+    target_image: "../../task1/target_images/obj_000020/target_1.png"
 
 logging:
     level: "trace" # info, debug, warn, error, critical, warn, trace
@@ -37,33 +37,8 @@ camera:
         x: 0.5            # Principal point x-coordinate (normalized)
         y: 0.5            # Principal point y-coordinate (normalized)
 
-optimizer:
-    cmaes:
-        dimensions: 3
-        population_size: 30
-        max_iterations: 100
-        sigma: 0.5
-
 feature_detector:
     type: "SIFT"           # Default feature detector type (SIFT or ORB)
-
-    sift:
-        n_features: 0        # Number of best features to retain, 0 means unlimited
-        n_octave_layers: 3   # Number of layers in each octave
-        contrast_threshold: 0.04 # Contrast threshold for filtering weak features
-        edge_threshold: 10   # Edge threshold for filtering edge-like features
-        sigma: 1.6           # Sigma for Gaussian used in scale-space
-
-    orb:
-        n_features: 1000      # Number of features to retain
-        scale_factor: 1.1    # Scale factor for pyramid
-        n_levels: 10          # Number of levels in pyramid
-        edge_threshold: 31   # Size of the border where features are not detected
-        first_level: 0       # Level of pyramid to start
-        wta_k: 2             # Number of points to produce the oriented BRIEF descriptor
-        score_type: 0        # Score type (HARRIS_SCORE = 0, FAST_SCORE = 1)
-        patch_size: 31       # Size of patch for oriented BRIEF descriptor
-        fast_threshold: 15   # Threshold for FAST corner detection
 
 feature_matcher:
     type: "FLANN"          # Default feature matcher type (FLANN or BF)
@@ -123,3 +98,7 @@ optimization:
         early_termination_window: 10
         early_termination_threshold: 0.2
         velocity_max: 1.0
+
+convergence:
+    max_iterations: 10
+    threshold: 0.9

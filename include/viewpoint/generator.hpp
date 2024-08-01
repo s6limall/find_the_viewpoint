@@ -36,12 +36,8 @@ namespace viewpoint {
         images.reserve(samples.cols());
         for (int i = 0; i < samples.cols(); ++i) {
             const Eigen::Matrix<T, 3, 1> position = samples.col(i).template head<3>() * radius_;
-            core::View view = core::View::fromPosition(position);
-            ViewPoint<> viewpoint = ViewPoint<T>::fromView(view);
-            Eigen::Matrix4d extrinsics = view.getPose();
-            cv::Mat rendered_view = core::Perception::render(extrinsics);
-            Image<T> image(rendered_view, extractor_);
-            image.setViewPoint(ViewPoint<T>(position, 0.0, 1.0)); // Initial score and uncertainty
+            ViewPoint<> viewpoint = ViewPoint<T>::fromPosition(position);
+            auto image = Image<T>::fromViewPoint(viewpoint, extractor_);
             images.push_back(image);
         }
         return images;

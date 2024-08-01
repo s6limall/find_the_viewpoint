@@ -37,7 +37,7 @@ namespace processing::image {
 
     private:
         template<typename ImageType>
-        [[nodiscard]] static cv::Mat extractImage(const ImageType &image) noexcept;
+        [[nodiscard]] static Image<> extractImage(const ImageType &image) noexcept;
 
         [[nodiscard]] static double computeHammingDistance(const cv::Mat &hash1, const cv::Mat &hash2) noexcept;
 
@@ -48,13 +48,13 @@ namespace processing::image {
     // Implementation
 
     template<typename ImageType>
-    cv::Mat ImageProcessor::extractImage(const ImageType &image) noexcept {
+    Image<> ImageProcessor::extractImage(const ImageType &image) noexcept {
         LOG_DEBUG("Extracting image");
-        if constexpr (std::is_same_v<ImageType, cv::Mat>) {
-            LOG_INFO("Image is already in OpenCV format (cv::Mat)");
+        if constexpr (std::is_same_v<ImageType, Image<>>) {
+            LOG_INFO("Image is already in Image format (Image<>)");
             return image;
-        } else if constexpr (std::is_same_v<ImageType, Image<>>) {
-            LOG_INFO("Image is in custom format (Image<>), converting to OpenCV format (cv::Mat)");
+        } else if constexpr (std::is_same_v<ImageType, cv::Mat>) {
+            LOG_INFO("Image is in OpenCV format (cv::Mat), converting to custom format (Image<>)");
             return image.getImage();
         } else {
             LOG_ERROR("Unsupported image type provided");
@@ -112,6 +112,20 @@ namespace processing::image {
 
         return scores;
     }
+
+    /*
+    template<typename ImageType>
+    cv::Mat ImageProcessor::findHomographyMatrix(const ImageType &image1, const ImageType &image2) noexcept {
+        //const cv::Mat img1 = extractImage(image1), img2 = extractImage(image2);
+    const auto keypoints1 = image1.getKeyPoints(), keypoints2 = image2.getKeyPoints();
+
+    auto matcher = FeatureMatcher::create<FLANNMatcher>();
+    const auto [descriptors1, descriptors2] = std::make_pair(image1.getDescriptors(), image2.getDescriptors());
+    const auto matches = matcher->match(descriptors1, descriptors2);
+
+    return common::utilities::findHomographyMatrix(keypoints1, keypoints2, good_matches);
+});*/
+
 
 } // namespace processing::image
 

@@ -14,44 +14,53 @@
 
 template<typename T = double>
 class FibonacciLatticeSampler final : public Sampler<T> {
+    static_assert(std::is_floating_point_v<T>, "T must be a floating-point type");
+
 public:
-    FibonacciLatticeSampler(const std::vector<T> &lower_bounds, const std::vector<T> &upper_bounds) :
-        Sampler<T>(lower_bounds, upper_bounds) {}
+    FibonacciLatticeSampler(const std::vector<T> &lower_bounds, const std::vector<T> &upper_bounds, T radius = 1.0) :
+        Sampler<T>(lower_bounds, upper_bounds), radius_(radius) {
+        if (this->dimensions_ < 2 || this->dimensions_ > 3) {
+            throw std::invalid_argument("FibonacciLatticeSampler supports only 2D or 3D.");
+        }
+        if (radius_ <= 0) {
+            throw std::invalid_argument("Radius must be positive");
+        }
+    }
 
     Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>
     generate(size_t num_samples, typename Sampler<T>::TransformFunction transform = nullptr) override {
+        if (num_samples == 0) {
+            throw std::invalid_argument("Number of samples must be positive");
+        }
+
+        constexpr T golden_ratio = (1 + std::sqrt(5.0)) / 2;
+        constexpr T angle_increment = 2 * M_PI / golden_ratio;
+
+        auto generate_point = [this, angle_increment](size_t i, T inv_samples) {
+            T t = static_cast<T>(i) * inv_samples;
+            T inclination = std::acos(1 - 2 * t);
+            T azimuth = angle_increment * i;
+            T sin_inclination = std::sin(inclination);
+
+            Eigen::Vector<T, Eigen::Dynamic> point(this->dimensions_);
+            point[0] = radius_ * sin_inclination * std::cos(azimuth);
+            point[1] = radius_ * sin_inclination * std::sin(azimuth);
+            if (this->dimensions_ == 3) {
+                point[2] = radius_ * std::cos(inclination);
+            }
+            return point;
+        };
+
         this->samples_.resize(this->dimensions_, num_samples);
-        T phi = (1 + std::sqrt(5)) / 2; // golden ratio
+        T inv_samples = 1.0 / num_samples;
 
         for (size_t i = 0; i < num_samples; ++i) {
-            T theta = 2 * M_PI * (i / phi - std::floor(i / phi));
-            T z = 1 - 2 * static_cast<T>(i) / (num_samples - 1);
-            T r = std::sqrt(1 - z * z);
-
-            Eigen::Matrix<T, Eigen::Dynamic, 1> point(this->dimensions_);
-            point(0) = r * std::cos(theta); // x
-            point(1) = r * std::sin(theta); // y
-            if (this->dimensions_ > 2) {
-                point(2) = z; // z
-                for (size_t d = 3; d < this->dimensions_; ++d) {
-                    point(d) = 0; // zero padding for higher dimensions
-                }
-            }
-
+            auto point = generate_point(i, inv_samples);
             if (transform) {
                 point = transform(point);
             }
-
             this->samples_.col(i) = this->mapToBounds(point);
-
-            // Radius verification: ensure the point is on the unit sphere
-            T radius = std::sqrt(point(0) * point(0) + point(1) * point(1) + point(2) * point(2));
-            assert(std::abs(radius - 1.0) < 1e-6 && "Point is not on the unit sphere.");
         }
-
-        assert(this->samples_.cols() == num_samples && "Number of generated samples must match the requested number.");
-        assert(this->samples_.rows() == this->dimensions_ && "Each sample must have the correct number of dimensions.");
-
 
         return this->samples_;
     }
@@ -106,6 +115,9 @@ public:
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
     }
+
+private:
+    T radius_;
 };
 
 #endif // SAMPLING_FIBONACCI_LATTICE_SAMPLER_HPP

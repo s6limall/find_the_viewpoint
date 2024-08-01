@@ -12,13 +12,6 @@ namespace processing::image {
     using KeyPoints = std::vector<cv::KeyPoint>;
     using Descriptors = cv::Mat;
 
-    enum class ExtractorType {
-        SIFT,
-        ORB,
-        SUPERPOINT,
-        AKAZE,
-    };
-
     class FeatureExtractor {
     public:
         virtual ~FeatureExtractor() = default;

@@ -146,6 +146,21 @@ public:
                            position_.z(), score_, cluster_id_);
     }
 
+    // Comparison operators
+    constexpr bool operator<(const ViewPoint &other) const noexcept {
+        return std::tie(position_.x(), position_.y(), position_.z()) <
+               std::tie(other.position_.x(), other.position_.y(), other.position_.z());
+    }
+
+    constexpr bool operator>(const ViewPoint &other) const noexcept {
+        return std::tie(position_.x(), position_.y(), position_.z()) >
+               std::tie(other.position_.x(), other.position_.y(), other.position_.z());
+    }
+
+    constexpr bool operator==(const ViewPoint &other) const noexcept { return position_ == other.position_; }
+
+    constexpr bool operator!=(const ViewPoint &other) const noexcept { return !(*this == other); }
+
 private:
     Eigen::Matrix<T, 3, 1> position_;
     std::optional<core::View> view_;

@@ -1,7 +1,6 @@
 // File: processing/image/feature/extractor/akaze_extractor.cpp
 
 #include "processing/image/feature/extractor/akaze_extractor.hpp"
-
 #include "common/logging/logger.hpp"
 
 namespace processing::image {
@@ -17,11 +16,10 @@ namespace processing::image {
     std::pair<KeyPoints, Descriptors> AKAZEExtractor::extract(const cv::Mat &image) const noexcept {
         KeyPoints keypoints;
         Descriptors descriptors;
-        const auto akaze = cv::AKAZE::create();
 
-        akaze->detectAndCompute(image, cv::noArray(), keypoints, descriptors);
+        akaze_->detectAndCompute(image, cv::noArray(), keypoints, descriptors);
 
         return std::make_pair(std::move(keypoints), std::move(descriptors));
     }
 
-}
+} // namespace processing::image
