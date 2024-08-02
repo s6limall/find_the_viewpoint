@@ -56,7 +56,7 @@ protected:
     std::vector<T> lower_bounds_;
     std::vector<T> upper_bounds_;
     size_t dimensions_;
-    Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic> samples;
+    Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic> samples_;
 
     Eigen::Matrix<T, Eigen::Dynamic, 1> mapToBounds(const Eigen::Matrix<T, Eigen::Dynamic, 1> &point) const {
         Eigen::Matrix<T, Eigen::Dynamic, 1> mapped_point(dimensions_);

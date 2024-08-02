@@ -2,21 +2,22 @@
 #define LEVENBERG_MARQUARDT_HPP
 
 #include <Eigen/Dense>
-#include <algorithm>
 #include <cmath>
+#include <functional>
 #include <limits>
 #include <optional>
-#include <vector>
+#include "common/logging/logger.hpp"
 
 namespace optimization {
 
     template<typename Scalar, int Dim>
     class LevenbergMarquardt {
     public:
-        using IsometryType = Eigen::Transform<Scalar, Dim, Eigen::Isometry>;
         using VectorType = Eigen::Matrix<Scalar, Dim, 1>;
         using MatrixType = Eigen::Matrix<Scalar, Dim, Dim>;
-        using Vector6Type = Eigen::Matrix<Scalar, 6, 1>;
+        using JacobianType = Eigen::Matrix<Scalar, Eigen::Dynamic, Dim>; // Updated to handle non-square Jacobians
+        using ErrorFunction = std::function<Scalar(const VectorType &)>;
+        using JacobianFunction = std::function<JacobianType(const VectorType &)>;
 
         struct Options {
             Scalar initial_lambda = static_cast<Scalar>(1e-3);
@@ -25,73 +26,78 @@ namespace optimization {
             Scalar gradient_threshold = static_cast<Scalar>(1e-8);
             Scalar parameter_threshold = static_cast<Scalar>(1e-8);
             Scalar error_threshold = static_cast<Scalar>(1e-8);
+            Scalar epsilon = static_cast<Scalar>(1e-6);
+            bool use_geodesic_acceleration = true;
         };
 
         struct Result {
-            IsometryType pose;
+            VectorType position;
             Scalar final_error;
             int iterations;
             bool converged;
         };
 
-        explicit LevenbergMarquardt(const Options &options = Options{}) : options_{options} {}
+        explicit LevenbergMarquardt(const Options &options = Options{}) : options_{validateOptions(options)} {}
 
-        template<typename Camera>
-        std::optional<Result> optimize(const IsometryType &initial_pose, const std::vector<VectorType> &world_points,
-                                       const std::vector<Eigen::Matrix<Scalar, 2, 1>> &image_points,
-                                       const Camera &camera) const noexcept {
-            if (world_points.size() != image_points.size() || world_points.empty()) {
-                return std::nullopt;
-            }
-
+        std::optional<Result> optimize(const VectorType &initial_position, const ErrorFunction &error_func,
+                                       const JacobianFunction &jacobian_func) const noexcept {
             LOG_DEBUG("Optimizing using Levenberg-Marquardt...");
 
-            auto current_pose = initial_pose;
-            auto lambda = options_.initial_lambda;
-            auto prev_error = std::numeric_limits<Scalar>::max();
+            VectorType current_position = initial_position;
+            Scalar lambda = options_.initial_lambda;
+            Scalar prev_error = std::numeric_limits<Scalar>::max();
 
-            Result result{current_pose, static_cast<Scalar>(0.0), 0, false};
+            Result result{current_position, static_cast<Scalar>(0.0), 0, false};
 
             for (int iter = 0; iter < options_.max_iterations; ++iter) {
-                Eigen::Matrix<Scalar, Eigen::Dynamic, 6> jacobian(2 * world_points.size(), 6);
-                Eigen::Matrix<Scalar, Eigen::Dynamic, 1> error_vector(2 * world_points.size());
-
-                const auto current_error = computeErrorAndJacobian(current_pose, world_points, image_points, camera,
-                                                                   jacobian, error_vector);
+                const Scalar current_error = error_func(current_position);
+                const JacobianType jacobian = jacobian_func(current_position);
 
                 if (std::abs(prev_error - current_error) < options_.error_threshold) {
                     result.converged = true;
                     break;
                 }
 
-                const Eigen::Matrix<Scalar, 6, 6> JTJ = jacobian.transpose() * jacobian;
-                const Eigen::Matrix<Scalar, 6, 1> JTe = jacobian.transpose() * error_vector;
+                const MatrixType JTJ = jacobian.transpose() * jacobian;
+                const VectorType JTe =
+                        jacobian.transpose() * (jacobian * current_position - jacobian.transpose() * current_error);
 
-                const Eigen::Matrix<Scalar, 6, 6> augmented_JTJ =
-                        JTJ + lambda * Eigen::Matrix<Scalar, 6, 6>::Identity();
-                const Eigen::Matrix<Scalar, 6, 1> delta = augmented_JTJ.ldlt().solve(-JTe);
+                const MatrixType augmented_JTJ = JTJ + lambda * MatrixType::Identity();
+                const VectorType delta = augmented_JTJ.ldlt().solve(-JTe);
 
                 if (delta.norm() < options_.parameter_threshold || JTe.norm() < options_.gradient_threshold) {
                     result.converged = true;
                     break;
                 }
 
-                const auto new_pose = current_pose * expSE3(delta);
-                const auto new_error = computeError(new_pose, world_points, image_points, camera);
+                VectorType new_position = current_position + delta;
+
+                if (options_.use_geodesic_acceleration) {
+                    const VectorType acceleration =
+                            computeGeodesicAcceleration(jacobian_func, jacobian, current_position);
+                    new_position += 0.5 * delta.dot(delta) * acceleration;
+                }
+
+                const Scalar new_error = error_func(new_position);
 
                 if (new_error < current_error) {
-                    current_pose = new_pose;
-                    lambda /= options_.lambda_factor;
+                    current_position = new_position;
+                    lambda = std::max(lambda / options_.lambda_factor, Scalar(1e-10));
                     prev_error = current_error;
                 } else {
-                    lambda *= options_.lambda_factor;
+                    lambda = std::min(lambda * options_.lambda_factor, Scalar(1e10));
+                }
+
+                if (lambda > 1e9) {
+                    LOG_WARN("Lambda became too large. Terminating optimization.");
+                    break;
                 }
 
                 result.iterations = iter + 1;
             }
 
-            result.pose = current_pose;
-            result.final_error = computeError(current_pose, world_points, image_points, camera);
+            result.position = current_position;
+            result.final_error = error_func(current_position);
 
             LOG_DEBUG("Optimization completed in {} iterations. Final error: {}", result.iterations,
                       result.final_error);
@@ -102,77 +108,26 @@ namespace optimization {
     private:
         Options options_;
 
-        template<typename Camera>
-        static Scalar computeError(const IsometryType &pose, const std::vector<VectorType> &world_points,
-                                   const std::vector<Eigen::Matrix<Scalar, 2, 1>> &image_points,
-                                   const Camera &camera) noexcept {
-            Scalar total_error = 0;
-            for (size_t i = 0; i < world_points.size(); ++i) {
-                total_error += (camera.project(pose * world_points[i]) - image_points[i]).squaredNorm();
-            }
-            return total_error / world_points.size();
+        static Options validateOptions(const Options &options) noexcept {
+            Options validated = options;
+            validated.initial_lambda = std::max(validated.initial_lambda, Scalar(1e-10));
+            validated.lambda_factor = std::max(validated.lambda_factor, Scalar(1.1));
+            validated.max_iterations = std::max(validated.max_iterations, 1);
+            validated.gradient_threshold = std::max(validated.gradient_threshold, Scalar(1e-15));
+            validated.parameter_threshold = std::max(validated.parameter_threshold, Scalar(1e-15));
+            validated.error_threshold = std::max(validated.error_threshold, Scalar(1e-15));
+            validated.epsilon = std::clamp(validated.epsilon, Scalar(1e-10), Scalar(1e-5));
+            return validated;
         }
 
+        VectorType computeGeodesicAcceleration(const JacobianFunction &jacobian_func, const JacobianType &jacobian,
+                                               const VectorType &position) const noexcept {
+            const JacobianType jacobian_plus = jacobian_func(position + options_.epsilon * VectorType::Ones());
+            const JacobianType jacobian_minus = jacobian_func(position - options_.epsilon * VectorType::Ones());
 
-        template<typename Camera>
-        static Scalar computeErrorAndJacobian(const IsometryType &pose, const std::vector<VectorType> &world_points,
-                                              const std::vector<Eigen::Matrix<Scalar, 2, 1>> &image_points,
-                                              const Camera &camera, Eigen::Matrix<Scalar, Eigen::Dynamic, 6> &jacobian,
-                                              Eigen::Matrix<Scalar, Eigen::Dynamic, 1> &error_vector) noexcept {
-            Scalar total_error = 0.0;
-            for (size_t i = 0; i < world_points.size(); ++i) {
-                const auto transformed = pose * world_points[i];
-                const auto projected = camera.project(transformed);
-                const Eigen::Matrix<Scalar, 2, 1> error = projected - image_points[i];
-
-                error_vector.template segment<2>(2 * i) = error;
-                total_error += error.squaredNorm();
-
-                const Eigen::Matrix<Scalar, 2, 3> J_proj = camera.projectJacobian(transformed);
-                const Eigen::Matrix<Scalar, 3, 6> J_trans = computeTransformJacobian(transformed);
-                jacobian.template block<2, 6>(2 * i, 0) = J_proj * J_trans;
-            }
-            return total_error / world_points.size();
-        }
-
-        static Eigen::Matrix<Scalar, 3, 6> computeTransformJacobian(const VectorType &point) noexcept {
-            Eigen::Matrix<Scalar, 3, 6> J;
-            J.template block<3, 3>(0, 0) = MatrixType::Identity();
-            J.template block<3, 3>(0, 3) = -skewSymmetric(point);
-            return J;
-        }
-
-        static MatrixType skewSymmetric(const VectorType &v) noexcept {
-            MatrixType m;
-            m << Scalar(0), -v.z(), v.y(), v.z(), Scalar(0), -v.x(), -v.y(), v.x(), Scalar(0);
-            return m;
-        }
-
-        static IsometryType expSE3(const Vector6Type &xi) noexcept {
-            const Eigen::Matrix<Scalar, 3, 1> rho = xi.template head<3>();
-            const Eigen::Matrix<Scalar, 3, 1> phi = xi.template tail<3>();
-            const Scalar theta = phi.norm();
-
-            MatrixType R;
-            VectorType t;
-
-            if (theta < Scalar(1e-8)) {
-                R = MatrixType::Identity() + skewSymmetric(phi);
-                t = rho;
-            } else {
-                const MatrixType phi_hat = skewSymmetric(phi);
-                R = MatrixType::Identity() + std::sin(theta) / theta * phi_hat +
-                    (Scalar(1) - std::cos(theta)) / (theta * theta) * phi_hat * phi_hat;
-                const MatrixType V = MatrixType::Identity() +
-                                     (Scalar(1) - std::cos(theta)) / (theta * theta) * phi_hat +
-                                     (theta - std::sin(theta)) / (theta * theta * theta) * phi_hat * phi_hat;
-                t = V * rho;
-            }
-
-            IsometryType T = IsometryType::Identity();
-            T.linear() = R;
-            T.translation() = t;
-            return T;
+            const MatrixType hessian =
+                    (jacobian_plus - jacobian_minus).template topRows<Dim>() / (2 * options_.epsilon);
+            return -hessian * jacobian.transpose() * (jacobian * jacobian.transpose()).inverse();
         }
     };
 

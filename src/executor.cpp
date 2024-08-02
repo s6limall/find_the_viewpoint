@@ -4,13 +4,13 @@
 
 #include "common/timer.hpp"
 #include "core/perception.hpp"
-#include "optimization/cmaes.hpp"
+#include "optimization/apso.hpp"
+#include "optimization/levenberg_marquardt.hpp"
 #include "optimization/pso.hpp"
 #include "processing/image/feature/matcher/flann_matcher.hpp"
 #include "processing/image/preprocessor.hpp"
 #include "processing/vision/estimation/distance_estimator.hpp"
 #include "sampling/sampler/fibonacci.hpp"
-#include "sampling/sampler/halton.hpp"
 
 std::once_flag Executor::init_flag_;
 double Executor::radius_;
@@ -29,36 +29,79 @@ void Executor::initialize() {
     // comparator_ = std::make_shared<processing::image::SSIMComparator>();
 }
 
-
 void Executor::execute() {
     std::call_once(init_flag_, &Executor::initialize);
     try {
 
-        const ParticleSwarmOptimization::Parameters parameters{
-                .swarm_size = config::get("optimization.pso.swarm_size", 20),
-                .max_iterations = config::get("optimization.pso.max_iterations", 20),
-                .local_search_iterations = config::get("optimization.pso.local_search_iterations", 10),
-                .inertia_weight = config::get("optimization.pso.inertia_weight", 0.5),
-                .cognitive_coefficient = config::get("optimization.pso.cognitive_coefficient", 1.5),
-                .social_coefficient = config::get("optimization.pso.social_coefficient", 1.5),
-                .radius = radius_,
-                .tolerance = config::get("optimization.pso.tolerance", 0.2),
-                .inertia_min = config::get("optimization.pso.inertia_min", 0.5),
-                .inertia_max = config::get("optimization.pso.inertia_max", 0.9),
-                .early_termination_window = config::get("optimization.pso.early_termination_window", 10),
-                .early_termination_threshold = config::get("optimization.pso.early_termination_threshold", 0.1),
-                .velocity_max = config::get("optimization.pso.velocity_max", 1.0),
+        optimization::AdvancedParticleSwarmOptimization<double, 3>::Parameters parameters{
+                .swarm_size = config::get("optimization.apso.swarm_size", 100),
+                .max_iterations = config::get("optimization.apso.max_iterations", 1000),
+                .local_search_iterations = config::get("optimization.apso.local_search_iterations", 50),
+                .inertia_min = config::get("optimization.apso.inertia_min", 0.4),
+                .inertia_max = config::get("optimization.apso.inertia_max", 0.9),
+                .cognitive_coefficient = config::get("optimization.apso.cognitive_coefficient", 2.0),
+                .social_coefficient = config::get("optimization.apso.social_coefficient", 2.0),
+                .velocity_max = config::get("optimization.apso.velocity_max", 0.1),
+                .diversity_threshold = config::get("optimization.apso.diversity_threshold", 0.01),
+                .stagnation_threshold = config::get("optimization.apso.stagnation_threshold", 20),
+                .penalty_coefficient = config::get("optimization.apso.penalty_coefficient", 1e3),
+                .neighborhood_size = config::get("optimization.apso.neighborhood_size", 5),
+                .search_radius = config::get("optimization.apso.search_radius", radius_),
+                .use_obl = config::get("optimization.apso.use_obl", true),
+                .use_dynamic_topology = config::get("optimization.apso.use_dynamic_topology", true),
+                .use_diversity_guided = config::get("optimization.apso.use_diversity_guided", true),
         };
 
-        ParticleSwarmOptimization pso(parameters, target_, comparator_);
+        auto error_func = [&](const optimization::AdvancedParticleSwarmOptimization<double, 3>::VectorType &position) {
+            const auto viewpoint = ViewPoint<>::fromCartesian(position[0], position[1], position[2]);
+            const auto view = viewpoint.toView(Eigen::Vector3d::Zero());
+            const Eigen::Matrix4d extrinsics = view.getPose();
+            const cv::Mat rendered_view = core::Perception::render(extrinsics);
+            return comparator_->compare(target_.getImage(), rendered_view);
+        };
 
-        Timer timer("PSO Optimization");
-        const ViewPoint<> best = pso.optimize();
+        auto jacobian_func =
+                [&](const optimization::AdvancedParticleSwarmOptimization<double, 3>::VectorType &position) {
+                    const double h = 1e-6; // Step size for finite differences
+                    optimization::AdvancedParticleSwarmOptimization<double, 3>::JacobianType jacobian;
+
+                    for (int i = 0; i < 3; ++i) {
+                        optimization::AdvancedParticleSwarmOptimization<double, 3>::VectorType pos_plus = position;
+                        optimization::AdvancedParticleSwarmOptimization<double, 3>::VectorType pos_minus = position;
+                        pos_plus[i] += h;
+                        pos_minus[i] -= h;
+
+                        const double score_plus = error_func(pos_plus);
+                        const double score_minus = error_func(pos_minus);
+
+                        jacobian(0, i) = (score_plus - score_minus) / (2 * h);
+                    }
+
+                    return jacobian;
+                };
+
+        std::vector<optimization::AdvancedParticleSwarmOptimization<double, 3>::ConstraintFunction> constraints;
+        constraints.emplace_back(
+                [](const optimization::AdvancedParticleSwarmOptimization<double, 3>::VectorType &position) {
+                    // Constraint function here, for example, ensure position within bounds
+                    return 0.0;
+                });
+
+        optimization::AdvancedParticleSwarmOptimization<double, 3> apso(
+                parameters, error_func, jacobian_func, constraints,
+                optimization::AdvancedParticleSwarmOptimization<double, 3>::VectorType::Constant(-radius_),
+                optimization::AdvancedParticleSwarmOptimization<double, 3>::VectorType::Constant(radius_));
+
+        Timer timer("APSO Optimization");
+        const Eigen::Vector3d best_position = apso.optimize();
         timer.stop();
 
-        const cv::Mat best_rendered_view = core::Perception::render(best.toView().getPose());
+        const auto viewpoint = ViewPoint<>::fromCartesian(best_position[0], best_position[1], best_position[2]);
+        const auto view = viewpoint.toView(Eigen::Vector3d::Zero());
+        const Eigen::Matrix4d extrinsics = view.getPose();
+        const cv::Mat best_rendered_view = core::Perception::render(extrinsics);
 
-        LOG_INFO("Best viewpoint: {}", best.getPosition());
+        LOG_INFO("Best viewpoint: {}", best_position);
 
         cv::imshow("Best Viewpoint", best_rendered_view);
         cv::waitKey(0);

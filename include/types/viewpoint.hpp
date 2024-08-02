@@ -19,30 +19,36 @@ class ViewPoint {
 
 public:
     // Constructors
-    // ViewPoint() = delete;
-    constexpr ViewPoint() noexcept : position_(Eigen::Matrix<T, 3, 1>::Zero()), score_(0.0), cluster_id_(-1) {}
-    constexpr ViewPoint(T x, T y, T z, const double score = 0.0) noexcept :
-        position_(x, y, z), score_(score), cluster_id_(-1) {
+    constexpr ViewPoint() noexcept :
+        position_(Eigen::Matrix<T, 3, 1>::Zero()), view_(core::View::fromPosition(position_)), score_(0.0),
+        uncertainty_(1.0), cluster_id_(-1) {}
+    constexpr ViewPoint(T x, T y, T z, const double score = 0.0, const double uncertainty = 1.0) noexcept :
+        position_(x, y, z), score_(score), uncertainty_(uncertainty), cluster_id_(-1) {
         validatePosition();
         view_ = core::View::fromPosition(position_);
     }
 
-    explicit constexpr ViewPoint(const Eigen::Matrix<T, 3, 1> &position, double score = 0.0) noexcept :
-        ViewPoint(position.x(), position.y(), position.z(), score) {}
+    explicit constexpr ViewPoint(const Eigen::Matrix<T, 3, 1> &position, double score = 0.0,
+                                 double uncertainty = 1.0) noexcept :
+        ViewPoint(position.x(), position.y(), position.z(), score, uncertainty) {}
 
     // Getters
-    constexpr const Eigen::Matrix<T, 3, 1> &getPosition() const noexcept { return position_; }
+    [[nodiscard]] constexpr const Eigen::Matrix<T, 3, 1> &getPosition() const noexcept { return position_; }
+    [[nodiscard]] constexpr const core::View &getView() const noexcept { return view_.value(); }
     [[nodiscard]] constexpr int getClusterId() const noexcept { return cluster_id_; }
     [[nodiscard]] constexpr double getScore() const noexcept { return score_; }
+    [[nodiscard]] constexpr double getUncertainty() const noexcept { return uncertainty_; }
 
     // Setters
     constexpr void setClusterId(const int cluster_id) noexcept { cluster_id_ = cluster_id; }
     constexpr void setScore(const double score) noexcept { score_ = score; }
+    constexpr void setUncertainty(const double uncertainty) noexcept { uncertainty_ = uncertainty; }
 
-    // Conversion to Cartesian coordinates
-    constexpr std::tuple<T, T, T> toCartesian() const noexcept {
-        return std::make_tuple(position_.x(), position_.y(), position_.z());
-    }
+
+    // Check if optional values are set
+    constexpr bool hasScore() const noexcept { return score_ != 0.0; }
+    constexpr bool hasUncertainty() const noexcept { return uncertainty_ != 1.0; }
+    constexpr bool hasClusterId() const noexcept { return cluster_id_ != -1; }
 
     // Distance calculation
     template<typename Derived>
@@ -83,6 +89,10 @@ public:
         return ViewPoint(position.x(), position.y(), position.z(), score);
     }
 
+    [[nodiscard]] static ViewPoint fromPosition(const Eigen::Vector3d &position, double score = 0.0) noexcept {
+        return ViewPoint(position.x(), position.y(), position.z(), score);
+    }
+
     // Conversion from Eigen
     template<typename Derived>
     static constexpr std::enable_if_t<std::is_base_of_v<Eigen::DenseBase<Derived>, Derived>, ViewPoint>
@@ -100,6 +110,11 @@ public:
         return ViewPoint(position, score);
     }
 
+    // Conversion to Cartesian coordinates
+    constexpr std::tuple<T, T, T> toCartesian() const noexcept {
+        return std::make_tuple(position_.x(), position_.y(), position_.z());
+    }
+
     // Conversion to Spherical coordinates
     constexpr std::tuple<T, T, T> toSpherical() const noexcept {
         const T radius = position_.norm();
@@ -109,7 +124,10 @@ public:
     }
 
     [[nodiscard]] core::View toView(const Eigen::Vector3d &object_center = Eigen::Vector3d::Zero()) const noexcept {
-        return core::View::fromPosition(position_, object_center);
+        /*if (!view_) {
+            view_ = core::View::fromPosition(position_, object_center);
+        }*/
+        return view_.value();
     }
 
     // Conversion to Isometry
@@ -128,10 +146,26 @@ public:
                            position_.z(), score_, cluster_id_);
     }
 
+    // Comparison operators
+    constexpr bool operator<(const ViewPoint &other) const noexcept {
+        return std::tie(position_.x(), position_.y(), position_.z()) <
+               std::tie(other.position_.x(), other.position_.y(), other.position_.z());
+    }
+
+    constexpr bool operator>(const ViewPoint &other) const noexcept {
+        return std::tie(position_.x(), position_.y(), position_.z()) >
+               std::tie(other.position_.x(), other.position_.y(), other.position_.z());
+    }
+
+    constexpr bool operator==(const ViewPoint &other) const noexcept { return position_ == other.position_; }
+
+    constexpr bool operator!=(const ViewPoint &other) const noexcept { return !(*this == other); }
+
 private:
     Eigen::Matrix<T, 3, 1> position_;
-    core::View view_;
+    std::optional<core::View> view_;
     double score_;
+    double uncertainty_;
     int cluster_id_; // -1 = unset, -2 = noise, >= 0 = cluster_id
 
     // Validation

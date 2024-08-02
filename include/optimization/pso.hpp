@@ -190,45 +190,17 @@ private:
     }
 
     void localOptimization() {
-        const auto initial_pose = ViewPoint<>::fromCartesian(global_best_position_.x(), global_best_position_.y(),
-                                                             global_best_position_.z())
-                                          .toIsometry();
-        const std::vector<Eigen::Vector3d> world_points = computeWorldPoints();
-        const std::vector<Eigen::Vector2d> image_points = computeImagePoints(world_points);
-        const auto camera = core::Perception::getCamera();
+        // Start local optimization from the best global position found by PSO
+        /*Eigen::Vector3d current_position = global_best_position_;
 
-        const auto result = lm_optimizer_.optimize(initial_pose, world_points, image_points, *camera);
+        optimization::LevenbergMarquardt<double, 3>::Options lm_options;
+        lm_options.max_iterations = params_.local_search_iterations;
+        auto result = lm_optimizer_.optimize(current_position, target_image_, comparator_);
 
-        if (result) {
-            global_best_position_ = result->pose.translation();
+        if (result.has_value()) {
+            global_best_position_ = result->position;
             global_best_score_ = evaluateParticle(global_best_position_);
-        }
-    }
-
-    [[nodiscard]] static std::vector<Eigen::Vector3d> computeWorldPoints() {
-        std::vector<Eigen::Vector3d> world_points;
-        // Compute synthetic 3D points for demonstration
-        constexpr double step_size = 1.0; // Define appropriate step size
-        for (double x = -5.0; x <= 5.0; x += step_size) {
-            for (double y = -5.0; y <= 5.0; y += step_size) {
-                for (double z = -5.0; z <= 5.0; z += step_size) {
-                    world_points.emplace_back(x, y, z);
-                }
-            }
-        }
-        return world_points;
-    }
-
-    [[nodiscard]] static std::vector<Eigen::Vector2d>
-    computeImagePoints(const std::vector<Eigen::Vector3d> &world_points) {
-        std::vector<Eigen::Vector2d> image_points;
-        // Project 3D points to 2D using the camera model
-        const auto camera = core::Perception::getCamera();
-        for (const auto &point: world_points) {
-            Eigen::Vector2d image_point = camera->project(point);
-            image_points.push_back(image_point);
-        }
-        return image_points;
+        }*/
     }
 };
 
