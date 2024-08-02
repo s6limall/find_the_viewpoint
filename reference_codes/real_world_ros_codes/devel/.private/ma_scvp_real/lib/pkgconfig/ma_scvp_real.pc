@@ -1,0 +1,8 @@
+prefix=/home/user/pan/PRV/devel/.private/ma_scvp_real
+
+Name: ma_scvp_real
+Description: Description of ma_scvp_real
+Version: 0.0.0
+Cflags: -I/home/user/pan/PRV/src/ma_scvp_real/include
+Libs: -L${prefix}/lib 
+Requires: 
