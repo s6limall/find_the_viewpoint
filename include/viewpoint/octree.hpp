@@ -4,11 +4,11 @@
 #include <Eigen/Dense>
 #include <algorithm>
 #include <array>
-#include <cmath>
-#include <functional>
-#include <limits>
+#include <concepts>
 #include <memory>
+#include <optional>
 #include <queue>
+#include <random>
 #include <vector>
 #include "common/logging/logger.hpp"
 #include "optimization/gpr.hpp"
@@ -24,354 +24,240 @@ namespace viewpoint {
     class Octree {
     public:
         struct Node {
-            Eigen::Matrix<T, 3, 1> center;
+            Eigen::Vector3<T> center;
             T size;
             std::vector<ViewPoint<T>> points;
             std::array<std::unique_ptr<Node>, 8> children;
-            bool explored;
-            T similarity_gradient;
+            bool explored = false;
+            T max_ucb = std::numeric_limits<T>::lowest();
 
-            Node(const Eigen::Matrix<T, 3, 1> &center, T size) noexcept :
-                center(center), size(size), points(), children{}, explored(false), similarity_gradient(0) {}
-
-            bool isLeaf() const noexcept { return children[0] == nullptr; }
+            Node(const Eigen::Vector3<T> &center, T size) : center(center), size(size) {}
+            [[nodiscard]] bool isLeaf() const noexcept { return children[0] == nullptr; }
         };
 
-        Octree(const Eigen::Matrix<T, 3, 1> &origin, T size, T resolution, size_t max_points_per_node = 10) noexcept :
-            resolution_(resolution), max_points_per_node_(max_points_per_node),
-            root_(std::make_unique<Node>(origin, size)), iteration_(0), max_iterations_(1000) {
-            LOG_DEBUG("Octree initialized with origin ({}, {}, {}), size {}, resolution {}, max_points_per_node {}",
-                      origin.x(), origin.y(), origin.z(), size, resolution, max_points_per_node);
+        Octree(const Eigen::Vector3<T> &center, T size, T min_size) :
+            root_(std::make_unique<Node>(center, size)), min_size_(min_size) {}
+
+        void optimize(const Image<> &target, const std::shared_ptr<processing::image::ImageComparator> &comparator,
+                      optimization::GaussianProcessRegression<optimization::kernel::Matern52Kernel<T>> &gpr,
+                      const ViewPoint<T> &initial_best, int max_iterations = 100, T target_score = 0.95) {
+            best_viewpoint_ = initial_best;
+            for (int i = 0; i < max_iterations; ++i) {
+                if (refine(target, comparator, gpr)) {
+                    LOG_INFO("Refinement complete at iteration {}", i);
+                    break;
+                }
+                if (best_viewpoint_ && best_viewpoint_->getScore() >= target_score) {
+                    LOG_INFO("Target score reached at iteration {}", i);
+                    break;
+                }
+
+                // Global search
+                auto candidates = getBestCandidates(10);
+                for (auto &candidate: candidates) {
+                    T ei = gpr.expectedImprovement(candidate.getPosition(), best_viewpoint_->getScore());
+                    if (ei > 0) {
+                        evaluateAndUpdatePoint(candidate, target, comparator, gpr);
+                    }
+                }
+
+                // Local search around best viewpoint
+                localSearch(best_viewpoint_->getPosition(), target, comparator, gpr);
+            }
         }
 
-        void insert(const ViewPoint<T> &point);
-        void refine(int max_depth, const Image<> &target,
-                    const std::shared_ptr<processing::image::ImageComparator> &comparator,
-                    const optimization::GaussianProcessRegression<optimization::kernel::Matern52Kernel<T>> &gpr);
-        std::vector<ViewPoint<T>> sampleNewViewpoints(
-                size_t n, const Image<> &target, const std::shared_ptr<processing::image::ImageComparator> &comparator,
-                const optimization::GaussianProcessRegression<optimization::kernel::Matern52Kernel<T>> &gpr) const;
-        bool checkConvergence() const;
-        void failureRecovery();
-        bool isWithinBounds(const Node &node, const Eigen::Matrix<T, 3, 1> &point) const noexcept;
-        void traverseTree(const std::function<void(const Node &)> &visit) const;
-        const Node *getRoot() const noexcept { return root_.get(); }
-        T getBestScore() const;
+        std::vector<ViewPoint<T>> getBestCandidates(size_t n) const {
+            std::vector<ViewPoint<T>> candidates;
+            std::function<void(const Node *)> traverse = [&](const Node *node) {
+                if (node->isLeaf()) {
+                    candidates.insert(candidates.end(), node->points.begin(), node->points.end());
+                } else {
+                    for (const auto &child: node->children) {
+                        if (child)
+                            traverse(child.get());
+                    }
+                }
+            };
+            traverse(root_.get());
+
+            std::partial_sort(candidates.begin(), candidates.begin() + std::min(n, candidates.size()), candidates.end(),
+                              [](const auto &a, const auto &b) { return a.getScore() > b.getScore(); });
+            candidates.resize(std::min(n, candidates.size()));
+            return candidates;
+        }
+
+        [[nodiscard]] std::optional<ViewPoint<T>> getBestViewpoint() const noexcept { return best_viewpoint_; }
+
+        void
+        evaluateAndUpdatePoint(ViewPoint<T> &point, const Image<> &target,
+                               const std::shared_ptr<processing::image::ImageComparator> &comparator,
+                               optimization::GaussianProcessRegression<optimization::kernel::Matern52Kernel<T>> &gpr) {
+            if (!point.hasScore()) {
+                Image<> rendered_image = Image<>::fromViewPoint(point);
+                T score = comparator->compare(target, rendered_image);
+                point.setScore(score);
+
+                updateBestViewpoint(point);
+                gpr.update(point.getPosition(), score);
+            }
+        }
+
+        void localSearch(const Eigen::Vector3<T> &center, const Image<> &target,
+                         const std::shared_ptr<processing::image::ImageComparator> &comparator,
+                         optimization::GaussianProcessRegression<optimization::kernel::Matern52Kernel<T>> &gpr) {
+            const T search_radius = min_size_ * 2;
+            std::uniform_real_distribution<T> dist(-search_radius, search_radius);
+
+            for (int i = 0; i < 10; ++i) {
+                Eigen::Vector3<T> offset(dist(rng_), dist(rng_), dist(rng_));
+                ViewPoint<T> new_point(center + offset);
+                evaluateAndUpdatePoint(new_point, target, comparator, gpr);
+            }
+        }
 
     private:
         std::unique_ptr<Node> root_;
-        T resolution_;
-        size_t max_points_per_node_;
-        std::vector<T> score_history_;
-        size_t iteration_;
-        size_t max_iterations_;
+        T min_size_;
+        std::optional<ViewPoint<T>> best_viewpoint_;
+        std::mt19937 rng_{std::random_device{}()};
 
-        void insert(Node *node, const ViewPoint<T> &point);
-        void refineNode(Node &node, int depth, int max_depth, const Image<> &target,
-                        const std::shared_ptr<processing::image::ImageComparator> &comparator,
-                        const optimization::GaussianProcessRegression<optimization::kernel::Matern52Kernel<T>> &gpr);
-        size_t getOctant(const Node &node, const Eigen::Matrix<T, 3, 1> &point) const noexcept;
-        void subdivide(Node &node);
-        T computeSimilarityGradient(const Node &node, const Image<> &target,
-                                    const std::shared_ptr<processing::image::ImageComparator> &comparator) const;
-        void exploreDiscardedRegions();
-        bool shouldSplitNode(const Node &node, int depth) const;
-        void updateNodeStatistics(
-                Node &node, const Image<> &target,
-                const std::shared_ptr<processing::image::ImageComparator> &comparator,
-                const optimization::GaussianProcessRegression<optimization::kernel::Matern52Kernel<T>> &gpr);
-        T computeUCB(T mean, T variance, size_t n) const;
-    };
 
-    template<FloatingPoint T>
-    void Octree<T>::insert(const ViewPoint<T> &point) {
-        if (!isWithinBounds(*root_, point.getPosition())) {
-            LOG_WARN("Point ({}, {}, {}) is out of bounds for this Octree.", point.getPosition().x(),
-                     point.getPosition().y(), point.getPosition().z());
-            return;
-        }
-        insert(root_.get(), point);
-    }
+        bool refine(const Image<> &target, const std::shared_ptr<processing::image::ImageComparator> &comparator,
+                    optimization::GaussianProcessRegression<optimization::kernel::Matern52Kernel<T>> &gpr) {
+            std::priority_queue<std::pair<T, Node *>> pq;
+            pq.emplace(root_->max_ucb, root_.get());
 
-    template<FloatingPoint T>
-    void Octree<T>::insert(Node *node, const ViewPoint<T> &point) {
-        while (true) {
-            if (node->points.size() < max_points_per_node_ || node->size <= resolution_) {
-                node->points.push_back(point);
-                LOG_DEBUG("Inserted point at ({}, {}, {}) into node at ({}, {}, {}) with size {}",
-                          point.getPosition().x(), point.getPosition().y(), point.getPosition().z(), node->center.x(),
-                          node->center.y(), node->center.z(), node->size);
-                return;
-            }
+            bool refined = false;
+            while (!pq.empty()) {
+                auto [_, node] = pq.top();
+                pq.pop();
 
-            if (node->isLeaf()) {
-                LOG_DEBUG("Subdividing node at ({}, {}, {}) with size {}", node->center.x(), node->center.y(),
-                          node->center.z(), node->size);
-                subdivide(*node);
-            }
+                if (node->size < min_size_ || node->explored)
+                    continue;
 
-            size_t octant = getOctant(*node, point.getPosition());
-            node = node->children[octant].get();
-        }
-    }
+                exploreNode(*node, target, comparator, gpr);
+                refined = true;
 
-    template<FloatingPoint T>
-    void
-    Octree<T>::refine(int max_depth, const Image<> &target,
-                      const std::shared_ptr<processing::image::ImageComparator> &comparator,
-                      const optimization::GaussianProcessRegression<optimization::kernel::Matern52Kernel<T>> &gpr) {
-        LOG_INFO("Starting refinement with max depth {}", max_depth);
-        refineNode(*root_, 0, max_depth, target, comparator, gpr);
-        iteration_++;
-        T best_score = getBestScore();
-        score_history_.push_back(best_score);
-        LOG_INFO("Refinement complete for iteration {}: best score = {}", iteration_, best_score);
-    }
-
-    template<FloatingPoint T>
-    void
-    Octree<T>::refineNode(Node &node, int depth, int max_depth, const Image<> &target,
-                          const std::shared_ptr<processing::image::ImageComparator> &comparator,
-                          const optimization::GaussianProcessRegression<optimization::kernel::Matern52Kernel<T>> &gpr) {
-        if (depth >= max_depth || node.explored) {
-            LOG_DEBUG("Node at ({}, {}, {}) reached max depth or already explored", node.center.x(), node.center.y(),
-                      node.center.z());
-            return;
-        }
-
-        updateNodeStatistics(node, target, comparator, gpr);
-
-        if (shouldSplitNode(node, depth)) {
-            LOG_DEBUG("Splitting node at ({}, {}, {}) with size {}", node.center.x(), node.center.y(), node.center.z(),
-                      node.size);
-            subdivide(node);
-            for (auto &child: node.children) {
-                if (child) {
-                    refineNode(*child, depth + 1, max_depth, target, comparator, gpr);
+                if (!node->isLeaf()) {
+                    for (auto &child: node->children) {
+                        if (child)
+                            pq.emplace(child->max_ucb, child.get());
+                    }
                 }
             }
+
+            return !refined; // Return true if no refinement occurred (convergence)
         }
 
-        node.explored = true;
-    }
+        void exploreNode(Node &node, const Image<> &target,
+                         const std::shared_ptr<processing::image::ImageComparator> &comparator,
+                         optimization::GaussianProcessRegression<optimization::kernel::Matern52Kernel<T>> &gpr) {
+            if (node.points.empty()) {
+                node.points = samplePoints(node);
+                // Add extra points around the best viewpoint if it's within this node
+                if (isWithinNode(node, best_viewpoint_->getPosition())) {
+                    addPointsAroundBest(node);
+                }
+            }
 
-    template<FloatingPoint T>
-    std::vector<ViewPoint<T>> Octree<T>::sampleNewViewpoints(
-            size_t n, const Image<> &target, const std::shared_ptr<processing::image::ImageComparator> &comparator,
-            const optimization::GaussianProcessRegression<optimization::kernel::Matern52Kernel<T>> &gpr) const {
-        std::vector<ViewPoint<T>> new_viewpoints;
-        std::priority_queue<std::pair<T, ViewPoint<T>>> pq;
+            evaluatePoints(node, target, comparator, gpr);
 
-        traverseTree([&](const Node &node) {
-            for (const auto &point: node.points) {
+            if (shouldSplit(node)) {
+                splitNode(node);
+            }
+
+            node.explored = true;
+        }
+
+        std::vector<ViewPoint<T>> samplePoints(const Node &node) {
+            std::vector<ViewPoint<T>> points;
+            std::uniform_real_distribution<T> dist(-0.5, 0.5);
+
+            points.reserve(10);
+            for (int i = 0; i < 10; ++i) {
+                Eigen::Vector3<T> position =
+                        node.center + node.size * Eigen::Vector3<T>(dist(rng_), dist(rng_), dist(rng_));
+                points.emplace_back(position);
+            }
+
+            return points;
+        }
+
+        void evaluatePoints(Node &node, const Image<> &target,
+                            const std::shared_ptr<processing::image::ImageComparator> &comparator,
+                            optimization::GaussianProcessRegression<optimization::kernel::Matern52Kernel<T>> &gpr) {
+            node.max_ucb = std::numeric_limits<T>::lowest();
+
+            for (auto &point: node.points) {
+                if (!point.hasScore()) {
+                    Image<> rendered_image = Image<>::fromViewPoint(point);
+                    T score = comparator->compare(target, rendered_image);
+                    point.setScore(score);
+
+                    updateBestViewpoint(point);
+                    gpr.update(point.getPosition(), score);
+                }
+
                 auto [mean, variance] = gpr.predict(point.getPosition());
-                T ucb = computeUCB(mean, variance, node.points.size());
-                pq.emplace(ucb, point);
-                LOG_DEBUG("Predicted UCB for point at ({}, {}, {}) is {}", point.getPosition().x(),
-                          point.getPosition().y(), point.getPosition().z(), ucb);
+                T ucb = computeUCB(mean, variance);
+                node.max_ucb = std::max(node.max_ucb, ucb);
             }
-        });
-
-        new_viewpoints.reserve(std::min(n, pq.size()));
-        for (size_t i = 0; i < n && !pq.empty(); ++i) {
-            new_viewpoints.push_back(std::move(pq.top().second));
-            pq.pop();
         }
 
-        LOG_INFO("Sampled {} new viewpoints", new_viewpoints.size());
-        return new_viewpoints;
-    }
-
-    template<FloatingPoint T>
-    bool Octree<T>::isWithinBounds(const Node &node, const Eigen::Matrix<T, 3, 1> &point) const noexcept {
-        T half_size = node.size / 2;
-        bool within_bounds = (point.array() >= (node.center.array() - half_size)).all() &&
-                             (point.array() <= (node.center.array() + half_size)).all();
-        LOG_DEBUG("Point ({}, {}, {}) is within bounds: {}", point.x(), point.y(), point.z(), within_bounds);
-        return within_bounds;
-    }
-
-    template<FloatingPoint T>
-    size_t Octree<T>::getOctant(const Node &node, const Eigen::Matrix<T, 3, 1> &point) const noexcept {
-        size_t octant = 0;
-        if (point.x() >= node.center.x())
-            octant |= 1;
-        if (point.y() >= node.center.y())
-            octant |= 2;
-        if (point.z() >= node.center.z())
-            octant |= 4;
-        LOG_DEBUG("Point ({}, {}, {}) assigned to octant {}", point.x(), point.y(), point.z(), octant);
-        return octant;
-    }
-
-    template<FloatingPoint T>
-    void Octree<T>::subdivide(Node &node) {
-        T new_size = node.size / 2;
-        T offset = new_size / 2;
-
-        for (size_t i = 0; i < 8; ++i) {
-            Eigen::Matrix<T, 3, 1> new_center = node.center;
-            if (i & 1)
-                new_center.x() += offset;
-            else
-                new_center.x() -= offset;
-            if (i & 2)
-                new_center.y() += offset;
-            else
-                new_center.y() -= offset;
-            if (i & 4)
-                new_center.z() += offset;
-            else
-                new_center.z() -= offset;
-            node.children[i] = std::make_unique<Node>(new_center, new_size);
-            LOG_DEBUG("Created child node at ({}, {}, {}) with size {}", new_center.x(), new_center.y(), new_center.z(),
-                      new_size);
-        }
-
-        for (const auto &point: node.points) {
-            size_t octant = getOctant(node, point.getPosition());
-            node.children[octant]->points.push_back(point);
-            LOG_DEBUG("Moved point ({}, {}, {}) to child octant {}", point.getPosition().x(), point.getPosition().y(),
-                      point.getPosition().z(), octant);
-        }
-        node.points.clear();
-    }
-
-    template<FloatingPoint T>
-    void Octree<T>::traverseTree(const std::function<void(const Node &)> &visit) const {
-        std::function<void(const Node &)> traverse = [&](const Node &node) {
-            visit(node);
-            for (const auto &child: node.children) {
-                if (child)
-                    traverse(*child);
+        void addPointsAroundBest(Node &node) {
+            const int extra_points = 5;
+            const T radius = node.size * 0.1;
+            std::normal_distribution<T> dist(0, radius);
+            for (int i = 0; i < extra_points; ++i) {
+                Eigen::Vector3<T> offset(dist(rng_), dist(rng_), dist(rng_));
+                node.points.emplace_back(best_viewpoint_->getPosition() + offset);
             }
-        };
-        traverse(*root_);
-    }
-
-    template<FloatingPoint T>
-    T Octree<T>::computeSimilarityGradient(
-            const Node &node, const Image<> &target,
-            const std::shared_ptr<processing::image::ImageComparator> &comparator) const {
-        if (node.points.size() < 2)
-            return 0;
-
-        T max_similarity = std::numeric_limits<T>::lowest();
-        T min_similarity = std::numeric_limits<T>::max();
-
-        for (const auto &point: node.points) {
-            T similarity = comparator->compare(target, Image<T>::fromViewPoint(point));
-            LOG_INFO("Computed similarity for point at ({}, {}, {}): {}", point.getPosition().x(),
-                     point.getPosition().y(), point.getPosition().z(), similarity);
-            max_similarity = std::max(max_similarity, similarity);
-            min_similarity = std::min(min_similarity, similarity);
         }
 
-        T gradient = max_similarity - min_similarity;
-        LOG_DEBUG("Computed similarity gradient for node at ({}, {}, {}): {}", node.center.x(), node.center.y(),
-                  node.center.z(), gradient);
-        return gradient;
-    }
+        bool isWithinNode(const Node &node, const Eigen::Vector3<T> &position) const {
+            return (position - node.center).cwiseAbs().maxCoeff() <= node.size / 2;
+        }
 
-    template<FloatingPoint T>
-    T Octree<T>::getBestScore() const {
-        T best_score = std::numeric_limits<T>::lowest();
-        traverseTree([&](const Node &node) {
+        void updateBestViewpoint(const ViewPoint<T> &point) {
+            if (!best_viewpoint_ || point.getScore() > best_viewpoint_->getScore()) {
+                best_viewpoint_ = point;
+                LOG_INFO("New best viewpoint: {} with score {}", point.toString(), point.getScore());
+            }
+        }
+
+        [[nodiscard]] bool shouldSplit(const Node &node) const noexcept {
+            return node.size > min_size_ * T(2) &&
+                   (node.points.size() > 10 ||
+                    (best_viewpoint_ && node.center.isApprox(best_viewpoint_->getPosition(), node.size)));
+        }
+
+        void splitNode(Node &node) {
+            T child_size = node.size / T(2);
+            for (int i = 0; i < 8; ++i) {
+                Eigen::Vector3<T> offset((i & 1) ? child_size : -child_size, (i & 2) ? child_size : -child_size,
+                                         (i & 4) ? child_size : -child_size);
+                node.children[i] = std::make_unique<Node>(node.center + offset * T(0.5), child_size);
+            }
+
             for (const auto &point: node.points) {
-                best_score = std::max(best_score, point.getScore());
+                int index = 0;
+                for (int d = 0; d < 3; ++d) {
+                    if (point.getPosition()[d] > node.center[d]) {
+                        index |= (1 << d);
+                    }
+                }
+                node.children[index]->points.push_back(point);
             }
-        });
-        LOG_INFO("Best score found: {}", best_score);
-        return best_score;
-    }
 
-    template<FloatingPoint T>
-    void Octree<T>::failureRecovery() {
-        LOG_WARN("Starting failure recovery.");
-        exploreDiscardedRegions();
-    }
-
-    template<FloatingPoint T>
-    void Octree<T>::exploreDiscardedRegions() {
-        std::vector<ViewPoint<T>> discarded_points;
-        traverseTree([&](const Node &node) {
-            if (node.explored && node.points.empty()) {
-                ViewPoint<T> new_point(node.center);
-                discarded_points.push_back(new_point);
-                LOG_DEBUG("Exploring discarded region at node ({}, {}, {})", node.center.x(), node.center.y(),
-                          node.center.z());
-            }
-        });
-
-        for (const auto &point: discarded_points) {
-            insert(point);
-        }
-    }
-
-    template<FloatingPoint T>
-    bool Octree<T>::checkConvergence() const {
-        const size_t window_size = 10;
-        const T improvement_threshold = static_cast<T>(1e-4);
-
-        if (score_history_.size() < window_size) {
-            return false;
+            node.points.clear();
+            node.points.shrink_to_fit();
         }
 
-        T avg_improvement = 0;
-        for (size_t i = score_history_.size() - window_size; i < score_history_.size() - 1; ++i) {
-            avg_improvement += (score_history_[i + 1] - score_history_[i]) / window_size;
+        T computeUCB(T mean, T variance) const {
+            static const T exploration_factor = 2.0;
+            return mean + exploration_factor * std::sqrt(variance);
         }
-
-        bool converged = std::abs(avg_improvement) < improvement_threshold;
-        LOG_INFO("Convergence check: {}", converged);
-        return converged;
-    }
-
-    template<FloatingPoint T>
-    bool Octree<T>::shouldSplitNode(const Node &node, int depth) const {
-        const T density_threshold = static_cast<T>(0.7);
-        const T gradient_threshold = static_cast<T>(0.1);
-        const T size_threshold = resolution_ * 2;
-
-        T point_density = static_cast<T>(node.points.size()) / std::pow(8, depth);
-
-        bool should_split = (point_density > density_threshold || node.similarity_gradient > gradient_threshold) &&
-                            node.size > size_threshold;
-        LOG_DEBUG("Should split node at ({}, {}, {}) with size {}: {}", node.center.x(), node.center.y(),
-                  node.center.z(), node.size, should_split);
-        return should_split;
-    }
-
-    template<FloatingPoint T>
-    void Octree<T>::updateNodeStatistics(
-            Node &node, const Image<> &target, const std::shared_ptr<processing::image::ImageComparator> &comparator,
-            const optimization::GaussianProcessRegression<optimization::kernel::Matern52Kernel<T>> &gpr) {
-        for (auto &point: node.points) {
-            if (!point.hasScore()) {
-                auto similarity_score =
-                        comparator->compare(target.getImage(), Image<T>::fromViewPoint(point).getImage());
-                point.setScore(similarity_score);
-                LOG_DEBUG("Computed similarity score for point ({}, {}, {}): {}", point.getPosition().x(),
-                          point.getPosition().y(), point.getPosition().z(), similarity_score);
-            }
-            if (!point.hasUncertainty()) {
-                auto [mean, variance] = gpr.predict(point.getPosition());
-                point.setUncertainty(variance);
-                LOG_DEBUG("Computed uncertainty for point ({}, {}, {}): mean = {}, variance = {}",
-                          point.getPosition().x(), point.getPosition().y(), point.getPosition().z(), mean, variance);
-            }
-        }
-        node.similarity_gradient = computeSimilarityGradient(node, target, comparator);
-    }
-
-    template<FloatingPoint T>
-    T Octree<T>::computeUCB(T mean, T variance, size_t n) const {
-        T exploration_factor =
-                std::max(static_cast<T>(0.1), 1 - static_cast<T>(iteration_) / static_cast<T>(max_iterations_));
-        T ucb = mean + exploration_factor * std::sqrt(2 * std::log(static_cast<T>(n)) / (n + 1)) * std::sqrt(variance);
-        LOG_DEBUG("Computed UCB: mean = {}, variance = {}, UCB = {}", mean, variance, ucb);
-        return ucb;
-    }
+    };
 
 } // namespace viewpoint
 

@@ -3,14 +3,15 @@
 #ifndef PERCEPTION_HPP
 #define PERCEPTION_HPP
 
-#include <string>
+#include <future>
 #include <memory>
+#include <string>
 
 #include <pcl/PolygonMesh.h>
-#include <pcl/io/ply_io.h>
-#include <pcl/io/vtk_lib_io.h>
 #include <pcl/common/common.h>
 #include <pcl/common/transforms.h>
+#include <pcl/io/ply_io.h>
+#include <pcl/io/vtk_lib_io.h>
 #include <pcl/visualization/pcl_visualizer.h>
 
 #include <Eigen/Core>
@@ -19,15 +20,13 @@
 #include "common/logging/logger.hpp"
 #include "config/configuration.hpp"
 
+#include "common/io/image.hpp"
 #include "core/camera.hpp"
 
 namespace core {
     class Perception {
     public:
-        enum class NormalizationMethod {
-            UnitCube,
-            UnitSphere
-        };
+        enum class NormalizationMethod { UnitCube, UnitSphere };
 
         // Constructor to initialize Perception with a given object path.
         // explicit Perception(const std::string &object_path);
@@ -37,8 +36,7 @@ namespace core {
         Perception &operator=(const Perception &) = delete;
 
         // Render the object using the given camera pose and save the image.
-        static cv::Mat render(const Eigen::Matrix4d &extrinsics,
-                              std::string_view image_save_path = "render_tmp.jpg");
+        static cv::Mat render(const Eigen::Matrix4d &extrinsics, std::string_view image_save_path = "render_tmp.jpg");
 
         // Overloaded render function to return the rendered image as cv::Mat
         // [[nodiscard]] static cv::Mat render(const Eigen::Matrix4d &extrinsics);
@@ -93,37 +91,21 @@ namespace core {
             static constexpr int height = 480;
             static constexpr std::string_view mesh_path = "./3d_models/obj_000020.ply";
 
-            static std::string_view getMeshPath() noexcept {
-                return mesh_path;
-            }
+            static std::string_view getMeshPath() noexcept { return mesh_path; }
 
-            static int getWidth() {
-                return width;
-            }
+            static int getWidth() { return width; }
 
-            static int getHeight() {
-                return height;
-            }
+            static int getHeight() { return height; }
 
-            static int getFoVx() {
-                return fov_x;
-            }
+            static int getFoVx() { return fov_x; }
 
-            static int getFoVy() {
-                return fov_y;
-            }
+            static int getFoVy() { return fov_y; }
 
-            static std::string_view getImageSavePath() {
-                return "render_tmp.jpg";
-            }
+            static std::string_view getImageSavePath() { return "render_tmp.jpg"; }
 
-            static std::string_view getViewerName() {
-                return "Viewer";
-            }
-
+            static std::string_view getViewerName() { return "Viewer"; }
         };
-
     };
-}
+} // namespace core
 
 #endif // PERCEPTION_HPP

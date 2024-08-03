@@ -2,8 +2,6 @@
 
 #include "core/perception.hpp"
 
-#include "common/io/image.hpp"
-
 namespace core {
 
     std::shared_ptr<pcl::visualization::PCLVisualizer> Perception::viewer_ = nullptr;
@@ -58,9 +56,8 @@ namespace core {
         pcl::compute3DCentroid(*cloud, centroid);
         centerPointCloud(cloud, centroid);
 
-        const double scale = (method == NormalizationMethod::UnitCube)
-                                 ? calculateScaleForUnitCube(cloud)
-                                 : calculateScaleForUnitSphere(cloud);
+        const double scale = (method == NormalizationMethod::UnitCube) ? calculateScaleForUnitCube(cloud)
+                                                                       : calculateScaleForUnitSphere(cloud);
         if (scale == 0.0) {
             LOG_WARN("Scale is zero. Skipping scaling.");
             return;
@@ -92,8 +89,8 @@ namespace core {
         Eigen::Vector4f min_point, max_point;
         pcl::getMinMax3D(*cloud, min_point, max_point);
 
-        const double max_dim = std::max({max_point.x() - min_point.x(), max_point.y() - min_point.y(),
-                                         max_point.z() - min_point.z()});
+        const double max_dim =
+                std::max({max_point.x() - min_point.x(), max_point.y() - min_point.y(), max_point.z() - min_point.z()});
         return max_dim == 0.0 ? 0.0 : 1.0 / max_dim;
     }
 
@@ -101,7 +98,6 @@ namespace core {
         double max_distance = 0.0;
         for (const auto &point: cloud->points) {
             max_distance = std::max(max_distance, static_cast<double>(point.getVector3fMap().norm()));
-
         }
         return max_distance == 0.0 ? 0.0 : 1.0 / max_distance;
     }
@@ -113,22 +109,32 @@ namespace core {
 
         LOG_TRACE("Rendering image...");
 
-        viewer_->setSize(camera_->getIntrinsics().width, camera_->getIntrinsics().height);
-        viewer_->setCameraParameters(camera_->getIntrinsics().getMatrix().cast<float>(), extrinsics.cast<float>());
-        // viewer_->spinOnce(100);
-        viewer_->spinOnce(duration);
-        viewer_->saveScreenshot(std::string(image_save_path));
+        try {
+            viewer_->setSize(camera_->getIntrinsics().width, camera_->getIntrinsics().height);
+            viewer_->setCameraParameters(camera_->getIntrinsics().getMatrix().cast<float>(), extrinsics.cast<float>());
+            viewer_->spinOnce(duration);
+            viewer_->saveScreenshot(std::string(image_save_path));
 
-        LOG_TRACE("Rendered image saved at: {}", image_save_path);
+            LOG_TRACE("Rendered image saved at: {}", image_save_path);
 
-        cv::Mat rendered_image = common::io::image::readImage(image_save_path);
-        if (rendered_image.empty()) {
-            LOG_ERROR("Failed to read the rendered image from {}", image_save_path);
+            cv::Mat rendered_image;
+            try {
+                rendered_image = common::io::image::readImage(image_save_path);
+                if (rendered_image.empty()) {
+                    LOG_ERROR("Rendered image is empty.");
+                    throw std::runtime_error("Rendered image is empty.");
+                }
+            } catch (const std::exception &e) {
+                LOG_ERROR("Failed to read the rendered image from {}: {}", image_save_path, e.what());
+                throw;
+            }
+
+            LOG_TRACE("Rendered image captured.");
+            return rendered_image;
+        } catch (const std::exception &e) {
+            LOG_ERROR("Rendering task failed: {}", e.what());
+            return {}; // Return an empty image in case of failure
         }
-
-        LOG_TRACE("Rendered image captured.");
-
-        return rendered_image;
     }
 
     std::shared_ptr<Camera> Perception::getCamera() {
@@ -141,4 +147,4 @@ namespace core {
         return viewer_;
     }
 
-}
+} // namespace core

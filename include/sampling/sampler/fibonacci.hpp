@@ -52,7 +52,7 @@ public:
         };
 
         this->samples_.resize(this->dimensions_, num_samples);
-        T inv_samples = 1.0 / num_samples;
+        T inv_samples = 1.0 / static_cast<double>(num_samples);
 
         for (size_t i = 0; i < num_samples; ++i) {
             auto point = generate_point(i, inv_samples);
