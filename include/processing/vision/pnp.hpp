@@ -15,55 +15,55 @@ namespace processing::viewpoint {
     class PnPSolver {
     public:
         struct Config {
-            int ransacIterations = 10; // Reduced number of iterations
-            double reprojectionError = 8.0;
+            int ransac_iterations = 10; // Reduced number of iterations
+            double reprojection_error = 8.0;
             double confidence = 0.99;
-            cv::SolvePnPMethod pnpMethod = cv::SOLVEPNP_EPNP;
+            cv::SolvePnPMethod pnp_method = cv::SOLVEPNP_EPNP;
         };
 
         explicit PnPSolver(const core::Camera::Intrinsics &intrinsics, const Config &config = Config()) :
             intrinsics_(intrinsics), config_(config) {}
 
         std::optional<std::pair<Eigen::Matrix<Scalar, 3, 1>, Eigen::Quaternion<Scalar>>>
-        estimatePose(const std::vector<Eigen::Matrix<Scalar, 3, 1>> &objectPoints,
-                     const std::vector<Eigen::Matrix<Scalar, 2, 1>> &imagePoints) const {
+        estimatePose(const std::vector<Eigen::Matrix<Scalar, 3, 1>> &object_points,
+                     const std::vector<Eigen::Matrix<Scalar, 2, 1>> &image_points) const {
 
-            if (objectPoints.size() < 4 || imagePoints.size() < 4) {
+            if (object_points.size() < 4 || image_points.size() < 4) {
                 LOG_ERROR("Not enough points for PnP. Need at least 4 points.");
                 return std::nullopt;
             }
 
 
             // TODO: USE .toView()
-            std::vector<cv::Point3f> cvObjectPoints;
-            std::vector<cv::Point2f> cvImagePoints;
+            std::vector<cv::Point3f> cv_object_points;
+            std::vector<cv::Point2f> cv_image_points;
 
-            for (const auto &pt: objectPoints) {
-                cvObjectPoints.emplace_back(pt.x(), pt.y(), pt.z());
+            for (const auto &pt: object_points) {
+                cv_object_points.emplace_back(pt.x(), pt.y(), pt.z());
             }
 
-            LOG_DEBUG("Object points: {}", cvObjectPoints.size());
+            LOG_DEBUG("Object points: {}", cv_object_points.size());
 
-            for (const auto &pt: imagePoints) {
-                cvImagePoints.emplace_back(pt.x(), pt.y());
+            for (const auto &pt: image_points) {
+                cv_image_points.emplace_back(pt.x(), pt.y());
             }
 
-            LOG_DEBUG("Image points: {}", cvImagePoints.size());
+            LOG_DEBUG("Image points: {}", cv_image_points.size());
 
-            cv::Mat rvec, tvec, rotMat;
+            cv::Mat rvec, tvec, rotation_matrix;
             std::vector<int> inliers;
 
-            LOG_DEBUG("Solving PnP using method {}.", static_cast<int>(config_.pnpMethod));
+            LOG_DEBUG("Solving PnP using method {}.", static_cast<int>(config_.pnp_method));
 
             cv::Mat camera_matrix;
             cv::eigen2cv(intrinsics_.getMatrix(), camera_matrix);
 
             // Create distortion coefficients (assume no distortion for now)
-            cv::Mat distCoeffs = cv::Mat::zeros(5, 1, CV_64F);
+            cv::Mat dist_coeffs = cv::Mat::zeros(5, 1, CV_64F);
 
-            bool success = cv::solvePnPRansac(cvObjectPoints, cvImagePoints, camera_matrix, distCoeffs, rvec, tvec,
-                                              false, config_.ransacIterations, config_.reprojectionError,
-                                              config_.confidence, inliers, config_.pnpMethod);
+            bool success = cv::solvePnPRansac(cv_object_points, cv_image_points, camera_matrix, dist_coeffs, rvec, tvec,
+                                              false, config_.ransac_iterations, config_.reprojection_error,
+                                              config_.confidence, inliers, config_.pnp_method);
 
             LOG_DEBUG("PnP solution found: {}", success);
 
@@ -74,8 +74,8 @@ namespace processing::viewpoint {
                 LOG_DEBUG("Converting translation vector.");
                 cv::cv2eigen(tvec, translation);
                 LOG_DEBUG("Converting rotation vector to rotation matrix.");
-                cv::Rodrigues(rvec, rotMat); // Convert rotation vector to rotation matrix
-                cv::cv2eigen(rotMat, rotation);
+                cv::Rodrigues(rvec, rotation_matrix); // Convert rotation vector to rotation matrix
+                cv::cv2eigen(rotation_matrix, rotation);
 
                 return std::make_optional(std::make_pair(translation, Eigen::Quaternion<Scalar>(rotation)));
             } else {
