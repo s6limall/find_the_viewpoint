@@ -52,7 +52,7 @@ image:
                 min_good_matches: 5 # Minimum number of good matches required
 
     comparator:
-        type: "FEATURE"         # Default image comparison method (MSE or SSIM)
+        type: "SSIM"         # Default image comparison method (MSE or SSIM)
         ssim:
             threshold: 0.8             # Higher is better
             gaussian_window_size: 11   # Size of Gaussian window for SSIM calculation
@@ -69,9 +69,9 @@ image:
 estimation:
     distance:
         max_iterations: 5
-        initial_guess: 1.5
+        initial_guess: 1.7
         step_size: 0.1
-        threshold: 0.01
+        threshold: 0.05
 
 rendering:
     duration: 0 # Duration of the rendering in ms

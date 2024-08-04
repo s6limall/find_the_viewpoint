@@ -9,7 +9,7 @@
 #include "viewpoint/generator.hpp"
 #include "viewpoint/octree.hpp"
 
-using KernelType = optimization::kernel::Matern52Kernel<double>;
+using KernelType = optimization::kernel::Matern52<>;
 
 std::once_flag Executor::init_flag_;
 double Executor::radius_;
@@ -47,18 +47,18 @@ void Executor::execute() {
         // Initialize Octree
         const double size = 2 * radius_;
         const double min_size = 0.01 * size;
-        viewpoint::Octree<double> octree(Eigen::Vector3d::Zero(), size, min_size);
+        viewpoint::Octree<> octree(Eigen::Vector3d::Zero(), size, min_size);
 
         // Initialize GPR
         const double initial_length_scale = 0.5 * size;
         const double initial_variance = 1.0;
         const double initial_noise_variance = 1e-6;
         KernelType kernel(initial_length_scale, initial_variance, initial_noise_variance);
-        optimization::GaussianProcessRegression<KernelType> gpr(kernel);
+        optimization::GaussianProcessRegression<> gpr(kernel);
 
         // Generate initial samples using Fibonacci lattice sampler
-        FibonacciLatticeSampler<double> sampler({-1, -1, -1}, {1, 1, 1}, radius_);
-        const int initial_sample_count = 50; // Increased for better initial coverage
+        FibonacciLatticeSampler<> sampler({-1, -1, -1}, {1, 1, 1}, radius_);
+        const int initial_sample_count = 10; // Increased for better initial coverage
         Eigen::MatrixXd initial_samples = sampler.generate(initial_sample_count);
 
         // Evaluate initial samples
@@ -96,8 +96,8 @@ void Executor::execute() {
         gpr.fit(X_train, y_train);
 
         // Main optimization loop
-        const int max_iterations = 200; // Increased for more thorough search
-        const double target_score = 0.95;
+        constexpr int max_iterations = 5;
+        constexpr double target_score = 0.90;
         octree.optimize(target_, comparator_, gpr, best_initial_viewpoint, max_iterations, target_score);
 
         // Get the final best viewpoint
@@ -121,49 +121,3 @@ void Executor::execute() {
         throw;
     }
 }
-
-///
-/*
-template<FloatingPoint T>
-std::vector<ViewPoint<T>> Octree<T>::sampleNewViewpoints(
-        size_t n, const Image<> &target, const std::shared_ptr<processing::image::ImageComparator> &comparator,
-        const optimization::GaussianProcessRegression<optimization::kernel::Matern52Kernel<T>> &gpr) const {
-    std::vector<ViewPoint<T>> new_viewpoints;
-    std::priority_queue<std::pair<T, ViewPoint<T>>> pq;
-
-    traverseTree([&](const Node &node) {
-        for (const auto &point: node.points) {
-            Eigen::VectorXd position = point.getPosition();
-            auto [mean, variance] = gpr.predict(position);  // Explicit call to disambiguate
-            T ucb = computeUCB(mean, variance, node.points.size());
-            pq.emplace(ucb, point);
-        }
-    });
-
-    new_viewpoints.reserve(std::min(n, pq.size()));
-    for (size_t i = 0; i < n && !pq.empty(); ++i) {
-        new_viewpoints.push_back(std::move(pq.top().second));
-        pq.pop();
-    }
-
-    return new_viewpoints;
-}
-
-template<FloatingPoint T>
-void Octree<T>::updateNodeStatistics(
-        Node &node, const Image<> &target, const std::shared_ptr<processing::image::ImageComparator> &comparator,
-        const optimization::GaussianProcessRegression<optimization::kernel::Matern52Kernel<T>> &gpr) {
-    for (auto &point: node.points) {
-        if (!point.hasScore()) {
-            auto similarity_score = comparator->compare(target.getImage(), Image<T>::fromViewPoint(point).getImage());
-            point.setScore(similarity_score);
-        }
-        if (!point.hasUncertainty()) {
-            Eigen::VectorXd position = point.getPosition();
-            auto [mean, variance] = gpr.predict(position);  // Explicit call to disambiguate
-            point.setUncertainty(variance);
-        }
-    }
-    node.similarity_gradient = computeSimilarityGradient(node, target, comparator);
-}
-*/

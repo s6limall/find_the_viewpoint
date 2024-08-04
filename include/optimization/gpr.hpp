@@ -1,3 +1,5 @@
+// File: optimization/gpr.hpp
+
 #ifndef OPTIMIZATION_GPR_HPP
 #define OPTIMIZATION_GPR_HPP
 
@@ -10,7 +12,7 @@
 
 namespace optimization {
 
-    template<typename Kernel = kernel::Matern52Kernel<>>
+    template<typename Kernel = kernel::Matern52<>>
     class GaussianProcessRegression {
     public:
         explicit GaussianProcessRegression(const Kernel &kernel, double noise_variance = 1e-6) :

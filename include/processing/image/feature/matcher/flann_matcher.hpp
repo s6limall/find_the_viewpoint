@@ -3,6 +3,7 @@
 #ifndef FEATURE_MATCHER_FLANN_HPP
 #define FEATURE_MATCHER_FLANN_HPP
 
+#include <opencv2/calib3d.hpp>
 #include <opencv2/core.hpp>
 #include <opencv2/features2d.hpp>
 #include "config/configuration.hpp"
@@ -16,7 +17,8 @@ namespace processing::image {
 
         explicit FLANNMatcher(IndexType index_type = IndexType::KDTree) noexcept :
             ratio_thresh_(config::get("feature_matcher.flann.ratio_thresh", 0.75f)),
-            min_good_matches_(config::get("feature_matcher.flann.min_good_matches", 10)) {
+            min_good_matches_(config::get("feature_matcher.flann.min_good_matches", 10)),
+            min_homography_matches_(config::get("feature_matcher.flann.min_homography_matches", 4)) {
 
             if (index_type == IndexType::KDTree) {
                 int trees = config::get("feature_matcher.flann.trees", 5);
@@ -32,14 +34,12 @@ namespace processing::image {
         }
 
         [[nodiscard]] std::vector<cv::DMatch> match(const cv::Mat &desc1, const cv::Mat &desc2) const override {
-
             if (desc1.empty() || desc2.empty()) {
                 LOG_ERROR("One or both descriptor matrices are empty");
-                throw std::invalid_argument("One or both descriptor matrices are empty");
+                return {};
             }
 
             cv::Mat descriptors1, descriptors2;
-            // Convert descriptors to CV_32F if they're not already
             desc1.convertTo(descriptors1, CV_32F);
             desc2.convertTo(descriptors2, CV_32F);
 
@@ -64,10 +64,47 @@ namespace processing::image {
             return good_matches;
         }
 
+        [[nodiscard]] double computeMatchScore(const std::vector<cv::KeyPoint> &keypoints1,
+                                               const std::vector<cv::KeyPoint> &keypoints2,
+                                               const std::vector<cv::DMatch> &matches) const {
+            if (matches.size() < static_cast<size_t>(min_homography_matches_)) {
+                // Fallback: use a simple ratio of good matches to total keypoints
+                return static_cast<double>(matches.size()) / std::min(keypoints1.size(), keypoints2.size());
+            }
+
+            std::vector<cv::Point2f> points1, points2;
+            for (const auto &match: matches) {
+                points1.push_back(keypoints1[match.queryIdx].pt);
+                points2.push_back(keypoints2[match.trainIdx].pt);
+            }
+
+            cv::Mat homography;
+            std::vector<uchar> inliers;
+            try {
+                homography = cv::findHomography(points1, points2, cv::RANSAC, 3.0, inliers);
+            } catch (const cv::Exception &e) {
+                LOG_WARN("Homography calculation failed: {}. Falling back to simple match ratio.", e.what());
+                return static_cast<double>(matches.size()) / std::min(keypoints1.size(), keypoints2.size());
+            }
+
+            if (homography.empty()) {
+                LOG_WARN("Homography is empty. Falling back to simple match ratio.");
+                return static_cast<double>(matches.size()) / std::min(keypoints1.size(), keypoints2.size());
+            }
+
+            int inlier_count = cv::countNonZero(inliers);
+            double inlier_ratio = static_cast<double>(inlier_count) / matches.size();
+            double match_ratio = static_cast<double>(matches.size()) / std::min(keypoints1.size(), keypoints2.size());
+
+            // Combine inlier ratio and match ratio for a more robust score
+            return 0.5 * (inlier_ratio + match_ratio);
+        }
+
     private:
         cv::Ptr<cv::FlannBasedMatcher> matcher_;
         const float ratio_thresh_;
         const int min_good_matches_;
+        const int min_homography_matches_;
     };
 
 } // namespace processing::image
