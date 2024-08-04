@@ -35,8 +35,11 @@ namespace viewpoint {
             [[nodiscard]] bool isLeaf() const noexcept { return children[0] == nullptr; }
         };
 
-        Octree(const Eigen::Vector3<T> &center, T size, T min_size, int max_iterations) :
-            root_(std::make_unique<Node>(center, size)), min_size_(min_size), max_iterations_(max_iterations) {}
+        Octree(const Eigen::Vector3<T> &center, T size, T min_size, int max_iterations,
+               std::optional<T> radius = std::nullopt, std::optional<T> tolerance = std::nullopt) :
+            root_(std::make_unique<Node>(center, size)), min_size_(min_size), max_iterations_(max_iterations),
+            radius_(radius), tolerance_(tolerance) {}
+
 
         void optimize(const Image<> &target, const std::shared_ptr<processing::image::ImageComparator> &comparator,
                       optimization::GaussianProcessRegression<optimization::kernel::Matern52<T>> &gpr,
@@ -84,6 +87,8 @@ namespace viewpoint {
         mutable std::mt19937 rng_{std::random_device{}()};
         static constexpr int patience_ = 20;
         static constexpr T improvement_threshold_ = 1e-8;
+        std::optional<T> radius_, tolerance_;
+
 
         bool refine(const Image<> &target, const std::shared_ptr<processing::image::ImageComparator> &comparator,
                     optimization::GaussianProcessRegression<optimization::kernel::Matern52<T>> &gpr,
@@ -143,6 +148,7 @@ namespace viewpoint {
             for (int i = 0; i < 10; ++i) {
                 Eigen::Vector3<T> position =
                         node.center + node.size * Eigen::Vector3<T>(dist(rng_), dist(rng_), dist(rng_));
+                position = projectToShell(position);
                 points.emplace_back(position);
             }
 
@@ -267,6 +273,23 @@ namespace viewpoint {
                     break;
                 }
             }
+        }
+
+        Eigen::Vector3<T> projectToShell(const Eigen::Vector3<T> &point) const {
+            if (!radius_ || !tolerance_)
+                return point;
+
+            Eigen::Vector3<T> direction = point - root_->center;
+            T distance = direction.norm();
+            T min_radius = *radius_ * (1 - *tolerance_);
+            T max_radius = *radius_ * (1 + *tolerance_);
+
+            if (distance < min_radius) {
+                return root_->center + direction.normalized() * min_radius;
+            } else if (distance > max_radius) {
+                return root_->center + direction.normalized() * max_radius;
+            }
+            return point;
         }
     };
 
