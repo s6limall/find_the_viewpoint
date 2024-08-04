@@ -48,7 +48,7 @@ void Executor::execute() {
         const double size = 2 * radius_;
         const double min_size = 0.01 * size;
         constexpr int max_iterations = 5; // Increased from 5 to allow for more optimization steps
-        viewpoint::Octree<double> octree(Eigen::Vector3d::Zero(), size, min_size, max_iterations);
+        viewpoint::Octree<double> octree(Eigen::Vector3d::Zero(), size, min_size, max_iterations, radius_, 0.2);
 
         // Initialize GPR
         const double initial_length_scale = 0.5 * size;
@@ -59,7 +59,7 @@ void Executor::execute() {
 
         // Generate initial samples using Fibonacci lattice sampler
         FibonacciLatticeSampler<double> sampler({0, 0, 0}, {1, 1, 1}, radius_);
-        const int initial_sample_count = 5; // Increased for better initial coverage
+        const int initial_sample_count = 30; // Increased for better initial coverage
         Eigen::MatrixXd initial_samples = sampler.generate(initial_sample_count);
 
         // Evaluate initial samples
