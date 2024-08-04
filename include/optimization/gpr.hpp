@@ -67,22 +67,23 @@ namespace optimization {
                    sigma * std::exp(-0.5 * z * z) / std::sqrt(2.0 * M_PI);
         }
 
-        void optimizeHyperparameters(int n_restarts = 10) {
+        void optimizeHyperparameters(int n_iterations = 50) {
             Eigen::Vector3d best_params = kernel_.getParameters();
             double best_lml = computeLogMarginalLikelihood();
 
             std::mt19937 gen(std::random_device{}());
-            std::uniform_real_distribution<> dist(0.1, 10.0);
+            std::normal_distribution<double> dist(0.0, 0.1);
 
-            for (int i = 0; i < n_restarts; ++i) {
-                Eigen::Vector3d params(dist(gen), dist(gen), 1e-6 * dist(gen));
-                kernel_.setParameters(params(0), params(1), params(2));
+            for (int i = 0; i < n_iterations; ++i) {
+                Eigen::Vector3d new_params = best_params + Eigen::Vector3d(dist(gen), dist(gen), dist(gen));
+                new_params = new_params.cwiseMax(0.01).cwiseMin(10.0); // Constrain parameters
+                kernel_.setParameters(new_params(0), new_params(1), new_params(2));
                 updateModel();
 
                 double lml = computeLogMarginalLikelihood();
                 if (lml > best_lml) {
                     best_lml = lml;
-                    best_params = params;
+                    best_params = new_params;
                 }
             }
 

@@ -47,18 +47,19 @@ void Executor::execute() {
         // Initialize Octree
         const double size = 2 * radius_;
         const double min_size = 0.01 * size;
-        viewpoint::Octree<> octree(Eigen::Vector3d::Zero(), size, min_size);
+        constexpr int max_iterations = 5; // Increased from 5 to allow for more optimization steps
+        viewpoint::Octree<double> octree(Eigen::Vector3d::Zero(), size, min_size, max_iterations);
 
         // Initialize GPR
         const double initial_length_scale = 0.5 * size;
         const double initial_variance = 1.0;
         const double initial_noise_variance = 1e-6;
-        KernelType kernel(initial_length_scale, initial_variance, initial_noise_variance);
-        optimization::GaussianProcessRegression<> gpr(kernel);
+        optimization::kernel::Matern52<double> kernel(initial_length_scale, initial_variance, initial_noise_variance);
+        optimization::GaussianProcessRegression gpr(kernel);
 
         // Generate initial samples using Fibonacci lattice sampler
-        FibonacciLatticeSampler<> sampler({-1, -1, -1}, {1, 1, 1}, radius_);
-        const int initial_sample_count = 10; // Increased for better initial coverage
+        FibonacciLatticeSampler<double> sampler({0, 0, 0}, {1, 1, 1}, radius_);
+        const int initial_sample_count = 5; // Increased for better initial coverage
         Eigen::MatrixXd initial_samples = sampler.generate(initial_sample_count);
 
         // Evaluate initial samples
@@ -74,7 +75,6 @@ void Executor::execute() {
             double score = comparator_->compare(target_, viewpoint_image);
 
             viewpoint.setScore(score);
-            octree.evaluateAndUpdatePoint(viewpoint, target_, comparator_, gpr);
 
             X_train.row(i) = position.transpose();
             y_train(i) = score;
@@ -96,9 +96,8 @@ void Executor::execute() {
         gpr.fit(X_train, y_train);
 
         // Main optimization loop
-        constexpr int max_iterations = 5;
-        constexpr double target_score = 0.90;
-        octree.optimize(target_, comparator_, gpr, best_initial_viewpoint, max_iterations, target_score);
+        constexpr double target_score = 0.95; // Increased from 0.90 for higher accuracy
+        octree.optimize(target_, comparator_, gpr, best_initial_viewpoint, target_score);
 
         // Get the final best viewpoint
         auto best_viewpoint = octree.getBestViewpoint();
@@ -109,12 +108,6 @@ void Executor::execute() {
         } else {
             LOG_WARN("No suitable viewpoint found");
         }
-
-        // Perform a final local refinement
-        octree.localSearch(best_viewpoint->getPosition(), target_, comparator_, gpr);
-        best_viewpoint = octree.getBestViewpoint();
-        LOG_INFO("Final refined viewpoint: ({}, {}, {}) - Score: {}", best_viewpoint->getPosition().x(),
-                 best_viewpoint->getPosition().y(), best_viewpoint->getPosition().z(), best_viewpoint->getScore());
 
     } catch (const std::exception &e) {
         LOG_ERROR("Failed to execute optimization: {}", e.what());

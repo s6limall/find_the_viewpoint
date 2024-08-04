@@ -1,5 +1,3 @@
-// File: viewpoint/octree.hpp
-
 #ifndef VIEWPOINT_OCTREE_HPP
 #define VIEWPOINT_OCTREE_HPP
 
@@ -37,17 +35,18 @@ namespace viewpoint {
             [[nodiscard]] bool isLeaf() const noexcept { return children[0] == nullptr; }
         };
 
-        Octree(const Eigen::Vector3<T> &center, T size, T min_size) :
-            root_(std::make_unique<Node>(center, size)), min_size_(min_size) {}
+        Octree(const Eigen::Vector3<T> &center, T size, T min_size, int max_iterations) :
+            root_(std::make_unique<Node>(center, size)), min_size_(min_size), max_iterations_(max_iterations) {}
 
         void optimize(const Image<> &target, const std::shared_ptr<processing::image::ImageComparator> &comparator,
                       optimization::GaussianProcessRegression<optimization::kernel::Matern52<T>> &gpr,
-                      const ViewPoint<T> &initial_best, int max_iterations = 100, T target_score = 0.95) {
+                      const ViewPoint<T> &initial_best, T target_score = 0.95) {
             best_viewpoint_ = initial_best;
-            T previous_best_score = best_viewpoint_->getScore();
+            T best_score = initial_best.getScore();
+            int stagnant_iterations = 0;
 
-            for (int i = 0; i < max_iterations; ++i) {
-                if (refine(target, comparator, gpr)) {
+            for (int i = 0; i < max_iterations_; ++i) {
+                if (refine(target, comparator, gpr, i)) {
                     LOG_INFO("Refinement complete at iteration {}", i);
                     break;
                 }
@@ -59,110 +58,51 @@ namespace viewpoint {
                     break;
                 }
 
-                if (current_best_score - previous_best_score < improvement_threshold_) {
-                    stagnant_count_++;
-                    if (stagnant_count_ >= max_stagnant_iterations_) {
-                        LOG_INFO("Optimization stagnated for {} iterations. Stopping early.", max_stagnant_iterations_);
-                        break;
-                    }
-                } else {
-                    stagnant_count_ = 0;
-                    previous_best_score = current_best_score;
+                if (current_best_score > best_score) {
+                    best_score = current_best_score;
+                    stagnant_iterations = 0;
+                } else if (++stagnant_iterations >= patience_) {
+                    LOG_INFO("Early stopping triggered after {} stagnant iterations", patience_);
+                    break;
                 }
 
-                // Global search
-                auto candidates = getBestCandidates(10);
-                for (auto &candidate: candidates) {
-                    T ei = gpr.expectedImprovement(candidate.getPosition(), best_viewpoint_->getScore());
-                    if (ei > 0) {
-                        evaluateAndUpdatePoint(candidate, target, comparator, gpr);
-                    }
-                }
+                patternSearch(best_viewpoint_->getPosition(), target, comparator, gpr);
 
-                // Local search around best viewpoint
-                localSearch(best_viewpoint_->getPosition(), target, comparator, gpr);
-
-                // Periodically optimize GPR hyperparameters
                 if (i % 10 == 0) {
                     gpr.optimizeHyperparameters();
                 }
             }
         }
 
-        std::vector<ViewPoint<T>> getBestCandidates(size_t n) const {
-            std::vector<ViewPoint<T>> candidates;
-            std::function<void(const Node *)> traverse = [&](const Node *node) {
-                if (node->isLeaf()) {
-                    candidates.insert(candidates.end(), node->points.begin(), node->points.end());
-                } else {
-                    for (const auto &child: node->children) {
-                        if (child)
-                            traverse(child.get());
-                    }
-                }
-            };
-            traverse(root_.get());
-
-            std::partial_sort(candidates.begin(), candidates.begin() + std::min(n, candidates.size()), candidates.end(),
-                              [](const auto &a, const auto &b) { return a.getScore() > b.getScore(); });
-            candidates.resize(std::min(n, candidates.size()));
-            return candidates;
-        }
-
         [[nodiscard]] std::optional<ViewPoint<T>> getBestViewpoint() const noexcept { return best_viewpoint_; }
-
-        void evaluateAndUpdatePoint(ViewPoint<T> &point, const Image<> &target,
-                                    const std::shared_ptr<processing::image::ImageComparator> &comparator,
-                                    optimization::GaussianProcessRegression<optimization::kernel::Matern52<T>> &gpr) {
-            if (!point.hasScore()) {
-                Image<> rendered_image = Image<>::fromViewPoint(point);
-                T score = comparator->compare(target, rendered_image);
-                point.setScore(score);
-
-                updateBestViewpoint(point);
-                gpr.update(point.getPosition(), score);
-            }
-        }
-
-        void localSearch(const Eigen::Vector3<T> &center, const Image<> &target,
-                         const std::shared_ptr<processing::image::ImageComparator> &comparator,
-                         optimization::GaussianProcessRegression<optimization::kernel::Matern52<T>> &gpr) {
-            const T search_radius = min_size_ * 2;
-            std::uniform_real_distribution<T> dist(-search_radius, search_radius);
-
-            for (int i = 0; i < 10; ++i) {
-                Eigen::Vector3<T> offset(dist(rng_), dist(rng_), dist(rng_));
-                ViewPoint<T> new_point(center + offset);
-                evaluateAndUpdatePoint(new_point, target, comparator, gpr);
-            }
-        }
 
     private:
         std::unique_ptr<Node> root_;
         T min_size_;
+        int max_iterations_;
         std::optional<ViewPoint<T>> best_viewpoint_;
-        std::mt19937 rng_{std::random_device{}()};
-        // early stopping:
-        const int max_stagnant_iterations_ = 50;
-        const T improvement_threshold_ = 1e-8;
-        int stagnant_count_ = 0;
-
+        mutable std::mt19937 rng_{std::random_device{}()};
+        static constexpr int patience_ = 20;
+        static constexpr T improvement_threshold_ = 1e-8;
 
         bool refine(const Image<> &target, const std::shared_ptr<processing::image::ImageComparator> &comparator,
-                    optimization::GaussianProcessRegression<optimization::kernel::Matern52<T>> &gpr) {
+                    optimization::GaussianProcessRegression<optimization::kernel::Matern52<T>> &gpr,
+                    int current_iteration) {
             std::priority_queue<std::pair<T, Node *>> pq;
             pq.emplace(root_->max_ucb, root_.get());
 
-            bool refined = false;
-            while (!pq.empty()) {
-                auto [_, node] = pq.top();
+            int nodes_explored = 0;
+            const int min_nodes_to_explore = 5; // Ensure at least this many nodes are explored
+
+            while (!pq.empty() && (nodes_explored < min_nodes_to_explore || current_iteration < max_iterations_ / 2)) {
+                auto [ucb, node] = pq.top();
                 pq.pop();
 
-                if (node->size < min_size_ || node->explored)
+                if (node->size < min_size_)
                     continue;
 
-                exploreNode(*node, target, comparator, gpr);
-                refined = true;
+                exploreNode(*node, target, comparator, gpr, current_iteration);
+                nodes_explored++;
 
                 if (!node->isLeaf()) {
                     for (auto &child: node->children) {
@@ -172,21 +112,21 @@ namespace viewpoint {
                 }
             }
 
-            return !refined; // Return true if no refinement occurred (convergence)
+            return nodes_explored == 0; // Return true if no nodes were explored
         }
 
         void exploreNode(Node &node, const Image<> &target,
                          const std::shared_ptr<processing::image::ImageComparator> &comparator,
-                         optimization::GaussianProcessRegression<optimization::kernel::Matern52<T>> &gpr) {
+                         optimization::GaussianProcessRegression<optimization::kernel::Matern52<T>> &gpr,
+                         int current_iteration) {
             if (node.points.empty()) {
                 node.points = samplePoints(node);
-                // Add extra points around the best viewpoint if it's within this node
                 if (isWithinNode(node, best_viewpoint_->getPosition())) {
                     addPointsAroundBest(node);
                 }
             }
 
-            evaluatePoints(node, target, comparator, gpr);
+            evaluatePoints(node, target, comparator, gpr, current_iteration);
 
             if (shouldSplit(node)) {
                 splitNode(node);
@@ -195,7 +135,7 @@ namespace viewpoint {
             node.explored = true;
         }
 
-        std::vector<ViewPoint<T>> samplePoints(const Node &node) {
+        std::vector<ViewPoint<T>> samplePoints(const Node &node) const {
             std::vector<ViewPoint<T>> points;
             std::uniform_real_distribution<T> dist(-0.5, 0.5);
 
@@ -211,7 +151,8 @@ namespace viewpoint {
 
         void evaluatePoints(Node &node, const Image<> &target,
                             const std::shared_ptr<processing::image::ImageComparator> &comparator,
-                            optimization::GaussianProcessRegression<optimization::kernel::Matern52<T>> &gpr) {
+                            optimization::GaussianProcessRegression<optimization::kernel::Matern52<T>> &gpr,
+                            int current_iteration) {
             node.max_ucb = std::numeric_limits<T>::lowest();
 
             for (auto &point: node.points) {
@@ -225,7 +166,7 @@ namespace viewpoint {
                 }
 
                 auto [mean, variance] = gpr.predict(point.getPosition());
-                T ucb = computeUCB(mean, variance);
+                T ucb = computeUCB(mean, variance, current_iteration);
                 node.max_ucb = std::max(node.max_ucb, ucb);
             }
         }
@@ -254,7 +195,7 @@ namespace viewpoint {
         [[nodiscard]] bool shouldSplit(const Node &node) const noexcept {
             return node.size > min_size_ * T(2) &&
                    (node.points.size() > 10 ||
-                    (best_viewpoint_ && node.center.isApprox(best_viewpoint_->getPosition(), node.size)));
+                    (best_viewpoint_ && (node.center - best_viewpoint_->getPosition()).norm() < node.size));
         }
 
         void splitNode(Node &node) {
@@ -279,9 +220,53 @@ namespace viewpoint {
             node.points.shrink_to_fit();
         }
 
-        T computeUCB(T mean, T variance) const {
-            static const T exploration_factor = 2.0;
+        T computeUCB(T mean, T variance, int current_iteration) const {
+            T exploration_factor = 2.0 * std::exp(-current_iteration / static_cast<T>(max_iterations_));
             return mean + exploration_factor * std::sqrt(variance);
+        }
+
+        void patternSearch(const Eigen::Vector3<T> &center, const Image<> &target,
+                           const std::shared_ptr<processing::image::ImageComparator> &comparator,
+                           optimization::GaussianProcessRegression<optimization::kernel::Matern52<T>> &gpr) {
+            const T initial_step = min_size_ * 0.1;
+            T step = initial_step;
+            const int max_pattern_iterations = 20;
+            const T tolerance = 1e-6;
+
+            Eigen::Vector3<T> best_point = center;
+            T best_score = best_viewpoint_->getScore();
+
+            for (int iter = 0; iter < max_pattern_iterations; ++iter) {
+                bool improved = false;
+                for (int dim = 0; dim < 3; ++dim) {
+                    for (int direction: {-1, 1}) {
+                        Eigen::Vector3<T> new_point = best_point;
+                        new_point[dim] += direction * step;
+
+                        ViewPoint<T> new_viewpoint(new_point);
+                        Image<> rendered_image = Image<>::fromViewPoint(new_viewpoint);
+                        T score = comparator->compare(target, rendered_image);
+                        new_viewpoint.setScore(score);
+
+                        updateBestViewpoint(new_viewpoint);
+                        gpr.update(new_point, score);
+
+                        if (score > best_score) {
+                            best_point = new_point;
+                            best_score = score;
+                            improved = true;
+                        }
+                    }
+                }
+
+                if (!improved) {
+                    step *= 0.5;
+                }
+
+                if (step < tolerance) {
+                    break;
+                }
+            }
         }
     };
 
