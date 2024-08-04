@@ -52,7 +52,7 @@ image:
                 min_good_matches: 5 # Minimum number of good matches required
 
     comparator:
-        type: "SSIM"         # Default image comparison method (MSE or SSIM)
+        type: "FEATURE"         # Default image comparison method (FEATURE or SSIM)
         ssim:
             threshold: 0.8             # Higher is better
             gaussian_window_size: 11   # Size of Gaussian window for SSIM calculation

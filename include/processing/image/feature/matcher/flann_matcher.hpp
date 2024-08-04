@@ -35,13 +35,22 @@ namespace processing::image {
 
         [[nodiscard]] std::vector<cv::DMatch> match(const cv::Mat &desc1, const cv::Mat &desc2) const override {
             if (desc1.empty() || desc2.empty()) {
-                LOG_ERROR("One or both descriptor matrices are empty");
+                LOG_WARN("One or both descriptor matrices are empty. desc1: {} x {}, desc2: {} x {}", desc1.rows,
+                         desc1.cols, desc2.rows, desc2.cols);
+                return {};
+            }
+
+            if (desc1.cols != desc2.cols) {
+                LOG_ERROR("Descriptor dimensions do not match: {} vs {}", desc1.cols, desc2.cols);
                 return {};
             }
 
             cv::Mat descriptors1, descriptors2;
             desc1.convertTo(descriptors1, CV_32F);
             desc2.convertTo(descriptors2, CV_32F);
+
+            LOG_INFO("Matching descriptors: {} x {} vs {} x {}", descriptors1.rows, descriptors1.cols,
+                     descriptors2.rows, descriptors2.cols);
 
             std::vector<std::vector<cv::DMatch>> knn_matches;
             matcher_->knnMatch(descriptors1, descriptors2, knn_matches, 2);

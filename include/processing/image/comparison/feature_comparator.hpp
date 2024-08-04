@@ -27,7 +27,11 @@ namespace processing::image {
             return compareFeatures(extractor_->extract(image1), extractor_->extract(image2));
         }
 
-        [[nodiscard]] double compare(const Image<> &img1, const Image<> &img2) const {
+        [[nodiscard]] double compare(const Image<> &img1, const Image<> &img2) const override {
+            LOG_DEBUG("Image 1: {} x {}; KeyPoints: {}, Descriptors: {}", img1.getImage().cols, img1.getImage().rows,
+                      img1.getKeypoints().size(), img1.getDescriptors().rows);
+            LOG_DEBUG("Image 2: {} x {}; KeyPoints: {}, Descriptors: {}", img2.getImage().cols, img2.getImage().rows,
+                      img2.getKeypoints().size(), img2.getDescriptors().rows);
             return compareFeatures({img1.getKeypoints(), img1.getDescriptors()},
                                    {img2.getKeypoints(), img2.getDescriptors()});
         }
@@ -55,11 +59,17 @@ namespace processing::image {
                 return 0.0;
             }
 
+            // If we have very few matches, we skip the homography calculation as it requires 4+
+            if (matches.size() < 4) {
+                LOG_WARN("Too few matches ({}) to calculate homography. Using simple match ratio.", matches.size());
+                return static_cast<double>(matches.size()) / std::min(keypoints1.size(), keypoints2.size());
+            }
+
             const auto [inlier_matches, homography] = findInliers(keypoints1, keypoints2, matches);
 
             if (inlier_matches.empty()) {
-                LOG_WARN("No inlier matches found.");
-                return 0.0;
+                LOG_WARN("No inlier matches found. Using all matches for score calculation.");
+                return static_cast<double>(matches.size()) / std::min(keypoints1.size(), keypoints2.size());
             }
 
             const double match_ratio =

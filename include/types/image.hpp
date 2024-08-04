@@ -17,6 +17,7 @@
 #include "common/utilities/image.hpp"
 #include "core/perception.hpp"
 #include "processing/image/feature/extractor.hpp"
+#include "processing/image/feature/extractor/akaze_extractor.hpp"
 #include "types/viewpoint.hpp"
 
 using FeatureExtractor = processing::image::FeatureExtractor;
@@ -26,12 +27,12 @@ class Image {
 public:
     Image() noexcept = default;
 
-    explicit Image(cv::Mat image, const cv::Ptr<cv::Feature2D> &detector = cv::ORB::create()) :
+    explicit Image(cv::Mat image, const cv::Ptr<cv::Feature2D> &detector = cv::AKAZE::create()) :
         image_{validateImage(std::move(image))}, hash_once_flag_(std::make_shared<std::once_flag>()) {
         detect(detector);
     }
 
-    Image(cv::Mat image, const std::shared_ptr<FeatureExtractor> &extractor) :
+    explicit Image(cv::Mat image, const std::shared_ptr<FeatureExtractor> &extractor) :
         image_{validateImage(std::move(image))}, hash_once_flag_(std::make_shared<std::once_flag>()) {
         detect(extractor);
     }
@@ -139,12 +140,15 @@ private:
     }
 
     void detect(const std::shared_ptr<FeatureExtractor> &extractor) {
+        LOG_INFO("Detecting features using custom extractor.");
+
         auto [keypoints, descriptors] = extractor->extract(image_);
         keypoints_ = std::move(keypoints);
         descriptors_ = std::move(descriptors);
     }
 
     void detect(const cv::Ptr<cv::Feature2D> &detector) {
+        LOG_INFO("Detecting features using detector: {}", detector->getDefaultName());
         detector->detectAndCompute(image_, cv::noArray(), keypoints_, descriptors_);
     }
 
