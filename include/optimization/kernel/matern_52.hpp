@@ -11,7 +11,7 @@ namespace optimization::kernel {
     template<typename T = double>
     class Matern52 final : public Kernel<T> {
     public:
-        Matern52(T length_scale = 1.0, T variance = 1.0, T noise_variance = 1e-6) :
+        explicit Matern52(T length_scale = 1.0, T variance = 1.0, T noise_variance = 1e-6) :
             length_scale_(length_scale), variance_(variance), noise_variance_(noise_variance) {
             validateParameters();
         }
