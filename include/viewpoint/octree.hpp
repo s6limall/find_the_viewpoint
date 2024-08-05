@@ -40,55 +40,15 @@ namespace viewpoint {
                optimization::GaussianProcessRegression<optimization::kernel::Matern52<T>> &gpr,
                std::optional<T> radius = std::nullopt, std::optional<T> tolerance = std::nullopt) :
             root_(std::make_unique<Node>(center, size)), min_size_(min_size), max_iterations_(max_iterations),
-            gpr_(gpr), radius_(radius), tolerance_(tolerance) {}
-
-        /*void optimize(const Image<> &target, const std::shared_ptr<processing::image::ImageComparator> &comparator,
-                      const ViewPoint<T> &initial_best, T target_score = 0.95) {
-            best_viewpoint_ = initial_best;
-            T best_score = initial_best.getScore();
-            int stagnant_iterations = 0;
-
-            typename optimization::LevenbergMarquardt<T, 3>::Options lm_options;
-            lm_options.max_iterations = 50;
-            lm_options.use_geodesic_acceleration = true;
-            optimization::LevenbergMarquardt<T, 3> lm_optimizer(lm_options);
-
-            for (int i = 0; i < max_iterations_; ++i) {
-                if (refine(target, comparator, i)) {
-                    LOG_INFO("Refinement complete at iteration {}", i);
-                    break;
-                }
-
-                T current_best_score = best_viewpoint_->getScore();
-
-                if (current_best_score >= target_score) {
-                    LOG_INFO("Target score reached at iteration {}", i);
-                    break;
-                }
-
-                if (current_best_score > best_score) {
-                    best_score = current_best_score;
-                    stagnant_iterations = 0;
-                } else if (++stagnant_iterations >= patience_) {
-                    LOG_INFO("Early stopping triggered after {} stagnant iterations", patience_);
-                    break;
-                }
-
-                // Replace patternSearch with LM refinement
-                levenbergMarquardtRefinement(target, comparator, lm_optimizer);
-
-                if (i % 10 == 0) {
-                    gpr_.optimizeHyperparameters();
-                }
-            }
-        }*/
-
+            gpr_(gpr), radius_(radius), tolerance_(tolerance), recent_scores_(), target_score_() {}
 
         void optimize(const Image<> &target, const std::shared_ptr<processing::image::ImageComparator> &comparator,
-                      const ViewPoint<T> &initial_best, T target_score = 0.95) {
+                      const ViewPoint<T> &initial_best, T target_score = T(0.95)) {
+            target_score_ = target_score;
             best_viewpoint_ = initial_best;
             T best_score = initial_best.getScore();
-            int stagnant_iterations = 0;
+            stagnant_iterations_ = 0;
+            recent_scores_.clear();
 
             for (int i = 0; i < max_iterations_; ++i) {
                 if (refine(target, comparator, i)) {
@@ -98,17 +58,12 @@ namespace viewpoint {
 
                 T current_best_score = best_viewpoint_->getScore();
 
-                if (current_best_score >= target_score) {
-                    LOG_INFO("Target score reached at iteration {}", i);
+                if (hasConverged(current_best_score, best_score, target_score, i)) {
                     break;
                 }
 
                 if (current_best_score > best_score) {
                     best_score = current_best_score;
-                    stagnant_iterations = 0;
-                } else if (++stagnant_iterations >= patience_) {
-                    LOG_INFO("Early stopping triggered after {} stagnant iterations", patience_);
-                    break;
                 }
 
                 patternSearch(best_viewpoint_->getPosition(), target, comparator);
@@ -131,6 +86,10 @@ namespace viewpoint {
         static constexpr T improvement_threshold_ = 1e-4;
         std::optional<T> radius_, tolerance_;
         optimization::GaussianProcessRegression<optimization::kernel::Matern52<T>> &gpr_;
+        std::deque<T> recent_scores_;
+        int stagnant_iterations_ = 0;
+        static constexpr int window_size_ = 5;
+        double target_score_;
 
 
         bool refine(const Image<> &target, const std::shared_ptr<processing::image::ImageComparator> &comparator,
@@ -140,6 +99,7 @@ namespace viewpoint {
 
             int nodes_explored = 0;
             const int min_nodes_to_explore = 5; // Ensure at least this many nodes are explored
+            T best_score_this_refinement = best_viewpoint_->getScore();
 
             while (!pq.empty() && (nodes_explored < min_nodes_to_explore || current_iteration < max_iterations_ / 2)) {
                 auto [ucb, node] = pq.top();
@@ -150,6 +110,18 @@ namespace viewpoint {
 
                 exploreNode(*node, target, comparator, current_iteration);
                 nodes_explored++;
+
+                // Check for convergence after exploring each node
+                T current_best_score = best_viewpoint_->getScore();
+                if (hasConverged(current_best_score, best_score_this_refinement, target_score_, current_iteration)) {
+                    LOG_INFO("Convergence detected during refinement at iteration {}", current_iteration);
+                    return true;
+                }
+
+                // Update best score for this refinement step
+                if (current_best_score > best_score_this_refinement) {
+                    best_score_this_refinement = current_best_score;
+                }
 
                 if (!node->isLeaf()) {
                     for (auto &child: node->children) {
@@ -329,6 +301,61 @@ namespace viewpoint {
                 return root_->center + direction.normalized() * max_radius;
             }
             return point;
+        }
+
+        bool hasConverged(T current_score, T best_score, T target_score, int current_iteration) {
+            // Check if we've reached or exceeded the target score
+            if (current_score >= target_score) {
+                LOG_INFO("Target score reached at iteration {}", current_iteration);
+                return true;
+            }
+
+            LOG_INFO("Current score: {}, Best score: {}", current_score, best_score);
+
+            // Calculate relative improvement
+            T relative_improvement = (current_score - best_score) / best_score;
+
+            if (relative_improvement > improvement_threshold_) {
+                stagnant_iterations_ = 0;
+            } else {
+                stagnant_iterations_++;
+            }
+
+            // Early stopping based on stagnation
+            if (stagnant_iterations_ >= patience_) {
+                LOG_INFO("Early stopping triggered after {} stagnant iterations", patience_);
+                return true;
+            }
+
+            // Moving average convergence check
+            recent_scores_.push_back(current_score);
+            if (recent_scores_.size() > window_size_) {
+                recent_scores_.pop_front();
+            }
+
+            if (recent_scores_.size() == window_size_) {
+                T avg_score = std::accumulate(recent_scores_.begin(), recent_scores_.end(), T(0)) / window_size_;
+                T score_variance =
+                        std::accumulate(recent_scores_.begin(), recent_scores_.end(), T(0),
+                                        [avg_score](T acc, T score) { return acc + std::pow(score - avg_score, 2); }) /
+                        window_size_;
+
+                if (score_variance < T(1e-6) && avg_score > target_score * T(0.95)) {
+                    LOG_INFO("Convergence detected based on moving average at iteration {}", current_iteration);
+                    return true;
+                }
+            }
+
+            // Check confidence interval using GPR
+            auto [mean, variance] = gpr_.predict(best_viewpoint_->getPosition());
+            T confidence_interval = T(1.96) * std::sqrt(variance); // 95% confidence interval
+
+            if (mean - confidence_interval > target_score) {
+                LOG_INFO("High confidence in solution at iteration {}", current_iteration);
+                return true;
+            }
+
+            return false;
         }
 
         void levenbergMarquardtRefinement(const Image<> &target,

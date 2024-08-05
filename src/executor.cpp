@@ -114,6 +114,45 @@ void Executor::execute() {
             LOG_INFO("Optimization completed. Best viewpoint: ({}, {}, {}) - Score: {}",
                      best_viewpoint->getPosition().x(), best_viewpoint->getPosition().y(),
                      best_viewpoint->getPosition().z(), best_viewpoint->getScore());
+
+            /*
+             * Visualize the target and the best viewpoints
+             */
+
+            // Generate image for the best viewpoint
+            Image<> best_image = Image<>::fromViewPoint(best_viewpoint.value(), extractor_);
+
+            cv::Mat b = best_image.getImage();
+            cv::Mat t = target_.getImage();
+
+            // Calculate dimensions
+            int gap = 10;
+            int width = t.cols + b.cols + gap;
+            int height = std::max(t.rows, b.rows);
+
+            // Create a blank image with a white background
+            cv::Mat display(height, width, CV_8UC3, cv::Scalar(255, 255, 255));
+
+            // Copy the images into the display
+            t.copyTo(display(cv::Rect(0, 0, t.cols, t.rows)));
+            b.copyTo(display(cv::Rect(t.cols + gap, 0, b.cols, b.rows)));
+
+            // Add labels
+            int font_face = cv::FONT_HERSHEY_SIMPLEX;
+            double font_scale = 0.8;
+            int thickness = 2;
+            cv::Scalar text_color(0, 0, 0); // Black text
+
+            cv::putText(display, "Target Image", cv::Point(10, 30), font_face, font_scale, text_color, thickness);
+            cv::putText(display, "Best Viewpoint", cv::Point(t.cols + gap + 10, 30), font_face, font_scale, text_color,
+                        thickness);
+
+            // Display the combined image
+            cv::namedWindow("Target vs Best Viewpoint", cv::WINDOW_NORMAL);
+            cv::imshow("Target vs Best Viewpoint", display);
+            cv::waitKey(0);
+            cv::destroyAllWindows();
+
         } else {
             LOG_WARN("No suitable viewpoint found");
         }
