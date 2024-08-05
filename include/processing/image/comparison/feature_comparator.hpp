@@ -5,11 +5,13 @@
 
 #include <algorithm>
 #include <cmath>
+#include <execution>
 #include <memory>
 #include <numeric>
 #include <opencv2/calib3d.hpp>
 #include <opencv2/core.hpp>
 #include <opencv2/features2d.hpp>
+#include <vector>
 
 #include "processing/image/comparator.hpp"
 #include "processing/image/feature/extractor.hpp"
@@ -24,7 +26,9 @@ namespace processing::image {
             : extractor_(std::move(extractor)), matcher_(std::move(matcher)) {}
 
         [[nodiscard]] double compare(const cv::Mat &image1, const cv::Mat &image2) const override {
-            return compareFeatures(extractor_->extract(image1), extractor_->extract(image2));
+            return compareFeatures(
+                    std::make_pair(extractor_->extract(image1).second, extractor_->extract(image1).first),
+                    std::make_pair(extractor_->extract(image2).second, extractor_->extract(image2).first));
         }
 
         [[nodiscard]] double compare(const Image<> &img1, const Image<> &img2) const override {
@@ -32,113 +36,87 @@ namespace processing::image {
                       img1.getKeypoints().size(), img1.getDescriptors().rows);
             LOG_DEBUG("Image 2: {} x {}; KeyPoints: {}, Descriptors: {}", img2.getImage().cols, img2.getImage().rows,
                       img2.getKeypoints().size(), img2.getDescriptors().rows);
-            return compareFeatures({img1.getKeypoints(), img1.getDescriptors()},
-                                   {img2.getKeypoints(), img2.getDescriptors()});
+            return compareFeatures({img1.getDescriptors(), img1.getKeypoints()},
+                                   {img2.getDescriptors(), img2.getKeypoints()});
         }
-
 
     private:
         std::shared_ptr<FeatureExtractor> extractor_;
         std::shared_ptr<FeatureMatcher> matcher_;
 
-        using FeatureSet = std::pair<std::vector<cv::KeyPoint>, cv::Mat>;
+        using Features = FeatureMatcher::Features;
 
-        [[nodiscard]] double compareFeatures(const FeatureSet &features1, const FeatureSet &features2) const {
-            const auto &[keypoints1, descriptors1] = features1;
-            const auto &[keypoints2, descriptors2] = features2;
-
-            if (descriptors1.empty() || descriptors2.empty()) {
+        [[nodiscard]] double compareFeatures(const Features &features1, const Features &features2) const {
+            if (features1.first.empty() || features2.first.empty()) {
                 LOG_WARN("Descriptors are empty for one or both images");
                 return 0.0;
             }
 
-            const auto matches = matcher_->match(descriptors1, descriptors2);
+            auto [matches, homography, inliers] = matcher_->match(features1, features2);
+            LOG_DEBUG("Found {} good matches", matches.size());
 
             if (matches.empty()) {
-                LOG_WARN("No matches found.");
                 return 0.0;
             }
 
-            // If we have very few matches, we skip the homography calculation as it requires 4+
-            if (matches.size() < 4) {
-                LOG_WARN("Too few matches ({}) to calculate homography. Using simple match ratio.", matches.size());
-                return static_cast<double>(matches.size()) / std::min(keypoints1.size(), keypoints2.size());
+            if (inliers.empty()) {
+                return static_cast<double>(matches.size()) / std::min(features1.second.size(), features2.second.size());
             }
 
-            const auto [inlier_matches, homography] = findInliers(keypoints1, keypoints2, matches);
-
-            if (inlier_matches.empty()) {
-                LOG_WARN("No inlier matches found. Using all matches for score calculation.");
-                return static_cast<double>(matches.size()) / std::min(keypoints1.size(), keypoints2.size());
-            }
-
-            const double match_ratio =
-                    static_cast<double>(inlier_matches.size()) / std::min(keypoints1.size(), keypoints2.size());
-
-            const double avg_distance =
-                    std::transform_reduce(inlier_matches.begin(), inlier_matches.end(), 0.0, std::plus<>(),
-                                          [](const cv::DMatch &match) { return match.distance; }) /
-                    inlier_matches.size();
-
-            constexpr double max_distance = 128.0 * std::sqrt(2.0);
-            const double normalized_distance = 1.0 - std::min(avg_distance / max_distance, 1.0);
-
-            const double perspective_error =
-                    calculatePerspectiveError(keypoints1, keypoints2, inlier_matches, homography);
-            const double normalized_perspective_error = std::exp(-perspective_error / 10.0);
-
-            const double score = match_ratio * 0.4 + normalized_distance * 0.4 + normalized_perspective_error * 0.2;
-
-            LOG_INFO("Feature Comparator - Score: {:.4f} (Match Ratio: {:.4f}, Norm Distance: {:.4f}, Perspective "
-                     "Error: {:.4f})",
-                     score, match_ratio, normalized_distance, perspective_error);
-
-            return score;
+            return calculateScore(matches, features1.second.size(), features2.second.size(), homography, inliers,
+                                  features1.second, features2.second);
         }
 
-        [[nodiscard]] static std::pair<std::vector<cv::DMatch>, cv::Mat>
-        findInliers(const std::vector<cv::KeyPoint> &keypoints1, const std::vector<cv::KeyPoint> &keypoints2,
-                    const std::vector<cv::DMatch> &matches) {
-            std::vector<cv::Point2f> points1, points2;
-            points1.reserve(matches.size());
-            points2.reserve(matches.size());
+        [[nodiscard]] double calculateScore(const std::vector<cv::DMatch> &matches, const size_t keypoints1_size,
+                                            const size_t keypoints2_size, const cv::Mat &homography,
+                                            const std::vector<uchar> &inliers,
+                                            const std::vector<cv::KeyPoint> &keypoints1,
+                                            const std::vector<cv::KeyPoint> &keypoints2) const {
 
-            for (const auto &match: matches) {
-                points1.push_back(keypoints1[match.queryIdx].pt);
-                points2.push_back(keypoints2[match.trainIdx].pt);
-            }
+            const double match_ratio = static_cast<double>(matches.size()) / std::min(keypoints1_size, keypoints2_size);
+            const double avg_distance =
+                    std::transform_reduce(std::execution::par, matches.begin(), matches.end(), 0.0, std::plus<>(),
+                                          [](const cv::DMatch &match) { return static_cast<double>(match.distance); }) /
+                    matches.size();
+            constexpr double max_distance = 128.0 * std::sqrt(2.0);
+            const double normalized_distance = 1.0 - std::min(avg_distance / max_distance, 1.0);
+            const double perspective_error =
+                    calculatePerspectiveError(keypoints1, keypoints2, matches, homography, inliers);
+            const double normalized_perspective_error = std::exp(-perspective_error / 10.0);
 
-            std::vector<uchar> inlier_mask;
-            cv::Mat homography = cv::findHomography(points1, points2, cv::RANSAC, 3.0, inlier_mask);
+            const double score = match_ratio * 0.5 + normalized_distance * 0.3 + normalized_perspective_error * 0.2;
+            LOG_INFO(
+                    "Feature Comparator - Score: {:.4f} (Match Ratio: {:.4f}, Normalized Distance: {:.4f}, Perspective "
+                    "Error: {:.4f}) - {} matches.",
+                    score, match_ratio, normalized_distance, normalized_perspective_error, matches.size());
 
-            std::vector<cv::DMatch> inlier_matches;
-            inlier_matches.reserve(matches.size());
-            for (size_t i = 0; i < inlier_mask.size(); ++i) {
-                if (inlier_mask[i]) {
-                    inlier_matches.push_back(matches[i]);
-                }
-            }
-
-            return {inlier_matches, homography};
+            return score;
         }
 
         [[nodiscard]] static double calculatePerspectiveError(const std::vector<cv::KeyPoint> &keypoints1,
                                                               const std::vector<cv::KeyPoint> &keypoints2,
                                                               const std::vector<cv::DMatch> &matches,
-                                                              const cv::Mat &homography) {
-            double total_error = 0.0;
-            for (const auto &match: matches) {
-                cv::Point2f pt1 = keypoints1[match.queryIdx].pt;
-                cv::Point2f pt2 = keypoints2[match.trainIdx].pt;
+                                                              const cv::Mat &homography,
+                                                              const std::vector<uchar> &inliers) {
+            double total_error =
+                    std::transform_reduce(std::execution::par, matches.begin(), matches.end(), 0.0, std::plus<>(),
+                                          [&](const cv::DMatch &match) {
+                                              if (!inliers[&match - &matches[0]]) {
+                                                  return 0.0;
+                                              }
+                                              cv::Point2f pt1 = keypoints1[match.queryIdx].pt;
+                                              cv::Point2f pt2 = keypoints2[match.trainIdx].pt;
 
-                cv::Mat pt1_homogeneous = (cv::Mat_<double>(3, 1) << pt1.x, pt1.y, 1.0);
-                cv::Mat transformed_pt = homography * pt1_homogeneous;
-                cv::Point2f transformed_pt2(transformed_pt.at<double>(0) / transformed_pt.at<double>(2),
-                                            transformed_pt.at<double>(1) / transformed_pt.at<double>(2));
-
-                total_error += cv::norm(pt2 - transformed_pt2);
-            }
-            return total_error / matches.size();
+                                              cv::Mat pt1_homogeneous = (cv::Mat_<double>(3, 1) << pt1.x, pt1.y, 1.0);
+                                              cv::Mat transformed_pt = homography * pt1_homogeneous;
+                                              cv::Point2f transformed_pt2(
+                                                      transformed_pt.at<double>(0) / transformed_pt.at<double>(2),
+                                                      transformed_pt.at<double>(1) / transformed_pt.at<double>(2));
+                                              return cv::norm(pt2 - transformed_pt2);
+                                          }) /
+                    cv::countNonZero(inliers);
+            LOG_DEBUG("Total perspective error: {:.4f}", total_error);
+            return total_error;
         }
     };
 

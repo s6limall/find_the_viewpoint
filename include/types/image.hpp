@@ -27,7 +27,7 @@ class Image {
 public:
     Image() noexcept = default;
 
-    explicit Image(cv::Mat image, const cv::Ptr<cv::Feature2D> &detector = cv::AKAZE::create()) :
+    explicit Image(cv::Mat image, const cv::Ptr<cv::Feature2D> &detector = cv::SIFT::create()) :
         image_{validateImage(std::move(image))}, hash_once_flag_(std::make_shared<std::once_flag>()) {
         detect(detector);
     }

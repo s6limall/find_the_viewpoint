@@ -25,7 +25,7 @@ public:
         if (!stopped_.exchange(true)) {
             const auto end_time = std::chrono::high_resolution_clock::now();
             const auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time_).count();
-            LOG_INFO("Execution time of {}: {} ({} µs)", name_, duration);
+            LOG_INFO("Execution time of {}: {} ({} µs).", name_, toHumanReadable(duration), duration);
         }
     }
 

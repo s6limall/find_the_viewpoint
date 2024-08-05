@@ -36,7 +36,7 @@ private:
     using Images = std::vector<Image<>>;
 
     static std::once_flag init_flag_;
-    static double radius_;
+    static double radius_, target_score_;
     static Image<> target_;
     static std::shared_ptr<processing::image::ImageComparator> comparator_;
     static std::shared_ptr<processing::image::FeatureExtractor> extractor_;

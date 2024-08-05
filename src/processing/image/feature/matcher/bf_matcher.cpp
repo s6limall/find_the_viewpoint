@@ -1,3 +1,4 @@
+/*
 // File: processing/image/feature/matcher/bf.cpp
 
 #include "processing/image/feature/matcher/bf_matcher.hpp"
@@ -54,5 +55,4 @@ namespace processing::image {
         bf_matcher.knnMatch(descriptors1, descriptors2, knnMatches, k);
     }
 }
-
-
+*/

@@ -30,6 +30,10 @@ namespace optimization {
             Scalar error_threshold = static_cast<Scalar>(1e-8);
             Scalar epsilon = static_cast<Scalar>(1e-6);
             bool use_geodesic_acceleration = true;
+
+            // Experimental - not sure if this is useful at the moment
+            Scalar relative_improvement_threshold = static_cast<Scalar>(1e-6);
+            bool use_line_search = false;
         };
 
         struct Result {
@@ -61,11 +65,10 @@ namespace optimization {
                 }
 
                 const MatrixType JTJ = jacobian.transpose() * jacobian;
-                const VectorType JTe =
-                        jacobian.transpose() * (jacobian * current_position - jacobian.transpose() * current_error);
+                const VectorType JTe = jacobian.transpose() * VectorType::Constant(jacobian.rows(), current_error);
 
                 const MatrixType augmented_JTJ = JTJ + lambda * MatrixType::Identity();
-                const VectorType delta = augmented_JTJ.ldlt().solve(-JTe);
+                const VectorType delta = augmented_JTJ.jacobiSvd(Eigen::ComputeThinU | Eigen::ComputeThinV).solve(-JTe);
 
                 if (delta.norm() < options_.parameter_threshold || JTe.norm() < options_.gradient_threshold) {
                     result.converged = true;
@@ -80,7 +83,19 @@ namespace optimization {
                     new_position += 0.5 * delta.dot(delta) * acceleration;
                 }
 
+                Scalar step_size = 1.0;
+                if (options_.use_line_search) {
+                    step_size = lineSearch(error_func, current_position, delta, current_error);
+                }
+
+                new_position = current_position + step_size * delta;
                 const Scalar new_error = error_func(new_position);
+
+                const Scalar relative_improvement = (current_error - new_error) / current_error;
+                if (relative_improvement < options_.relative_improvement_threshold) {
+                    result.converged = true;
+                    break;
+                }
 
                 if (new_error < current_error) {
                     current_position = new_position;
@@ -121,6 +136,23 @@ namespace optimization {
             validated.epsilon = std::clamp(validated.epsilon, Scalar(1e-10), Scalar(1e-5));
             return validated;
         }
+
+        Scalar lineSearch(const ErrorFunction &error_func, const VectorType &current_position, const VectorType &delta,
+                          Scalar current_error) const {
+            const Scalar c = 0.5;
+            Scalar alpha = 1.0;
+            const int max_line_search_iterations = 10;
+
+            for (int i = 0; i < max_line_search_iterations; ++i) {
+                const Scalar new_error = error_func(current_position + alpha * delta);
+                if (new_error <= current_error - c * alpha * delta.squaredNorm()) {
+                    return alpha;
+                }
+                alpha *= 0.5;
+            }
+            return alpha;
+        }
+
 
         VectorType computeGeodesicAcceleration(const JacobianFunction &jacobian_func, const JacobianType &jacobian,
                                                const VectorType &position) const noexcept {

@@ -1,3 +1,4 @@
+/*
 // File: processing/image/feature/matcher/bf.hpp
 
 #ifndef FEATURE_MATCHER_BF_HPP
@@ -8,12 +9,11 @@
 namespace processing::image {
     class BFMatcher final : public FeatureMatcher {
     public:
-        [[nodiscard]] std::vector<cv::DMatch>
-        match(const cv::Mat &descriptors1, const cv::Mat &descriptors2) const override;
+        [[nodiscard]] std::vector<cv::DMatch> match(const cv::Mat &descriptors1, const cv::Mat &descriptors2) const;
 
-        void knnMatch(const cv::Mat &descriptors1, const cv::Mat &descriptors2,
-                      std::vector<std::vector<cv::DMatch> > &knnMatches, int k) const;
+        [[nodiscard]] MatchResult match(const Features &features1, const Features &features2) const override;
     };
-}
+} // namespace processing::image
 
-#endif //FEATURE_MATCHER_BF_HPP
+#endif // FEATURE_MATCHER_BF_HPP
+*/

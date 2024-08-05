@@ -2,6 +2,7 @@
 
 #include "optimization/gpr.hpp"
 #include "optimization/kernel/matern_52.hpp"
+#include "processing/image/comparison/composite_comparator.hpp"
 #include "processing/image/feature/extractor/sift_extractor.hpp"
 #include "processing/image/feature/matcher/flann_matcher.hpp"
 #include "processing/vision/estimation/distance_estimator.hpp"
@@ -12,7 +13,7 @@
 using KernelType = optimization::kernel::Matern52<>;
 
 std::once_flag Executor::init_flag_;
-double Executor::radius_;
+double Executor::radius_, Executor::target_score_;
 Image<> Executor::target_;
 std::shared_ptr<processing::image::FeatureExtractor> Executor::extractor_;
 std::shared_ptr<processing::image::FeatureMatcher> Executor::matcher_;
@@ -20,7 +21,7 @@ std::shared_ptr<processing::image::ImageComparator> Executor::comparator_;
 
 void Executor::initialize() {
     const auto image_path = config::get("paths.target_image", Defaults::target_image_path);
-    extractor_ = processing::image::FeatureExtractor::create<processing::image::AKAZEExtractor>();
+    extractor_ = processing::image::FeatureExtractor::create<processing::image::SIFTExtractor>();
     matcher_ = processing::image::FeatureMatcher::create<processing::image::FLANNMatcher>();
     target_ = Image<>(common::io::image::readImage(image_path), extractor_);
     radius_ = processing::vision::DistanceEstimator().estimate(target_.getImage());
@@ -28,10 +29,16 @@ void Executor::initialize() {
     const auto comparator_type = config::get("image.comparator.type", "SSIM");
     if (comparator_type == "SSIM") {
         LOG_INFO("Using SSIM image comparator.");
+        target_score_ = 0.9;
         comparator_ = std::make_shared<processing::image::SSIMComparator>();
     } else if (comparator_type == "FEATURE") {
         LOG_INFO("Using feature-based image comparator.");
+        target_score_ = 0.5;
         comparator_ = std::make_shared<processing::image::FeatureComparator>(extractor_, matcher_);
+    } else if (comparator_type == "COMPOSITE") {
+        LOG_INFO("Using composite image comparator.");
+        target_score_ = 0.5;
+        comparator_ = std::make_shared<processing::image::CompositeComparator>(extractor_, matcher_);
     } else {
         LOG_WARN("Invalid image comparator type, defaulting to SSIM.");
         comparator_ = std::make_shared<processing::image::SSIMComparator>();
@@ -44,11 +51,8 @@ void Executor::execute() {
     try {
         LOG_INFO("Starting viewpoint optimization.");
 
-        // Initialize Octree
+        // Size of the optimization space / octree
         const double size = 2 * radius_;
-        const double min_size = 0.01 * size;
-        constexpr int max_iterations = 5; // Increased from 5 to allow for more optimization steps
-        viewpoint::Octree<double> octree(Eigen::Vector3d::Zero(), size, min_size, max_iterations, radius_, 0.2);
 
         // Initialize GPR
         const double initial_length_scale = 0.5 * size;
@@ -56,6 +60,12 @@ void Executor::execute() {
         const double initial_noise_variance = 1e-6;
         optimization::kernel::Matern52<double> kernel(initial_length_scale, initial_variance, initial_noise_variance);
         optimization::GaussianProcessRegression gpr(kernel);
+
+        // Initialize Octree
+        const double min_size = 0.01 * size;
+        constexpr int max_iterations = 5; // Increase from 5 to allow for more optimization steps
+        viewpoint::Octree<double> octree(Eigen::Vector3d::Zero(), size, min_size, max_iterations, gpr, radius_, 0.1);
+
 
         // Generate initial samples using Fibonacci lattice sampler
         FibonacciLatticeSampler<double> sampler({0, 0, 0}, {1, 1, 1}, radius_);
@@ -96,8 +106,7 @@ void Executor::execute() {
         gpr.fit(X_train, y_train);
 
         // Main optimization loop
-        constexpr double target_score = 0.95; // Increased from 0.90 for higher accuracy
-        octree.optimize(target_, comparator_, gpr, best_initial_viewpoint, target_score);
+        octree.optimize(target_, comparator_, best_initial_viewpoint, target_score_);
 
         // Get the final best viewpoint
         auto best_viewpoint = octree.getBestViewpoint();

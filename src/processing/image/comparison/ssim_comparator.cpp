@@ -1,3 +1,4 @@
+/*
 // File: processing/image/ssim_calculator.cpp
 
 #include "processing/image/comparison/ssim_comparator.hpp"
@@ -70,3 +71,4 @@ namespace processing::image {
     }
 
 } // namespace processing::image
+*/
