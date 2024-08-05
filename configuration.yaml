@@ -1,10 +1,5 @@
 # File: configuration.yaml
 
-task:
-    name: "task1"
-    objects: "obj_000020"
-    test_num: 1
-
 viewpoints:
     from_file: false
     file_path: "../../view_space/5.txt"
@@ -19,7 +14,7 @@ paths:
     view_space_images_directory: "../../task1/viewspace_images"
     selected_views_directory: "../../task1/selected_views"
     target_image_directory: "../../task1/target_images"
-    target_image: "../../task1/target_images/obj_000020/target_2.png"
+    target_image: "../../task1/target_images/obj_000020/target_1.png"
 
 logging:
     level: "trace" # info, debug, warn, error, critical, warn, trace
@@ -40,7 +35,7 @@ camera:
 image:
     feature:
         extractor:
-            type: "AKAZE"      # Feature extractor type (AKAZE, ORB, SIFT)"
+            type: "SIFT"      # Feature extractor type (AKAZE, ORB, SIFT)"
         matcher:
             type: "FLANN"      # Feature matcher type (FLANN, BF)"
             bf:
@@ -52,7 +47,7 @@ image:
                 min_good_matches: 5 # Minimum number of good matches required
 
     comparator:
-        type: "FEATURE"         # Default image comparison method (FEATURE or SSIM or COMPOSITE)
+        type: "COMPOSITE"         # Default image comparison method (FEATURE or SSIM or COMPOSITE)
         ssim:
             threshold: 0.8             # Higher is better
             gaussian_window_size: 11   # Size of Gaussian window for SSIM calculation
@@ -80,19 +75,6 @@ sampling:
     count: 10
 
 optimization:
-    pso:
-        swarm_size: 10
-        max_iterations: 3
-        local_search_iterations: 5
-        inertia_weight: 0.7
-        cognitive_coefficient: 1.5
-        social_coefficient: 1.5
-        tolerance: 0.2
-        inertia_min: 0.3
-        inertia_max: 0.9
-        early_termination_window: 10
-        early_termination_threshold: 0.2
-        velocity_max: 1.0
 
 convergence:
     max_iterations: 10

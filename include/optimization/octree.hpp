@@ -10,11 +10,11 @@
 #include <queue>
 #include <random>
 #include <vector>
-#include "common/logging/logger.hpp"
-#include "optimization/gpr.hpp"
-#include "optimization/levenberg_marquardt.hpp"
-#include "processing/image/comparator.hpp"
-#include "types/viewpoint.hpp"
+#include "../common/logging/logger.hpp"
+#include "../processing/image/comparator.hpp"
+#include "../types/viewpoint.hpp"
+#include "gpr.hpp"
+#include "levenberg_marquardt.hpp"
 
 namespace viewpoint {
 

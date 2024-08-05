@@ -1,3 +1,4 @@
+/*
 // File: processing/image/feature/extractor/sift.cpp
 
 #include "processing/image/feature/extractor/sift_extractor.hpp"
@@ -28,3 +29,4 @@ namespace processing::image {
 
     }
 }
+*/

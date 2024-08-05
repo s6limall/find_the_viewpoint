@@ -1,3 +1,4 @@
+/*
 // File: processing/image/feature/extractor/akaze_extractor.cpp
 
 #include "processing/image/feature/extractor/akaze_extractor.hpp"
@@ -23,3 +24,4 @@ namespace processing::image {
     }
 
 } // namespace processing::image
+*/

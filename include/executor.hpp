@@ -46,6 +46,8 @@ private:
 
     static void initialize();
 
+    static std::shared_ptr<processing::image::FeatureExtractor> fetchDetector();
+
     struct Defaults {
         static constexpr double fov_x = 0.95;
         static constexpr double fov_y = 0.75;
