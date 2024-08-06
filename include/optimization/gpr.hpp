@@ -15,6 +15,9 @@ namespace optimization {
     template<typename Kernel = kernel::Matern52<>>
     class GaussianProcessRegression {
     public:
+        using MatrixXd = Eigen::MatrixXd;
+        using VectorXd = Eigen::VectorXd;
+
         explicit GaussianProcessRegression(const Kernel &kernel, double noise_variance = 1e-6) :
             kernel_(kernel), noise_variance_(noise_variance) {}
 
@@ -67,28 +70,30 @@ namespace optimization {
                    sigma * std::exp(-0.5 * z * z) / std::sqrt(2.0 * M_PI);
         }
 
-        void optimizeHyperparameters(int n_iterations = 50) {
-            Eigen::Vector3d best_params = kernel_.getParameters();
-            double best_lml = computeLogMarginalLikelihood();
+        void optimizeHyperparameters(int max_iterations = 50) {
+            Eigen::Vector3d params = kernel_.getParameters();
+            double learning_rate = 0.01;
+            double best_lml = -std::numeric_limits<double>::infinity();
 
-            std::mt19937 gen(std::random_device{}());
-            std::normal_distribution<double> dist(0.0, 0.1);
+            for (int i = 0; i < max_iterations; ++i) {
+                Eigen::Vector3d gradient = computeLogMarginalLikelihoodGradient();
+                params += learning_rate * gradient;
+                params = params.cwiseMax(1e-6).cwiseMin(10.0); // Constrain parameters
 
-            for (int i = 0; i < n_iterations; ++i) {
-                Eigen::Vector3d new_params = best_params + Eigen::Vector3d(dist(gen), dist(gen), dist(gen));
-                new_params = new_params.cwiseMax(0.01).cwiseMin(10.0); // Constrain parameters
-                kernel_.setParameters(new_params(0), new_params(1), new_params(2));
+                kernel_.setParameters(params(0), params(1), params(2));
                 updateModel();
 
                 double lml = computeLogMarginalLikelihood();
                 if (lml > best_lml) {
                     best_lml = lml;
-                    best_params = new_params;
+                } else {
+                    learning_rate *= 0.5; // Reduce learning rate if no improvement
+                }
+
+                if (gradient.norm() < 1e-5 || learning_rate < 1e-10) {
+                    break; // Convergence criteria
                 }
             }
-
-            kernel_.setParameters(best_params(0), best_params(1), best_params(2));
-            updateModel();
         }
 
     private:
@@ -123,6 +128,30 @@ namespace optimization {
         double computeLogMarginalLikelihood() const {
             double log_det_K = 2 * L_.diagonal().array().log().sum();
             return -0.5 * (y_.dot(alpha_) + log_det_K + X_.rows() * std::log(2 * M_PI));
+        }
+
+        Eigen::Vector3d computeLogMarginalLikelihoodGradient() {
+            int n = X_.rows();
+            MatrixXd K_inv = L_.triangularView<Eigen::Lower>().solve(
+                    L_.triangularView<Eigen::Lower>().transpose().solve(MatrixXd::Identity(n, n)));
+            MatrixXd alpha_alpha_t = alpha_ * alpha_.transpose();
+            MatrixXd factor = (alpha_alpha_t - K_inv) * 0.5;
+
+            Eigen::Vector3d gradient;
+            for (int i = 0; i < 3; ++i) {
+                MatrixXd K_grad(n, n);
+                for (int j = 0; j < n; ++j) {
+                    for (int k = j; k < n; ++k) {
+                        Eigen::VectorXd grad_jk = kernel_.computeGradient(X_.row(j).transpose(), X_.row(k).transpose());
+                        K_grad(j, k) = grad_jk(i);
+                        if (j != k) {
+                            K_grad(k, j) = K_grad(j, k);
+                        }
+                    }
+                }
+                gradient(i) = (factor.array() * K_grad.array()).sum();
+            }
+            return gradient;
         }
     };
 
