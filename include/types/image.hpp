@@ -3,12 +3,12 @@
 #ifndef TYPE_IMAGE_HPP
 #define TYPE_IMAGE_HPP
 
+#include <concepts>
 #include <fmt/core.h>
 #include <memory>
-#include <mutex>
 #include <opencv2/core.hpp>
-#include <opencv2/features2d.hpp>
 #include <optional>
+#include <span>
 #include <stdexcept>
 #include <utility>
 #include <vector>
@@ -17,74 +17,66 @@
 #include "common/utilities/image.hpp"
 #include "core/perception.hpp"
 #include "processing/image/feature/extractor.hpp"
-#include "processing/image/feature/extractor/akaze_extractor.hpp"
 #include "types/viewpoint.hpp"
 
-using FeatureExtractor = processing::image::FeatureExtractor;
 
-template<typename T = double>
+template<typename T>
+concept Numeric = std::is_arithmetic_v<T>;
+
+template<Numeric T = double>
 class Image {
 public:
-    Image() noexcept = default;
+    struct Features {
+        std::vector<cv::KeyPoint> keypoints;
+        cv::Mat descriptors;
+    };
 
-    explicit Image(cv::Mat image, const cv::Ptr<cv::Feature2D> &detector = fetchDetector()) :
-        image_{validateImage(std::move(image))}, hash_once_flag_(std::make_shared<std::once_flag>()) {
-        detect(detector);
-    }
+    Image() = default;
 
-    explicit Image(cv::Mat image, const std::shared_ptr<FeatureExtractor> &extractor) :
-        image_{validateImage(std::move(image))}, hash_once_flag_(std::make_shared<std::once_flag>()) {
-        detect(extractor);
-    }
-
-    Image(cv::Mat image, cv::Mat descriptors, std::vector<cv::KeyPoint> keypoints) :
-        image_{validateImage(std::move(image))}, descriptors_{std::move(descriptors)}, keypoints_{std::move(keypoints)},
-        hash_once_flag_(std::make_shared<std::once_flag>()) {}
-
-    // Copy constructor
-    Image(const Image &other) :
-        image_(other.image_), descriptors_(other.descriptors_), keypoints_(other.keypoints_), hash_(other.hash_),
-        viewpoint_(other.viewpoint_), hash_once_flag_(std::make_shared<std::once_flag>()) {}
-
-    // Copy assignment operator
-    Image &operator=(const Image &other) {
-        if (this != &other) {
-            image_ = other.image_;
-            descriptors_ = other.descriptors_;
-            keypoints_ = other.keypoints_;
-            hash_ = other.hash_;
-            viewpoint_ = other.viewpoint_;
-            hash_once_flag_ = std::make_shared<std::once_flag>();
+    explicit Image(cv::Mat image, std::shared_ptr<processing::image::FeatureExtractor> extractor = nullptr) :
+        image_{std::move(image)}, extractor_{std::move(extractor)} {
+        if (image_.empty()) {
+            throw std::invalid_argument("Image data cannot be empty.");
         }
-        return *this;
     }
 
-    // Move constructor and assignment operator
-    Image(Image &&other) noexcept = default;
-    Image &operator=(Image &&other) noexcept = default;
+    // Rule of five
+    Image(const Image &) = delete;
+    Image &operator=(const Image &) = delete;
+    Image(Image &&) noexcept = default;
+    Image &operator=(Image &&) noexcept = default;
+    ~Image() = default;
 
     // Getters
     [[nodiscard]] const cv::Mat &getImage() const noexcept { return image_; }
-    [[nodiscard]] const std::vector<cv::KeyPoint> &getKeypoints() const noexcept { return keypoints_; }
-    [[nodiscard]] const cv::Mat &getDescriptors() const noexcept { return descriptors_; }
-    [[nodiscard]] const cv::Mat &getHash() const noexcept {
-        std::call_once(hash_once_flag_, &Image::computeHash, this);
+    [[nodiscard]] const std::vector<cv::KeyPoint> getKeypoints() const { return ensureFeatures().keypoints; }
+    [[nodiscard]] const cv::Mat &getDescriptors() const { return ensureFeatures().descriptors; }
+    [[nodiscard]] const cv::Mat &getHash() const {
+        if (!hash_) {
+            hash_ = common::utilities::computePerceptualHash(image_);
+        }
         return *hash_;
     }
 
-    [[nodiscard]] const ViewPoint<T> &getViewPoint() const { return viewpoint_.value(); }
-    [[nodiscard]] T getScore() const noexcept { return viewpoint_ ? viewpoint_->getScore() : T(); }
-    [[nodiscard]] T getUncertainty() const noexcept { return viewpoint_ ? viewpoint_->getUncertainty() : T(); }
+    [[nodiscard]] const std::optional<ViewPoint<T>> &getViewPoint() const noexcept { return viewpoint_; }
+    [[nodiscard]] T getScore() const noexcept { return viewpoint_ ? viewpoint_->getScore() : T{}; }
+    [[nodiscard]] T getUncertainty() const noexcept { return viewpoint_ ? viewpoint_->getUncertainty() : T{}; }
 
     // Setters
     void setImage(cv::Mat image) {
-        image_ = validateImage(std::move(image));
+        if (image.empty()) {
+            throw std::invalid_argument("Image data cannot be empty.");
+        }
+        image_ = std::move(image);
         hash_.reset();
-        hash_once_flag_ = std::make_shared<std::once_flag>();
+        features_.reset();
     }
 
-    void setKeypoints(std::vector<cv::KeyPoint> keypoints) noexcept { keypoints_ = std::move(keypoints); }
-    void setDescriptors(cv::Mat descriptors) noexcept { descriptors_ = std::move(descriptors); }
+    void setExtractor(std::shared_ptr<processing::image::FeatureExtractor> extractor) noexcept {
+        extractor_ = std::move(extractor);
+        features_.reset();
+    }
+
     void setViewPoint(ViewPoint<T> viewpoint) noexcept { viewpoint_ = std::move(viewpoint); }
     void setScore(T score) noexcept {
         if (viewpoint_)
@@ -95,73 +87,46 @@ public:
             viewpoint_->setUncertainty(uncertainty);
     }
 
-    // boolean methods
     [[nodiscard]] bool hasViewPoint() const noexcept { return viewpoint_.has_value(); }
+    [[nodiscard]] bool hasFeatures() const noexcept { return features_.has_value(); }
 
-    // static factory methods
-    [[nodiscard]] static Image<T> fromViewPoint(ViewPoint<T> viewpoint) {
+    // Static factory method
+    [[nodiscard]] static Image<T>
+    fromViewPoint(ViewPoint<T> viewpoint, std::shared_ptr<processing::image::FeatureExtractor> extractor = nullptr) {
         cv::Mat rendered_image = core::Perception::render(viewpoint.toView().getPose());
-        Image<T> image(std::move(rendered_image));
-        image.setViewPoint(std::move(viewpoint));
-        return image;
-    }
-
-    [[nodiscard]] static Image<T> fromViewPoint(ViewPoint<T> viewpoint, std::shared_ptr<FeatureExtractor> extractor) {
-        cv::Mat rendered_image = core::Perception::render(viewpoint.toView().getPose());
-        Image<T> image(std::move(rendered_image), extractor);
+        Image<T> image(std::move(rendered_image), std::move(extractor));
         image.setViewPoint(std::move(viewpoint));
         return image;
     }
 
     // Serialization to string
     [[nodiscard]] std::string toString() const {
-        return fmt::format("Image(size: {}x{}, keypoints: {}, descriptors: {}x{})", image_.cols, image_.rows,
-                           keypoints_.size(), descriptors_.rows, descriptors_.cols);
+        return fmt::format("Image(size: {}x{}, features: {})", image_.cols, image_.rows,
+                           features_ ? fmt::format("keypoints: {}, descriptors: {}x{}", features_->keypoints.size(),
+                                                   features_->descriptors.rows, features_->descriptors.cols)
+                                     : "not computed");
     }
 
 private:
-    cv::Mat image_, descriptors_;
-    std::vector<cv::KeyPoint> keypoints_;
-
-    /*
-     * mutable: allows the hash to be computed & cached on first request,
-     * even if the getHash() is called on a const object
-     */
+    cv::Mat image_;
+    mutable std::optional<Features> features_;
     mutable std::optional<cv::Mat> hash_;
-    mutable std::shared_ptr<std::once_flag> hash_once_flag_;
     std::optional<ViewPoint<T>> viewpoint_;
+    std::shared_ptr<processing::image::FeatureExtractor> extractor_;
 
-    static cv::Mat validateImage(cv::Mat image) {
-        if (image.empty()) {
-            LOG_ERROR("Image data is empty. Cannot set image.");
-            throw std::invalid_argument("Image data cannot be empty.");
+    const Features &ensureFeatures() const {
+        if (!features_) {
+            if (!extractor_) {
+                LOG_ERROR("Feature extractor not set");
+                throw std::runtime_error("Feature extractor not set");
+            }
+            LOG_INFO("Computing features using custom extractor.");
+            auto [keypoints, descriptors] = extractor_->extract(image_);
+            features_ = Features{std::move(keypoints), std::move(descriptors)};
         }
-        return image;
-    }
-
-    void detect(const std::shared_ptr<FeatureExtractor> &extractor) {
-        LOG_INFO("Detecting features using custom extractor.");
-
-        auto [keypoints, descriptors] = extractor->extract(image_);
-        keypoints_ = std::move(keypoints);
-        descriptors_ = std::move(descriptors);
-    }
-
-    void detect(const cv::Ptr<cv::Feature2D> &detector) {
-        LOG_INFO("Detecting features using detector: {}", detector->getDefaultName());
-        detector->detectAndCompute(image_, cv::noArray(), keypoints_, descriptors_);
-    }
-
-    void computeHash() const { hash_ = common::utilities::computePerceptualHash(image_); }
-
-    static cv::Ptr<cv::Feature2D> fetchDetector() noexcept {
-        if (const auto extractor = config::get("image.feature.extractor.type", "SIFT"); extractor == "AKAZE") {
-            return cv::AKAZE::create();
-        } else if (extractor == "SIFT") {
-            return cv::SIFT::create();
-        }
-        return cv::SIFT::create(); // default
+        return *features_;
     }
 };
+
 
 #endif // TYPE_IMAGE_HPP

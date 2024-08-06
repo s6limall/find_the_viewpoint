@@ -20,7 +20,7 @@
 #include "common/formatting/fmt_cv.hpp"
 #include "common/formatting/fmt_eigen.hpp"
 #include "common/formatting/fmt_vector.hpp"
-#include "common/formatting/fmt_view.hpp"
+// #include "common/formatting/fmt_view.hpp"
 
 // NOTE: Logger MUST NOT depend on config::Configuration, as it will cause a circular dependency
 namespace common::logging {

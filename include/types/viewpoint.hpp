@@ -13,132 +13,124 @@
 #include "common/logging/logger.hpp"
 #include "core/view.hpp"
 
-template<typename T = double>
-class ViewPoint {
-    static_assert(std::is_arithmetic_v<T>, "ViewPoint template must be numeric");
 
+template<typename T>
+concept FloatingPoint = std::is_floating_point_v<T>;
+
+template<FloatingPoint T = double>
+class ViewPoint {
 public:
     // Constructors
     constexpr ViewPoint() noexcept :
-        position_(Eigen::Matrix<T, 3, 1>::Zero()), view_(core::View::fromPosition(position_)), score_(0.0),
-        uncertainty_(1.0), cluster_id_(-1) {}
-    constexpr ViewPoint(T x, T y, T z, const double score = 0.0, const double uncertainty = 1.0) noexcept :
+        position_(Eigen::Matrix<T, 3, 1>::Zero()), score_(T(0)), uncertainty_(T(1)), cluster_id_(-1) {}
+
+    constexpr ViewPoint(T x, T y, T z, T score = T(0), T uncertainty = T(1)) noexcept :
         position_(x, y, z), score_(score), uncertainty_(uncertainty), cluster_id_(-1) {
         validatePosition();
-        view_ = core::View::fromPosition(position_);
     }
 
-    explicit constexpr ViewPoint(const Eigen::Matrix<T, 3, 1> &position, double score = 0.0,
-                                 double uncertainty = 1.0) noexcept :
-        ViewPoint(position.x(), position.y(), position.z(), score, uncertainty) {}
+    explicit constexpr ViewPoint(const Eigen::Matrix<T, 3, 1> &position, T score = T(0), T uncertainty = T(1)) noexcept
+        : ViewPoint(position.x(), position.y(), position.z(), score, uncertainty) {}
 
     // Getters
-    [[nodiscard]] constexpr const Eigen::Matrix<T, 3, 1> &getPosition() const noexcept { return position_; }
-    [[nodiscard]] constexpr const core::View &getView() const noexcept { return view_.value(); }
+    [[nodiscard]] constexpr const auto &getPosition() const noexcept { return position_; }
     [[nodiscard]] constexpr int getClusterId() const noexcept { return cluster_id_; }
-    [[nodiscard]] constexpr double getScore() const noexcept { return score_; }
-    [[nodiscard]] constexpr double getUncertainty() const noexcept { return uncertainty_; }
+    [[nodiscard]] constexpr T getScore() const noexcept { return score_; }
+    [[nodiscard]] constexpr T getUncertainty() const noexcept { return uncertainty_; }
+
+    [[nodiscard]] const core::View &getView() const {
+        if (!view_) {
+            view_ = core::View::fromPosition(position_);
+        }
+        return *view_;
+    }
 
     // Setters
-    constexpr void setClusterId(const int cluster_id) noexcept { cluster_id_ = cluster_id; }
-    constexpr void setScore(const double score) noexcept { score_ = score; }
-    constexpr void setUncertainty(const double uncertainty) noexcept { uncertainty_ = uncertainty; }
-
+    constexpr void setClusterId(int cluster_id) noexcept { cluster_id_ = cluster_id; }
+    constexpr void setScore(T score) noexcept { score_ = score; }
+    constexpr void setUncertainty(T uncertainty) noexcept { uncertainty_ = uncertainty; }
 
     // Check if optional values are set
-    constexpr bool hasScore() const noexcept { return score_ != 0.0; }
-    constexpr bool hasUncertainty() const noexcept { return uncertainty_ != 1.0; }
-    constexpr bool hasClusterId() const noexcept { return cluster_id_ != -1; }
+    [[nodiscard]] constexpr bool hasScore() const noexcept { return score_ != T(0); }
+    [[nodiscard]] constexpr bool hasUncertainty() const noexcept { return uncertainty_ != T(1); }
+    [[nodiscard]] constexpr bool hasClusterId() const noexcept { return cluster_id_ != -1; }
 
     // Distance calculation
     template<typename Derived>
-    constexpr std::enable_if_t<std::is_base_of_v<Eigen::DenseBase<Derived>, Derived>, T>
-    distance(const Eigen::MatrixBase<Derived> &other) const noexcept {
+    [[nodiscard]] constexpr T distance(const Eigen::MatrixBase<Derived> &other) const noexcept
+        requires std::is_base_of_v<Eigen::DenseBase<Derived>, Derived>
+    {
         return (position_ - other).norm();
     }
 
-    constexpr T distance(const cv::Point3d &other) const noexcept {
-        Eigen::Matrix<T, 3, 1> other_eigen(other.x, other.y, other.z);
-        return (position_ - other_eigen).norm();
+    [[nodiscard]] constexpr T distance(const cv::Point3_<T> &other) const noexcept {
+        return distance(Eigen::Matrix<T, 3, 1>(other.x, other.y, other.z));
     }
 
-    T distance(const std::vector<T> &other) const {
+    [[nodiscard]] T distance(const std::vector<T> &other) const {
         if (other.size() != 3) {
             throw std::invalid_argument("Vector size must be 3 for distance calculation.");
         }
-        Eigen::Matrix<T, 3, 1> other_eigen(other[0], other[1], other[2]);
-        return (position_ - other_eigen).norm();
+        return distance(Eigen::Matrix<T, 3, 1>(other[0], other[1], other[2]));
     }
 
-    constexpr T distance(const ViewPoint &other) const noexcept { return (position_ - other.position_).norm(); }
+    [[nodiscard]] constexpr T distance(const ViewPoint &other) const noexcept { return distance(other.position_); }
 
     // Static factory methods
-    static constexpr ViewPoint fromCartesian(T x, T y, T z, double score = 0.0) noexcept {
+    [[nodiscard]] static constexpr ViewPoint fromCartesian(T x, T y, T z, T score = T(0)) noexcept {
         return ViewPoint(x, y, z, score);
     }
 
-    static constexpr ViewPoint fromSpherical(T radius, T polar_angle, T azimuthal_angle, double score = 0.0) noexcept {
+    [[nodiscard]] static constexpr ViewPoint fromSpherical(T radius, T polar_angle, T azimuthal_angle,
+                                                           T score = T(0)) noexcept {
         const T x = radius * std::sin(polar_angle) * std::cos(azimuthal_angle);
         const T y = radius * std::sin(polar_angle) * std::sin(azimuthal_angle);
         const T z = radius * std::cos(polar_angle);
         return ViewPoint(x, y, z, score);
     }
 
-    static ViewPoint fromView(const core::View &view, double score = 0.0) noexcept {
+    [[nodiscard]] static ViewPoint fromView(const core::View &view, T score = T(0)) noexcept {
         const auto position = view.getPosition();
         return ViewPoint(position.x(), position.y(), position.z(), score);
     }
 
-    [[nodiscard]] static ViewPoint fromPosition(const Eigen::Vector3d &position, double score = 0.0) noexcept {
+    [[nodiscard]] static ViewPoint fromPosition(const Eigen::Vector3<T> &position, T score = T(0)) noexcept {
         return ViewPoint(position.x(), position.y(), position.z(), score);
     }
 
     // Conversion from Eigen
     template<typename Derived>
-    static constexpr std::enable_if_t<std::is_base_of_v<Eigen::DenseBase<Derived>, Derived>, ViewPoint>
-    fromEigen(const Eigen::MatrixBase<Derived> &eigenVector, double score = 0.0) noexcept {
-        static_assert(std::is_same_v<typename Derived::Scalar, T>,
-                      "Eigen matrix scalar type must match ViewPoint template type");
+    [[nodiscard]] static constexpr ViewPoint fromEigen(const Eigen::MatrixBase<Derived> &eigenVector,
+                                                       T score = T(0)) noexcept
+        requires std::is_same_v<typename Derived::Scalar, T> && std::is_base_of_v<Eigen::DenseBase<Derived>, Derived>
+    {
         return ViewPoint(eigenVector, score);
     }
 
     // Conversion from OpenCV
-    static constexpr ViewPoint fromOpenCV(const cv::Point3f &cvPoint, double score = 0.0) noexcept {
-        static_assert(std::is_same_v<cv::Point3f::value_type, T>,
-                      "OpenCV Point type must match ViewPoint template type");
-        Eigen::Matrix<T, 3, 1> position(cvPoint.x, cvPoint.y, cvPoint.z);
-        return ViewPoint(position, score);
+    [[nodiscard]] static constexpr ViewPoint fromOpenCV(const cv::Point3_<T> &cvPoint, T score = T(0)) noexcept {
+        return ViewPoint(cvPoint.x, cvPoint.y, cvPoint.z, score);
     }
 
     // Conversion to Cartesian coordinates
-    constexpr std::tuple<T, T, T> toCartesian() const noexcept {
-        return std::make_tuple(position_.x(), position_.y(), position_.z());
+    [[nodiscard]] constexpr std::tuple<T, T, T> toCartesian() const noexcept {
+        return {position_.x(), position_.y(), position_.z()};
     }
 
     // Conversion to Spherical coordinates
-    constexpr std::tuple<T, T, T> toSpherical() const noexcept {
+    [[nodiscard]] constexpr std::tuple<T, T, T> toSpherical() const noexcept {
         const T radius = position_.norm();
         const T polar_angle = std::acos(position_.z() / radius);
         const T azimuthal_angle = std::atan2(position_.y(), position_.x());
-        return std::make_tuple(radius, polar_angle, azimuthal_angle);
+        return {radius, polar_angle, azimuthal_angle};
     }
 
-    [[nodiscard]] core::View toView(const Eigen::Vector3d &object_center = Eigen::Vector3d::Zero()) const noexcept {
-        /*if (!view_) {
+    [[nodiscard]] core::View toView(const Eigen::Vector3<T> &object_center = Eigen::Vector3<T>::Zero()) const {
+        if (!view_) {
             view_ = core::View::fromPosition(position_, object_center);
-        }*/
-        return view_.value();
+        }
+        return *view_;
     }
-
-    // Conversion to Isometry
-    [[nodiscard]] Eigen::Isometry3d toIsometry() const {
-        Eigen::Isometry3d isometry = Eigen::Isometry3d::Identity();
-        const core::View view = toView();
-        isometry.translation() = position_.template cast<double>();
-        isometry.linear() = view.getPose().block<3, 3>(0, 0);
-        return isometry;
-    }
-
 
     // Serialization to string
     [[nodiscard]] std::string toString() const {
@@ -163,9 +155,9 @@ public:
 
 private:
     Eigen::Matrix<T, 3, 1> position_;
-    std::optional<core::View> view_;
-    double score_;
-    double uncertainty_;
+    mutable std::optional<core::View> view_;
+    T score_;
+    T uncertainty_;
     int cluster_id_; // -1 = unset, -2 = noise, >= 0 = cluster_id
 
     // Validation
@@ -181,5 +173,6 @@ private:
         }
     }
 };
+
 
 #endif // VIEWPOINT_HPP

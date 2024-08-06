@@ -1,15 +1,14 @@
 #include "executor.hpp"
 
-#include "../include/optimization/octree.hpp"
 #include "optimization/gpr.hpp"
 #include "optimization/kernel/matern_52.hpp"
+#include "optimization/octree.hpp"
 #include "processing/image/comparison/composite_comparator.hpp"
 #include "processing/image/feature/extractor/orb_extractor.hpp"
 #include "processing/image/feature/extractor/sift_extractor.hpp"
 #include "processing/image/feature/matcher/flann_matcher.hpp"
 #include "processing/vision/estimation/distance_estimator.hpp"
-#include "viewpoint/evaluator.hpp"
-#include "viewpoint/generator.hpp"
+#include "sampling/sampler/fibonacci.hpp"
 
 using KernelType = optimization::kernel::Matern52<>;
 

@@ -10,9 +10,10 @@
 #include <queue>
 #include <random>
 #include <vector>
+#include "cache/viewpoint_cache.hpp"
 #include "common/logging/logger.hpp"
-#include "gpr.hpp"
-#include "levenberg_marquardt.hpp"
+#include "optimization/gpr.hpp"
+#include "optimization/levenberg_marquardt.hpp"
 #include "processing/image/comparator.hpp"
 #include "types/viewpoint.hpp"
 
@@ -40,7 +41,9 @@ namespace viewpoint {
                optimization::GaussianProcessRegression<optimization::kernel::Matern52<T>> &gpr,
                std::optional<T> radius = std::nullopt, std::optional<T> tolerance = std::nullopt) :
             root_(std::make_unique<Node>(center, size)), min_size_(min_size), max_iterations_(max_iterations),
-            gpr_(gpr), radius_(radius), tolerance_(tolerance), recent_scores_(), target_score_() {}
+            gpr_(gpr), radius_(radius), tolerance_(tolerance), recent_scores_(), target_score_(),
+            cache_(typename cache::ViewpointCache<T>::CacheConfig{}) {}
+
 
         void optimize(const Image<> &target, const std::shared_ptr<processing::image::ImageComparator> &comparator,
                       const ViewPoint<T> &initial_best, T target_score = T(0.95)) {
@@ -91,6 +94,7 @@ namespace viewpoint {
         int stagnant_iterations_ = 0;
         static constexpr int window_size_ = 5;
         double target_score_;
+        cache::ViewpointCache<T> cache_;
 
 
         bool refine(const Image<> &target, const std::shared_ptr<processing::image::ImageComparator> &comparator,
@@ -177,12 +181,23 @@ namespace viewpoint {
 
             for (auto &point: node.points) {
                 if (!point.hasScore()) {
-                    Image<> rendered_image = Image<>::fromViewPoint(point);
-                    T score = comparator->compare(target, rendered_image);
-                    point.setScore(score);
+                    auto cached_score = cache_.query(point.getPosition());
+                    if (cached_score) {
+                        point.setScore(*cached_score);
+                        LOG_DEBUG("Using cached score {} for position {}", *cached_score, point.getPosition());
+                    } else {
+                        Image<> rendered_image = Image<>::fromViewPoint(point);
+                        T score = comparator->compare(target, rendered_image);
+                        point.setScore(score);
+                        cache_.insert(point);
+                        LOG_DEBUG("Computed new score {} for position {}", score, point.getPosition());
+                    }
 
                     updateBestViewpoint(point);
-                    gpr_.update(point.getPosition(), score);
+                    gpr_.update(point.getPosition(), point.getScore());
+                } else {
+                    // Update the cache with the existing point
+                    cache_.update(point);
                 }
 
                 auto [mean, variance] = gpr_.predict(point.getPosition());
@@ -221,7 +236,7 @@ namespace viewpoint {
         void splitNode(Node &node) {
             T child_size = node.size / T(2);
 
-            LOG_INFO("Splitting node at {} with size {}", node.center.transpose(), node.size);
+            LOG_INFO("Splitting node at {} with size {}", node.center, node.size);
             for (int i = 0; i < 8; ++i) {
                 Eigen::Vector3<T> offset((i & 1) ? child_size : -child_size, (i & 2) ? child_size : -child_size,
                                          (i & 4) ? child_size : -child_size);
@@ -265,12 +280,21 @@ namespace viewpoint {
                         Eigen::Vector3<T> new_point = best_point;
                         new_point[dim] += direction * step;
 
-                        ViewPoint<T> new_viewpoint(new_point);
-                        Image<> rendered_image = Image<>::fromViewPoint(new_viewpoint);
-                        T score = comparator->compare(target, rendered_image);
-                        new_viewpoint.setScore(score);
+                        auto cached_score = cache_.query(new_point);
+                        T score;
+                        if (cached_score) {
+                            score = *cached_score;
+                            LOG_DEBUG("Using cached score {} for position {}", score, new_point);
+                        } else {
+                            ViewPoint<T> new_viewpoint(new_point);
+                            Image<> rendered_image = Image<>::fromViewPoint(new_viewpoint);
+                            score = comparator->compare(target, rendered_image);
+                            new_viewpoint.setScore(score);
+                            cache_.update(new_viewpoint);
+                            LOG_DEBUG("Computed new score {} for position {}", score, new_point);
+                        }
 
-                        updateBestViewpoint(new_viewpoint);
+                        updateBestViewpoint(ViewPoint<T>(new_point, score));
                         gpr_.update(new_point, score);
 
                         if (score > best_score) {
@@ -367,9 +391,17 @@ namespace viewpoint {
                                           const std::shared_ptr<processing::image::ImageComparator> &comparator,
                                           optimization::LevenbergMarquardt<T, 3> &lm_optimizer) {
             auto error_func = [&](const Eigen::Vector3<T> &position) {
+                auto cached_score = cache_.query(position);
+                if (cached_score) {
+                    LOG_DEBUG("Using cached score {} for position {}", *cached_score, position);
+                    return static_cast<T>(1.0) - *cached_score;
+                }
                 ViewPoint<T> viewpoint(position);
                 Image<> rendered_image = Image<>::fromViewPoint(viewpoint);
-                return static_cast<T>(1.0) - comparator->compare(target, rendered_image);
+                T score = comparator->compare(target, rendered_image);
+                cache_.update(ViewPoint<T>(position, score));
+                LOG_DEBUG("Computed new score {} for position {}", score, position);
+                return static_cast<T>(1.0) - score;
             };
 
             auto jacobian_func = [&](const Eigen::Vector3<T> &position) {

@@ -5,155 +5,74 @@
 
 #include <Eigen/Core>
 #include <fmt/format.h>
-#include <iomanip> // For setting precision
+#include <iomanip>
 #include <sstream>
 #include <string>
+#include <type_traits>
 
-/*
- * Specialized formatter for Eigen matrices using fmt library.
- * Supports 'f' (fixed-point), 'e' (scientific), 'g' (general), and 'a' (hexadecimal) notation.
- * Default: 'f' with 4 decimal places.
- * Example: fmt::print("Matrix:\n{:.2e}\n", mat); // Scientific with 2 decimal places
- */
+// Helper type trait to detect if a type is a vector
+template<typename T>
+struct is_eigen_vector : std::false_type {};
+
+template<typename Scalar, int Rows>
+struct is_eigen_vector<Eigen::Matrix<Scalar, Rows, 1>> : std::true_type {};
+
+template<typename Scalar, int Cols>
+struct is_eigen_vector<Eigen::Matrix<Scalar, 1, Cols>> : std::true_type {};
+
+// Helper type trait to detect if a type is a transposed vector
+template<typename T>
+struct is_eigen_transposed_vector : std::false_type {};
+
+template<typename Scalar, int Rows>
+struct is_eigen_transposed_vector<Eigen::Transpose<Eigen::Matrix<Scalar, Rows, 1>>> : std::true_type {};
+
+template<typename Scalar, int Cols>
+struct is_eigen_transposed_vector<Eigen::Transpose<Eigen::Matrix<Scalar, 1, Cols>>> : std::true_type {};
+
+// Base formatter for Eigen types
+template<typename Derived>
+struct EigenFormatterBase {
+    constexpr auto parse(fmt::format_parse_context &ctx) -> decltype(ctx.begin()) { return ctx.end(); }
+
+    template<typename FormatContext>
+    auto format(const Eigen::MatrixBase<Derived> &mat, FormatContext &ctx) const {
+        std::ostringstream oss;
+        oss << std::setprecision(std::numeric_limits<typename Derived::Scalar>::max_digits10);
+
+        if constexpr (is_eigen_vector<Derived>::value || is_eigen_transposed_vector<Derived>::value) {
+            // Vector format: [x, y, z, ...]
+            oss << "[";
+            for (int i = 0; i < mat.size(); ++i) {
+                oss << mat(i);
+                if (i < mat.size() - 1)
+                    oss << ", ";
+            }
+            oss << "]";
+        } else {
+            // Matrix format: multi-line
+            for (int row = 0; row < mat.rows(); ++row) {
+                for (int col = 0; col < mat.cols(); ++col) {
+                    oss << mat(row, col);
+                    if (col < mat.cols() - 1)
+                        oss << ", ";
+                }
+                if (row < mat.rows() - 1)
+                    oss << "\n";
+            }
+        }
+
+        return fmt::format_to(ctx.out(), "{}", oss.str());
+    }
+};
 
 // Specialize the fmt::formatter for Eigen::Matrix
 template<typename Scalar, int Rows, int Cols>
-struct fmt::formatter<Eigen::Matrix<Scalar, Rows, Cols>> {
-    // Default format specifiers
-    char presentation = 'f'; // 'f' for fixed precision (floating point), 'e' for scientific notation, etc
-    int precision = -1; // Default precision to full precision
-
-    // Parse format specifications
-    constexpr auto parse(fmt::format_parse_context &ctx) {
-        auto it = ctx.begin();
-        auto end = ctx.end();
-
-        // Parse precision
-        if (it != end && *it >= '0' && *it <= '9') {
-            int parsed_precision = 0;
-            while (it != end && *it >= '0' && *it <= '9') {
-                parsed_precision = parsed_precision * 10 + (*it - '0');
-                ++it;
-            }
-            precision = parsed_precision;
-        }
-
-        // Parse presentation type
-        if (it != end && *it != '}') {
-            presentation = *it++;
-        }
-
-        // Validate presentation type
-        if (presentation != 'f' && presentation != 'e' && presentation != 'g' && presentation != 'a') {
-            throw fmt::format_error("Invalid format specifier");
-        }
-
-        return it;
-    }
-
-    // Format the matrix
-    template<typename FormatContext>
-    auto format(const Eigen::Matrix<Scalar, Rows, Cols> &mat, FormatContext &ctx) const {
-        std::ostringstream oss;
-
-        // Set precision and format
-        if (precision >= 0) {
-            oss << std::setprecision(precision);
-        } else {
-            oss << std::setprecision(std::numeric_limits<Scalar>::digits10 + 1);
-        }
-        if (presentation == 'f') {
-            oss << std::fixed;
-        } else if (presentation == 'e') {
-            oss << std::scientific;
-        }
-
-        // Iterate over the matrix elements and format each element
-        for (int row = 0; row < mat.rows(); ++row) {
-            for (int col = 0; col < mat.cols(); ++col) {
-                oss << mat(row, col);
-                if (col < mat.cols() - 1) {
-                    oss << ", "; // Add a comma between elements
-                }
-            }
-            if (row < mat.rows() - 1) {
-                oss << "\n"; // Add a newline between rows
-            }
-        }
-
-        // Return the formatted string
-        return fmt::format_to(ctx.out(), "\n{}", oss.str());
-    }
-};
+struct fmt::formatter<Eigen::Matrix<Scalar, Rows, Cols>> : EigenFormatterBase<Eigen::Matrix<Scalar, Rows, Cols>> {};
 
 // Specialize the fmt::formatter for Eigen::Transpose<Eigen::Matrix>
 template<typename Scalar, int Rows, int Cols>
-struct fmt::formatter<Eigen::Transpose<Eigen::Matrix<Scalar, Rows, Cols>>> {
-    // Default format specifiers
-    char presentation = 'f'; // 'f' for fixed precision (floating point), 'e' for scientific notation, etc
-    int precision = -1; // Default precision to full precision
-
-    // Parse format specifications
-    constexpr auto parse(fmt::format_parse_context &ctx) {
-        auto it = ctx.begin();
-        auto end = ctx.end();
-
-        // Parse precision
-        if (it != end && *it >= '0' && *it <= '9') {
-            int parsed_precision = 0;
-            while (it != end && *it >= '0' && *it <= '9') {
-                parsed_precision = parsed_precision * 10 + (*it - '0');
-                ++it;
-            }
-            precision = parsed_precision;
-        }
-
-        // Parse presentation type
-        if (it != end && *it != '}') {
-            presentation = *it++;
-        }
-
-        // Validate presentation type
-        if (presentation != 'f' && presentation != 'e' && presentation != 'g' && presentation != 'a') {
-            throw fmt::format_error("Invalid format specifier");
-        }
-
-        return it;
-    }
-
-    // Format the transpose matrix
-    template<typename FormatContext>
-    auto format(const Eigen::Transpose<Eigen::Matrix<Scalar, Rows, Cols>> &mat, FormatContext &ctx) const {
-        std::ostringstream oss;
-
-        // Set precision and format
-        if (precision >= 0) {
-            oss << std::setprecision(precision);
-        } else {
-            oss << std::setprecision(std::numeric_limits<Scalar>::digits10 + 1);
-        }
-        if (presentation == 'f') {
-            oss << std::fixed;
-        } else if (presentation == 'e') {
-            oss << std::scientific;
-        }
-
-        // Iterate over the matrix elements and format each element
-        for (int col = 0; col < mat.cols(); ++col) {
-            for (int row = 0; row < mat.rows(); ++row) {
-                oss << mat(row, col);
-                if (row < mat.rows() - 1) {
-                    oss << ", "; // Add a comma between elements
-                }
-            }
-            if (col < mat.cols() - 1) {
-                oss << "\n"; // Add a newline between columns
-            }
-        }
-
-        // Return the formatted string
-        return fmt::format_to(ctx.out(), "\n{}", oss.str());
-    }
-};
+struct fmt::formatter<Eigen::Transpose<Eigen::Matrix<Scalar, Rows, Cols>>>
+    : EigenFormatterBase<Eigen::Transpose<Eigen::Matrix<Scalar, Rows, Cols>>> {};
 
 #endif // FMT_EIGEN_HPP

@@ -14,7 +14,7 @@ paths:
     view_space_images_directory: "../../task1/viewspace_images"
     selected_views_directory: "../../task1/selected_views"
     target_image_directory: "../../task1/target_images"
-    target_image: "../../task1/target_images/obj_000020/target_3.png"
+    target_image: "../../task1/target_images/obj_000020/target_2.png"
 
 logging:
     level: "trace" # info, debug, warn, error, critical, warn, trace
@@ -35,7 +35,7 @@ camera:
 image:
     feature:
         extractor:
-            type: "SIFT"      # Feature extractor type (AKAZE, ORB, SIFT)"
+            type: "AKAZE"      # Feature extractor type (AKAZE, ORB, SIFT)"
         matcher:
             type: "FLANN"      # Feature matcher type (FLANN, BF)"
             bf:

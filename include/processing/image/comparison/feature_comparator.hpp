@@ -26,9 +26,10 @@ namespace processing::image {
             : extractor_(std::move(extractor)), matcher_(std::move(matcher)) {}
 
         [[nodiscard]] double compare(const cv::Mat &image1, const cv::Mat &image2) const override {
-            return compareFeatures(
-                    std::make_pair(extractor_->extract(image1).second, extractor_->extract(image1).first),
-                    std::make_pair(extractor_->extract(image2).second, extractor_->extract(image2).first));
+            auto features1 = extractor_->extract(image1);
+            auto features2 = extractor_->extract(image2);
+            return compareFeatures(FeatureMatcher::Features{features1.second, features1.first},
+                                   FeatureMatcher::Features{features2.second, features2.first});
         }
 
         [[nodiscard]] double compare(const Image<> &img1, const Image<> &img2) const override {
@@ -36,17 +37,16 @@ namespace processing::image {
                       img1.getKeypoints().size(), img1.getDescriptors().rows);
             LOG_DEBUG("Image 2: {} x {}; KeyPoints: {}, Descriptors: {}", img2.getImage().cols, img2.getImage().rows,
                       img2.getKeypoints().size(), img2.getDescriptors().rows);
-            return compareFeatures({img1.getDescriptors(), img1.getKeypoints()},
-                                   {img2.getDescriptors(), img2.getKeypoints()});
+            return compareFeatures(FeatureMatcher::Features{img1.getDescriptors(), img1.getKeypoints()},
+                                   FeatureMatcher::Features{img2.getDescriptors(), img2.getKeypoints()});
         }
 
     private:
         std::shared_ptr<FeatureExtractor> extractor_;
         std::shared_ptr<FeatureMatcher> matcher_;
 
-        using Features = FeatureMatcher::Features;
-
-        [[nodiscard]] double compareFeatures(const Features &features1, const Features &features2) const {
+        [[nodiscard]] double compareFeatures(const FeatureMatcher::Features &features1,
+                                             const FeatureMatcher::Features &features2) const {
             if (features1.first.empty() || features2.first.empty()) {
                 LOG_WARN("Descriptors are empty for one or both images");
                 return 0.0;
