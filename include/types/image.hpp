@@ -27,7 +27,7 @@ class Image {
 public:
     Image() noexcept = default;
 
-    explicit Image(cv::Mat image, const cv::Ptr<cv::Feature2D> &detector = cv::SIFT::create()) :
+    explicit Image(cv::Mat image, const cv::Ptr<cv::Feature2D> &detector = fetchDetector()) :
         image_{validateImage(std::move(image))}, hash_once_flag_(std::make_shared<std::once_flag>()) {
         detect(detector);
     }
@@ -153,6 +153,15 @@ private:
     }
 
     void computeHash() const { hash_ = common::utilities::computePerceptualHash(image_); }
+
+    static cv::Ptr<cv::Feature2D> fetchDetector() noexcept {
+        if (const auto extractor = config::get("image.feature.extractor.type", "SIFT"); extractor == "AKAZE") {
+            return cv::AKAZE::create();
+        } else if (extractor == "SIFT") {
+            return cv::SIFT::create();
+        }
+        return cv::SIFT::create(); // default
+    }
 };
 
 #endif // TYPE_IMAGE_HPP

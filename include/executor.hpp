@@ -19,7 +19,6 @@
 #include "processing/image/comparison/ssim_comparator.hpp"
 #include "processing/image/feature/extractor.hpp"
 #include "processing/image/feature/extractor/akaze_extractor.hpp"
-#include "processing/image/occlusion_detector.hpp"
 #include "types/image.hpp"
 #include "types/viewpoint.hpp"
 
@@ -32,9 +31,6 @@ public:
     Executor &operator=(const Executor &) = delete;
 
 private:
-    using ViewPoints = std::vector<ViewPoint<>>;
-    using Images = std::vector<Image<>>;
-
     static std::once_flag init_flag_;
     static double radius_, target_score_;
     static Image<> target_;
@@ -45,6 +41,8 @@ private:
     Executor() = default;
 
     static void initialize();
+
+    static std::shared_ptr<processing::image::FeatureExtractor> fetchDetector();
 
     struct Defaults {
         static constexpr double fov_x = 0.95;

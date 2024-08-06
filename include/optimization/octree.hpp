@@ -11,8 +11,8 @@
 #include <random>
 #include <vector>
 #include "common/logging/logger.hpp"
-#include "optimization/gpr.hpp"
-#include "optimization/levenberg_marquardt.hpp"
+#include "gpr.hpp"
+#include "levenberg_marquardt.hpp"
 #include "processing/image/comparator.hpp"
 #include "types/viewpoint.hpp"
 
@@ -44,6 +44,7 @@ namespace viewpoint {
 
         void optimize(const Image<> &target, const std::shared_ptr<processing::image::ImageComparator> &comparator,
                       const ViewPoint<T> &initial_best, T target_score = T(0.95)) {
+            LOG_INFO("Starting optimization with target score {}", target_score);
             target_score_ = target_score;
             best_viewpoint_ = initial_best;
             T best_score = initial_best.getScore();
@@ -121,6 +122,8 @@ namespace viewpoint {
                 // Update best score for this refinement step
                 if (current_best_score > best_score_this_refinement) {
                     best_score_this_refinement = current_best_score;
+                    LOG_INFO("Best score updated to {} at iteration {} - {} nodes explored.",
+                             best_score_this_refinement, current_iteration, nodes_explored);
                 }
 
                 if (!node->isLeaf()) {
@@ -189,7 +192,7 @@ namespace viewpoint {
         }
 
         void addPointsAroundBest(Node &node) {
-            const int extra_points = 5;
+            constexpr int extra_points = 6;
             const T radius = node.size * 0.1;
             std::normal_distribution<T> dist(0, radius);
             for (int i = 0; i < extra_points; ++i) {
@@ -198,7 +201,7 @@ namespace viewpoint {
             }
         }
 
-        bool isWithinNode(const Node &node, const Eigen::Vector3<T> &position) const {
+        static bool isWithinNode(const Node &node, const Eigen::Vector3<T> &position) {
             return (position - node.center).cwiseAbs().maxCoeff() <= node.size / 2;
         }
 
@@ -217,6 +220,8 @@ namespace viewpoint {
 
         void splitNode(Node &node) {
             T child_size = node.size / T(2);
+
+            LOG_INFO("Splitting node at {} with size {}", node.center.transpose(), node.size);
             for (int i = 0; i < 8; ++i) {
                 Eigen::Vector3<T> offset((i & 1) ? child_size : -child_size, (i & 2) ? child_size : -child_size,
                                          (i & 4) ? child_size : -child_size);
