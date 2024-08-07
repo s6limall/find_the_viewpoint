@@ -205,6 +205,30 @@ src/main.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/find_the_viewpoint.dir/build.make CMakeFiles/find_the_viewpoint.dir/src/main.cpp.s
 .PHONY : src/main.cpp.s
 
+src/path_and_vis.o: src/path_and_vis.cpp.o
+.PHONY : src/path_and_vis.o
+
+# target to build an object file
+src/path_and_vis.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/find_the_viewpoint.dir/build.make CMakeFiles/find_the_viewpoint.dir/src/path_and_vis.cpp.o
+.PHONY : src/path_and_vis.cpp.o
+
+src/path_and_vis.i: src/path_and_vis.cpp.i
+.PHONY : src/path_and_vis.i
+
+# target to preprocess a source file
+src/path_and_vis.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/find_the_viewpoint.dir/build.make CMakeFiles/find_the_viewpoint.dir/src/path_and_vis.cpp.i
+.PHONY : src/path_and_vis.cpp.i
+
+src/path_and_vis.s: src/path_and_vis.cpp.s
+.PHONY : src/path_and_vis.s
+
+# target to generate assembly for a file
+src/path_and_vis.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/find_the_viewpoint.dir/build.make CMakeFiles/find_the_viewpoint.dir/src/path_and_vis.cpp.s
+.PHONY : src/path_and_vis.cpp.s
+
 src/processing/dfs.o: src/processing/dfs.cpp.o
 .PHONY : src/processing/dfs.o
 
@@ -295,6 +319,9 @@ help:
 	@echo "... src/main.o"
 	@echo "... src/main.i"
 	@echo "... src/main.s"
+	@echo "... src/path_and_vis.o"
+	@echo "... src/path_and_vis.i"
+	@echo "... src/path_and_vis.s"
 	@echo "... src/processing/dfs.o"
 	@echo "... src/processing/dfs.i"
 	@echo "... src/processing/dfs.s"

@@ -11,7 +11,7 @@ endif()
 # Find packages
 find_package(OpenCV REQUIRED)
 find_package(PCL REQUIRED COMPONENTS common io visualization)
-find_package(jsoncpp CONFIG REQUIRED)
+find_package(jsoncpp CONFIG REQUIRED)   
 find_package(Freetype REQUIRED)
 find_package(spdlog REQUIRED)
 

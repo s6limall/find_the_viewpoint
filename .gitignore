@@ -49,3 +49,5 @@ build/
 **/viewspace_images/**/*.png
 **/libtorch/**
 **/score/**.png
+3d_models/**
+*/selected_views/**

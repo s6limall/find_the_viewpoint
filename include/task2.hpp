@@ -6,6 +6,7 @@
 #include <string>
 #include <vector>
 #include <cmath>
+#include <json/json.h>
 
 #include <opencv2/opencv.hpp>
 #include <opencv2/core/core.hpp>
@@ -111,11 +112,12 @@ public:
 
     // Search the best view until find the target
     void dfs();
+    
+    void show_view_image_path(string object_path, string pose_file_path, string rgb_file_path);
 };
 
 
 void run_level_3();
-
 }
 
 #endif // TASK2_HPP
