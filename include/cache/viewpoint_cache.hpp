@@ -46,20 +46,20 @@ namespace cache {
         std::optional<T> query(const Eigen::Vector3<T> &position) {
             auto hash = computeSpatialHash(position);
             auto it = spatial_index_.find(hash);
-            if (it == spatial_index_.end())
+            if (it == spatial_index_.end()) {
+                LOG_TRACE("Cache miss for position: {}", position);
                 return std::nullopt;
+            }
 
             auto &entry = *it->second;
             T distance = (position - entry.viewpoint.getPosition()).norm();
 
-            if (distance <= entry.radius) {
+            if (shouldUseCachedValue(entry.viewpoint.getScore(), distance, entry.radius)) {
                 updateLRU(it->second);
-                if (entry.viewpoint.getScore() < config_.score_threshold) {
-                    LOG_DEBUG("Cache hit for low-scoring position: {}, score: {}", position,
-                              entry.viewpoint.getScore());
-                    return entry.viewpoint.getScore();
-                }
+                LOG_DEBUG("Cache hit for position: {}, score: {}", position, entry.viewpoint.getScore());
+                return entry.viewpoint.getScore();
             }
+
             LOG_TRACE("Cache miss for position: {}", position);
             return std::nullopt;
         }
@@ -73,7 +73,7 @@ namespace cache {
                 auto &entry = *it->second;
                 T distance = (viewpoint.getPosition() - entry.viewpoint.getPosition()).norm();
                 if (distance <= entry.radius) {
-                    if (viewpoint.getScore() < entry.viewpoint.getScore()) {
+                    if (viewpoint.getScore() > entry.viewpoint.getScore()) {
                         entry.viewpoint = viewpoint;
                         entry.radius = computeAdaptiveRadius(viewpoint.getScore());
                         updateLRU(it->second);
@@ -90,19 +90,13 @@ namespace cache {
 
         // Modify the insert method to handle potential updates
         void insert(const ViewPoint<T> &viewpoint) {
-            if (viewpoint.getScore() >= config_.score_threshold) {
-                LOG_TRACE("Skipped caching high-scoring viewpoint: {}, score: {}", viewpoint.getPosition(),
-                          viewpoint.getScore());
-                return;
-            }
-
             auto hash = computeSpatialHash(viewpoint.getPosition());
             auto it = spatial_index_.find(hash);
             if (it != spatial_index_.end()) {
                 auto &entry = *it->second;
                 T distance = (viewpoint.getPosition() - entry.viewpoint.getPosition()).norm();
                 if (distance <= entry.radius) {
-                    if (viewpoint.getScore() < entry.viewpoint.getScore()) {
+                    if (viewpoint.getScore() > entry.viewpoint.getScore()) {
                         entry.viewpoint = viewpoint;
                         entry.radius = computeAdaptiveRadius(viewpoint.getScore());
                         updateLRU(it->second);
@@ -148,13 +142,11 @@ namespace cache {
         // Adaptive radius calculation (higher the score, less the likelihood to use cache)
         // For low scoring viewpoints, we can use nearby cached points as proxies instead of re-evaluating
         T computeAdaptiveRadius(T score) const noexcept {
-            return config_.base_radius * (1 - score / config_.score_threshold);
+            return config_.base_radius * (1 - std::pow(score / config_.score_threshold, 2));
         }
 
         // Decide whether to use the cached value (distance/radius check)
         bool shouldUseCachedValue(T score, T distance, T radius) const noexcept {
-            if (score >= config_.score_threshold)
-                return false;
             T normalized_distance = distance / radius;
             T score_factor = score / config_.score_threshold;
             return normalized_distance < (1 - score_factor);
