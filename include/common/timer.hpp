@@ -9,6 +9,8 @@
 #include <string>
 #include <utility>
 
+#include "logging/logger.hpp"
+
 /* Destroys itself without requiring a manual call to stop() - via the destructor. */
 class Timer {
 public:
