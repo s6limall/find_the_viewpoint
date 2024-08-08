@@ -29,11 +29,11 @@ namespace optimization {
             Scalar parameter_threshold = static_cast<Scalar>(1e-8);
             Scalar error_threshold = static_cast<Scalar>(1e-8);
             Scalar epsilon = static_cast<Scalar>(1e-6);
-            bool use_geodesic_acceleration = true;
 
             // Experimental - not sure if this is useful at the moment
-            Scalar relative_improvement_threshold = static_cast<Scalar>(1e-6);
             bool use_line_search = false;
+            bool use_geodesic_acceleration = true;
+            Scalar relative_improvement_threshold = static_cast<Scalar>(1e-6);
         };
 
         struct Result {
