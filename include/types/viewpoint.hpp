@@ -3,16 +3,17 @@
 #ifndef VIEWPOINT_HPP
 #define VIEWPOINT_HPP
 
+#include <Eigen/Dense>
 #include <cmath>
 #include <fmt/core.h>
 #include <opencv2/core.hpp>
+#include <optional>
 #include <tuple>
 #include <type_traits>
 #include <vector>
 
 #include "common/logging/logger.hpp"
 #include "core/view.hpp"
-
 
 template<typename T>
 concept FloatingPoint = std::is_floating_point_v<T>;
@@ -31,6 +32,13 @@ public:
 
     explicit constexpr ViewPoint(const Eigen::Matrix<T, 3, 1> &position, T score = T(0), T uncertainty = T(1)) noexcept
         : ViewPoint(position.x(), position.y(), position.z(), score, uncertainty) {}
+
+    // Rule of five
+    ViewPoint(const ViewPoint &) = default;
+    ViewPoint &operator=(const ViewPoint &) = default;
+    ViewPoint(ViewPoint &&) noexcept = default;
+    ViewPoint &operator=(ViewPoint &&) noexcept = default;
+    ~ViewPoint() = default;
 
     // Getters
     [[nodiscard]] constexpr const auto &getPosition() const noexcept { return position_; }
@@ -77,39 +85,42 @@ public:
     [[nodiscard]] constexpr T distance(const ViewPoint &other) const noexcept { return distance(other.position_); }
 
     // Static factory methods
-    [[nodiscard]] static constexpr ViewPoint fromCartesian(T x, T y, T z, T score = T(0)) noexcept {
-        return ViewPoint(x, y, z, score);
+    [[nodiscard]] static constexpr ViewPoint fromCartesian(T x, T y, T z, T score = T(0),
+                                                           T uncertainty = T(1)) noexcept {
+        return ViewPoint(x, y, z, score, uncertainty);
     }
 
-    [[nodiscard]] static constexpr ViewPoint fromSpherical(T radius, T polar_angle, T azimuthal_angle,
-                                                           T score = T(0)) noexcept {
+    [[nodiscard]] static ViewPoint fromSpherical(T radius, T polar_angle, T azimuthal_angle, T score = T(0),
+                                                 T uncertainty = T(1)) noexcept {
         const T x = radius * std::sin(polar_angle) * std::cos(azimuthal_angle);
         const T y = radius * std::sin(polar_angle) * std::sin(azimuthal_angle);
         const T z = radius * std::cos(polar_angle);
-        return ViewPoint(x, y, z, score);
+        return ViewPoint(x, y, z, score, uncertainty);
     }
 
-    [[nodiscard]] static ViewPoint fromView(const core::View &view, T score = T(0)) noexcept {
+    [[nodiscard]] static ViewPoint fromView(const core::View &view, T score = T(0), T uncertainty = T(1)) noexcept {
         const auto position = view.getPosition();
-        return ViewPoint(position.x(), position.y(), position.z(), score);
+        return ViewPoint(position.x(), position.y(), position.z(), score, uncertainty);
     }
 
-    [[nodiscard]] static ViewPoint fromPosition(const Eigen::Vector3<T> &position, T score = T(0)) noexcept {
-        return ViewPoint(position.x(), position.y(), position.z(), score);
+    [[nodiscard]] static constexpr ViewPoint fromPosition(const Eigen::Vector3<T> &position, T score = T(0),
+                                                          T uncertainty = T(1)) noexcept {
+        return ViewPoint(position.x(), position.y(), position.z(), score, uncertainty);
     }
 
     // Conversion from Eigen
     template<typename Derived>
-    [[nodiscard]] static constexpr ViewPoint fromEigen(const Eigen::MatrixBase<Derived> &eigenVector,
-                                                       T score = T(0)) noexcept
+    [[nodiscard]] static constexpr ViewPoint fromEigen(const Eigen::MatrixBase<Derived> &eigenVector, T score = T(0),
+                                                       T uncertainty = T(1)) noexcept
         requires std::is_same_v<typename Derived::Scalar, T> && std::is_base_of_v<Eigen::DenseBase<Derived>, Derived>
     {
-        return ViewPoint(eigenVector, score);
+        return ViewPoint(eigenVector, score, uncertainty);
     }
 
     // Conversion from OpenCV
-    [[nodiscard]] static constexpr ViewPoint fromOpenCV(const cv::Point3_<T> &cvPoint, T score = T(0)) noexcept {
-        return ViewPoint(cvPoint.x, cvPoint.y, cvPoint.z, score);
+    [[nodiscard]] static constexpr ViewPoint fromOpenCV(const cv::Point3_<T> &cvPoint, T score = T(0),
+                                                        T uncertainty = T(1)) noexcept {
+        return ViewPoint(cvPoint.x, cvPoint.y, cvPoint.z, score, uncertainty);
     }
 
     // Conversion to Cartesian coordinates
@@ -118,7 +129,7 @@ public:
     }
 
     // Conversion to Spherical coordinates
-    [[nodiscard]] constexpr std::tuple<T, T, T> toSpherical() const noexcept {
+    [[nodiscard]] std::tuple<T, T, T> toSpherical() const noexcept {
         const T radius = position_.norm();
         const T polar_angle = std::acos(position_.z() / radius);
         const T azimuthal_angle = std::atan2(position_.y(), position_.x());
@@ -134,8 +145,8 @@ public:
 
     // Serialization to string
     [[nodiscard]] std::string toString() const {
-        return fmt::format("ViewPoint(x: {}, y: {}, z: {}, score: {}, cluster_id: {})", position_.x(), position_.y(),
-                           position_.z(), score_, cluster_id_);
+        return fmt::format("ViewPoint(x: {}, y: {}, z: {}, score: {}, uncertainty: {}, cluster_id: {})", position_.x(),
+                           position_.y(), position_.z(), score_, uncertainty_, cluster_id_);
     }
 
     // Comparison operators
@@ -173,6 +184,5 @@ private:
         }
     }
 };
-
 
 #endif // VIEWPOINT_HPP
