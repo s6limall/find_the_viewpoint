@@ -15,12 +15,11 @@
 #include "processing/image/feature/extractor/akaze_extractor.hpp"
 #include "processing/image/feature/extractor/orb_extractor.hpp"
 #include "processing/image/feature/extractor/sift_extractor.hpp"
+#include "types/concepts.hpp"
 #include "types/viewpoint.hpp"
 
-template<typename T>
-concept Numeric = std::is_arithmetic_v<T>;
 
-template<Numeric T = double>
+template<Arithmetic T = double>
 class Image {
 public:
     struct Features {

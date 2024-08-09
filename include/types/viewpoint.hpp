@@ -9,14 +9,11 @@
 #include <opencv2/core.hpp>
 #include <optional>
 #include <tuple>
-#include <type_traits>
 #include <vector>
 
 #include "common/logging/logger.hpp"
 #include "core/view.hpp"
-
-template<typename T>
-concept FloatingPoint = std::is_floating_point_v<T>;
+#include "types/concepts.hpp"
 
 template<FloatingPoint T = double>
 class ViewPoint {
