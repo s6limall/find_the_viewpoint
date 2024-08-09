@@ -17,55 +17,47 @@ paths:
     target_image: "../../task1/target_images/obj_000020/target_2.png"
 
 logging:
-    level: "trace" # info, debug, warn, error, critical, warn, trace
+    level: "debug" # error, critical, warn, info, debug, trace
     pattern: "[%Y-%m-%d %H:%M:%S.%e] [%^%l%$] [%n] [%t] [%s:%#] [%!] %v"
 
 camera:
-    width: 640           # Image width in pixels
-    height: 480          # Image height in pixels
-    fov_x: 0.95          # Field of view in degrees along x-axis
-    fov_y: 0.75          # Field of view in degrees along y-axis
+    width: 640              # Image width in pixels
+    height: 480             # Image height in pixels
+    fov_x: 0.95             # Field of view in degrees along x-axis
+    fov_y: 0.75             # Field of view in degrees along y-axis
     focal_length:
-        x: 1000.0         # Focal length along x-axis in pixels
-        y: 1000.0         # Focal length along y-axis in pixels
+        x: 1000.0           # Focal length along x-axis in pixels
+        y: 1000.0           # Focal length along y-axis in pixels
     principal_point:
-        x: 0.5            # Principal point x-coordinate (normalized)
-        y: 0.5            # Principal point y-coordinate (normalized)
+        x: 0.5              # Principal point x-coordinate (normalized)
+        y: 0.5              # Principal point y-coordinate (normalized)
 
 image:
     feature:
         extractor:
-            type: "AKAZE"      # Feature extractor type (AKAZE, ORB, SIFT)"
+            type: "SIFT"                    # Feature extractor type (AKAZE, ORB, SIFT)"
         matcher:
-            type: "FLANN"      # Feature matcher type (FLANN, BF)"
-            bf:
-                norm_type: 4         # Norm type (NORM_L2 = 4, NORM_HAMMING = 6)
-                cross_check: false   # Cross-check for matching
-
+            type: "FLANN"                   # Feature matcher type (FLANN, BF)
             flann:
-                ratio_thresh: 0.8   # Ratio threshold for Lowe’s ratio test
-                min_good_matches: 5 # Minimum number of good matches required
+                ratio_thresh: 0.8           # Ratio threshold for Lowe’s ratio test
+                min_good_matches: 5         # Minimum number of good matches required
+            bf:
+                norm_type: 4                # Norm type (NORM_L2 = 4, NORM_HAMMING = 6)
+                cross_check: false          # Cross-check for matching
 
     comparator:
-        type: "COMPOSITE"         # Default image comparison method (FEATURE or SSIM or COMPOSITE)
+        type: "COMPOSITE"                   # Selected image comparison method (FEATURE, SSIM, COMPOSITE)
         ssim:
-            threshold: 0.8             # Higher is better
-            gaussian_window_size: 11   # Size of Gaussian window for SSIM calculation
-            gaussian_sigma: 1.5        # Sigma for Gaussian window
-            k1: 0.01                   # K1 constant in SSIM formula
-            k2: 0.03                   # K2 constant in SSIM formula
-            l: 255                     # Dynamic range of pixel values (e.g., 255 for 8-bit images)
-
+            threshold: 0.95                 # Higher is better
         feature:
-            good_match_threshold: 100.0   # Distance threshold for considering a match as good
-            min_good_matches: 10          # Minimum number of good matches required
-            threshold: 20.0               # Lower is better
+            threshold: 0.70                 # Higher is better
+        composite:
+            threshold: 0.60                 # Higher is better
 
 estimation:
     distance:
         max_iterations: 5
         initial_guess: 1.7
-        step_size: 0.1
         threshold: 0.05
 
 rendering:
@@ -73,8 +65,6 @@ rendering:
 
 sampling:
     count: 10
-
-optimization:
 
 convergence:
     max_iterations: 10
