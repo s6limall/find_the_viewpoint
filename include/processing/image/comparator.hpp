@@ -6,6 +6,7 @@
 #include <Eigen/Dense>
 #include <opencv2/opencv.hpp>
 
+#include "feature/matcher.hpp"
 #include "types/image.hpp"
 
 namespace processing::image {
@@ -21,6 +22,7 @@ namespace processing::image {
     protected:
         // Default maximum value to indicate errors.
         static constexpr double error_score_ = std::numeric_limits<double>::max();
+        static constexpr double epsilon_ = 1e-6;
     };
 
 } // namespace processing::image
