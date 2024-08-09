@@ -26,8 +26,8 @@ namespace processing::image {
             : extractor_(std::move(extractor)), matcher_(std::move(matcher)) {}
 
         [[nodiscard]] double compare(const cv::Mat &image1, const cv::Mat &image2) const override {
-            auto features1 = extractor_->extract(image1);
-            auto features2 = extractor_->extract(image2);
+            const auto features1 = extractor_->extract(image1);
+            const auto features2 = extractor_->extract(image2);
             return compareFeatures(FeatureMatcher::Features{features1.second, features1.first},
                                    FeatureMatcher::Features{features2.second, features2.first});
         }
@@ -67,11 +67,11 @@ namespace processing::image {
                                   features1.second, features2.second);
         }
 
-        [[nodiscard]] double calculateScore(const std::vector<cv::DMatch> &matches, const size_t keypoints1_size,
-                                            const size_t keypoints2_size, const cv::Mat &homography,
-                                            const std::vector<uchar> &inliers,
-                                            const std::vector<cv::KeyPoint> &keypoints1,
-                                            const std::vector<cv::KeyPoint> &keypoints2) const {
+        [[nodiscard]] static double calculateScore(const std::vector<cv::DMatch> &matches, const size_t keypoints1_size,
+                                                   const size_t keypoints2_size, const cv::Mat &homography,
+                                                   const std::vector<uchar> &inliers,
+                                                   const std::vector<cv::KeyPoint> &keypoints1,
+                                                   const std::vector<cv::KeyPoint> &keypoints2) {
 
             const double match_ratio = static_cast<double>(matches.size()) / std::min(keypoints1_size, keypoints2_size);
             const double avg_distance =
