@@ -37,13 +37,12 @@ namespace viewpoint {
             [[nodiscard]] bool isLeaf() const noexcept { return children[0] == nullptr; } // node without children
         };
 
-        Octree(const Eigen::Vector3<T> &center, T size, T min_size, int max_iterations,
+        Octree(const Eigen::Vector3<T> &center, T size, T min_size, const int max_iterations,
                optimization::GaussianProcessRegression<optimization::kernel::Matern52<T>> &gpr,
                std::optional<T> radius = std::nullopt, std::optional<T> tolerance = std::nullopt) :
             root_(std::make_unique<Node>(center, size)), min_size_(min_size), max_iterations_(max_iterations),
             gpr_(gpr), radius_(radius), tolerance_(tolerance), recent_scores_(), target_score_(),
             cache_(typename cache::ViewpointCache<T>::CacheConfig{}) {}
-
 
         void optimize(const Image<> &target, const std::shared_ptr<processing::image::ImageComparator> &comparator,
                       const ViewPoint<T> &initial_best, T target_score = T(0.95)) {
