@@ -11,7 +11,7 @@
 #include <vector>
 
 #include "processing/image/comparator.hpp"
-#include "processing/image/comparison/color_histogram_compositor.hpp"
+#include "processing/image/comparison/color_histogram_comparator.hpp"
 #include "processing/image/comparison/feature_comparator.hpp"
 #include "processing/image/comparison/ssim_comparator.hpp"
 #include "processing/image/feature/extractor.hpp"
