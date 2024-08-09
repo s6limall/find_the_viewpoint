@@ -4,7 +4,6 @@
 #include <Eigen/Dense>
 #include <algorithm>
 #include <array>
-#include <concepts>
 #include <memory>
 #include <optional>
 #include <queue>
@@ -12,15 +11,13 @@
 #include <vector>
 #include "cache/viewpoint_cache.hpp"
 #include "common/logging/logger.hpp"
-#include "optimization/gpr.hpp"
-#include "optimization/levenberg_marquardt.hpp"
+#include "optimization/optimizer/gpr.hpp"
+#include "optimization/optimizer/levenberg_marquardt.hpp"
 #include "processing/image/comparator.hpp"
+#include "types/concepts.hpp"
 #include "types/viewpoint.hpp"
 
 namespace viewpoint {
-
-    template<typename T>
-    concept FloatingPoint = std::is_floating_point_v<T>;
 
     template<FloatingPoint T = double>
     class Octree {

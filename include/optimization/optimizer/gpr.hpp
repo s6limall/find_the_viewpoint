@@ -7,21 +7,24 @@
 #include <random>
 #include <stdexcept>
 #include <vector>
-#include "common/logging/logger.hpp"
-#include "optimization/kernel/matern_52.hpp"
+#include "../../common/logging/logger.hpp"
+#include "../kernel/matern_52.hpp"
 
 namespace optimization {
 
+    /*
+     * Gaussian Process Regression / Kriging
+     */
     template<typename Kernel = kernel::Matern52<>>
     class GaussianProcessRegression {
     public:
         using MatrixXd = Eigen::MatrixXd;
         using VectorXd = Eigen::VectorXd;
 
-        explicit GaussianProcessRegression(const Kernel &kernel, double noise_variance = 1e-6) :
+        explicit GaussianProcessRegression(const Kernel &kernel, const double noise_variance = 1e-6) :
             kernel_(kernel), noise_variance_(noise_variance) {}
 
-        void initializeWithPoint(const Eigen::VectorXd &x, double y) {
+        void initializeWithPoint(const Eigen::VectorXd &x, const double y) {
             X_ = x.transpose();
             y_ = Eigen::VectorXd::Constant(1, y);
             updateModel();
@@ -37,14 +40,14 @@ namespace optimization {
             if (X_.rows() == 0)
                 throw std::runtime_error("Model not fitted.");
 
-            Eigen::VectorXd k_star = computeKernelVector(x);
+            const Eigen::VectorXd k_star = computeKernelVector(x);
             double mean = k_star.dot(alpha_);
-            double variance = kernel_.compute(x, x) - k_star.dot(L_.triangularView<Eigen::Lower>().solve(k_star));
+            const double variance = kernel_.compute(x, x) - k_star.dot(L_.triangularView<Eigen::Lower>().solve(k_star));
 
             return {mean, std::max(0.0, variance)};
         }
 
-        void update(const Eigen::VectorXd &new_x, double new_y, size_t max_points = 1000) {
+        void update(const Eigen::VectorXd &new_x, const double new_y, const size_t max_points = 1000) {
             X_.conservativeResize(X_.rows() + 1, Eigen::NoChange);
             X_.row(X_.rows() - 1) = new_x.transpose();
             y_.conservativeResize(y_.size() + 1);
@@ -59,18 +62,18 @@ namespace optimization {
             updateModel();
         }
 
-        double expectedImprovement(const Eigen::VectorXd &x, double f_best) const {
+        double expectedImprovement(const Eigen::VectorXd &x, const double f_best) const {
             auto [mu, sigma2] = predict(x);
-            double sigma = std::sqrt(sigma2);
+            const double sigma = std::sqrt(sigma2);
             if (sigma < 1e-10)
                 return 0.0;
 
-            double z = (mu - f_best) / sigma;
+            const double z = (mu - f_best) / sigma;
             return (mu - f_best) * 0.5 * std::erfc(-z / std::sqrt(2.0)) +
                    sigma * std::exp(-0.5 * z * z) / std::sqrt(2.0 * M_PI);
         }
 
-        void optimizeHyperparameters(int max_iterations = 50) {
+        void optimizeHyperparameters(const int max_iterations = 50) {
             Eigen::Vector3d params = kernel_.getParameters();
             double learning_rate = 0.01;
             double best_lml = -std::numeric_limits<double>::infinity();
@@ -83,7 +86,7 @@ namespace optimization {
                 kernel_.setParameters(params(0), params(1), params(2));
                 updateModel();
 
-                double lml = computeLogMarginalLikelihood();
+                const double lml = computeLogMarginalLikelihood();
                 if (lml > best_lml) {
                     best_lml = lml;
                 } else {
@@ -126,15 +129,15 @@ namespace optimization {
         }
 
         double computeLogMarginalLikelihood() const {
-            double log_det_K = 2 * L_.diagonal().array().log().sum();
+            const double log_det_K = 2 * L_.diagonal().array().log().sum();
             return -0.5 * (y_.dot(alpha_) + log_det_K + X_.rows() * std::log(2 * M_PI));
         }
 
         Eigen::Vector3d computeLogMarginalLikelihoodGradient() {
             int n = X_.rows();
-            MatrixXd K_inv = L_.triangularView<Eigen::Lower>().solve(
+            const MatrixXd K_inv = L_.triangularView<Eigen::Lower>().solve(
                     L_.triangularView<Eigen::Lower>().transpose().solve(MatrixXd::Identity(n, n)));
-            MatrixXd alpha_alpha_t = alpha_ * alpha_.transpose();
+            const MatrixXd alpha_alpha_t = alpha_ * alpha_.transpose();
             MatrixXd factor = (alpha_alpha_t - K_inv) * 0.5;
 
             Eigen::Vector3d gradient;
