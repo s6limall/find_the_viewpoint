@@ -9,11 +9,13 @@
 #include <queue>
 #include <random>
 #include <vector>
+
 #include "cache/viewpoint_cache.hpp"
 #include "common/logging/logger.hpp"
 #include "optimization/optimizer/gpr.hpp"
 #include "optimization/optimizer/levenberg_marquardt.hpp"
 #include "processing/image/comparator.hpp"
+#include "radius_refiner.hpp"
 #include "types/concepts.hpp"
 #include "types/viewpoint.hpp"
 
@@ -56,6 +58,11 @@ namespace viewpoint {
                     break;
                 }
 
+                if (!best_viewpoint_) {
+                    LOG_ERROR("Lost best viewpoint during optimization");
+                    return;
+                }
+
                 T current_best_score = best_viewpoint_->getScore();
 
                 if (hasConverged(current_best_score, best_score, target_score, i)) {
@@ -72,7 +79,41 @@ namespace viewpoint {
                     gpr_.optimizeHyperparameters();
                 }
             }
+
+            if (!best_viewpoint_) {
+                LOG_ERROR("No best viewpoint found after main optimization");
+                return;
+            }
+
+            LOG_INFO("Main optimization complete. Best viewpoint before radius refinement: {}",
+                     best_viewpoint_->toString());
+
+            // Perform final radius refinement
+            auto refined_result = finalRadiusRefinement(target, comparator);
+
+            if (!refined_result) {
+                LOG_ERROR("Radius refinement failed");
+                return;
+            }
+
+            LOG_INFO("Optimization complete.");
+            LOG_INFO("Initial best viewpoint: {}", initial_best.toString());
+            LOG_INFO("Best viewpoint after main optimization: {}", best_viewpoint_->toString());
+            LOG_INFO("Final best viewpoint after radius refinement: {}", refined_result->best_viewpoint.toString());
+            LOG_INFO("Initial score: {:.6f}", initial_best.getScore());
+            LOG_INFO("Score after main optimization: {:.6f}", best_viewpoint_->getScore());
+            LOG_INFO("Final score after radius refinement: {:.6f}", refined_result->best_score);
+            LOG_INFO("Total score improvement: {:.6f}", refined_result->best_score - initial_best.getScore());
+            LOG_INFO("Radius refinement iterations: {}", refined_result->iterations);
+
+            if (refined_result->best_score > best_viewpoint_->getScore()) {
+                best_viewpoint_ = refined_result->best_viewpoint;
+                LOG_INFO("Radius refinement improved the viewpoint");
+            } else {
+                LOG_INFO("Radius refinement did not improve the viewpoint. Keeping the original best.");
+            }
         }
+
 
         [[nodiscard]] std::optional<ViewPoint<T>> getBestViewpoint() const noexcept { return best_viewpoint_; }
 
@@ -80,12 +121,12 @@ namespace viewpoint {
         std::unique_ptr<Node> root_;
         T min_size_;
         int max_iterations_;
+        optimization::GaussianProcessRegression<optimization::kernel::Matern52<T>> &gpr_;
         std::optional<ViewPoint<T>> best_viewpoint_;
         mutable std::mt19937 rng_{std::random_device{}()};
         static constexpr int patience_ = 10;
         static constexpr T improvement_threshold_ = 1e-4;
         std::optional<T> radius_, tolerance_;
-        optimization::GaussianProcessRegression<optimization::kernel::Matern52<T>> &gpr_;
         std::deque<T> recent_scores_;
         int stagnant_iterations_ = 0;
         static constexpr int window_size_ = 5;
@@ -272,7 +313,7 @@ namespace viewpoint {
             for (int iter = 0; iter < max_pattern_iterations; ++iter) {
                 bool improved = false;
                 for (int dim = 0; dim < 3; ++dim) {
-                    for (int direction: {-1, 1}) {
+                    for (int direction: std::array{-1, 1}) {
                         Eigen::Vector3<T> new_point = best_point;
                         new_point[dim] += direction * step;
 
@@ -359,7 +400,8 @@ namespace viewpoint {
             }
 
             if (recent_scores_.size() == window_size_) {
-                T avg_score = std::accumulate(recent_scores_.begin(), recent_scores_.end(), T(0)) / window_size_;
+                // T avg_score = std::accumulate(recent_scores_.begin(), recent_scores_.end(), T(0)) / window_size_;
+                T avg_score = std::reduce(recent_scores_.begin(), recent_scores_.end(), T(0)) / window_size_;
                 T score_variance =
                         std::accumulate(recent_scores_.begin(), recent_scores_.end(), T(0),
                                         [avg_score](T acc, T score) { return acc + std::pow(score - avg_score, 2); }) /
@@ -420,6 +462,24 @@ namespace viewpoint {
                 updateBestViewpoint(new_viewpoint);
                 gpr_.update(result->position, new_viewpoint.getScore());
             }
+        }
+
+        [[nodiscard]] std::optional<typename RadiusRefiner<T>::RefineResult>
+        finalRadiusRefinement(const Image<> &target,
+                              const std::shared_ptr<processing::image::ImageComparator> &comparator) const {
+            if (!best_viewpoint_) {
+                LOG_WARN("No best viewpoint found for final radius refinement");
+                return std::nullopt;
+            }
+
+            auto render_func = [](const ViewPoint<T> &vp) { return Image<>::fromViewPoint(vp); };
+
+            RadiusRefiner<T> refiner(1e-6, 1e-5, 50, 0.01, 0.5); // You can adjust these parameters as needed
+            auto result = refiner.refine(*best_viewpoint_, target, render_func, comparator);
+
+            LOG_INFO("Final radius refinement complete. Refined viewpoint: {}", result.best_viewpoint.toString());
+
+            return result;
         }
     };
 
