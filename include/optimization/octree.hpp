@@ -14,6 +14,7 @@
 #include "common/logging/logger.hpp"
 #include "optimization/optimizer/gpr.hpp"
 #include "optimization/optimizer/levenberg_marquardt.hpp"
+#include "precise_refiner.hpp"
 #include "processing/image/comparator.hpp"
 #include "radius_refiner.hpp"
 #include "types/concepts.hpp"
@@ -40,8 +41,8 @@ namespace viewpoint {
                optimization::GaussianProcessRegression<optimization::kernel::Matern52<T>> &gpr,
                std::optional<T> radius = std::nullopt, std::optional<T> tolerance = std::nullopt) :
             root_(std::make_unique<Node>(center, size)), min_size_(min_size), max_iterations_(max_iterations),
-            gpr_(gpr), radius_(radius), tolerance_(tolerance), recent_scores_(), target_score_(),
-            cache_(typename cache::ViewpointCache<T>::CacheConfig{}) {}
+            gpr_(gpr), patience_(config::get("optimization.patience", 10)), radius_(radius), tolerance_(tolerance),
+            recent_scores_(), target_score_(), cache_(typename cache::ViewpointCache<T>::CacheConfig{}) {}
 
         void optimize(const Image<> &target, const std::shared_ptr<processing::image::ImageComparator> &comparator,
                       const ViewPoint<T> &initial_best, T target_score = T(0.95)) {
@@ -96,6 +97,12 @@ namespace viewpoint {
                 return;
             }
 
+            Image<T> refined_image = Image<>::fromViewPoint(refined_result->best_viewpoint);
+
+            T refined_score = comparator->compare(target, refined_image);
+            refined_image.setScore(refined_score);
+            LOG_INFO("Refined viewpoint: {}, Score: {}", refined_image.getViewPoint()->toString(), refined_score);
+
             LOG_INFO("Optimization complete.");
             LOG_INFO("Initial best viewpoint: {}", initial_best.toString());
             LOG_INFO("Best viewpoint after main optimization: {}", best_viewpoint_->toString());
@@ -124,13 +131,13 @@ namespace viewpoint {
         optimization::GaussianProcessRegression<optimization::kernel::Matern52<T>> &gpr_;
         std::optional<ViewPoint<T>> best_viewpoint_;
         mutable std::mt19937 rng_{std::random_device{}()};
-        static constexpr int patience_ = 10;
+        int patience_;
         static constexpr T improvement_threshold_ = 1e-4;
         std::optional<T> radius_, tolerance_;
         std::deque<T> recent_scores_;
         int stagnant_iterations_ = 0;
         static constexpr int window_size_ = 5;
-        double target_score_;
+        T target_score_;
         cache::ViewpointCache<T> cache_;
 
 
@@ -472,12 +479,12 @@ namespace viewpoint {
                 return std::nullopt;
             }
 
-            auto render_func = [](const ViewPoint<T> &vp) { return Image<>::fromViewPoint(vp); };
+            auto renderFunction = [](const ViewPoint<T> &vp) { return Image<>::fromViewPoint(vp); };
 
-            RadiusRefiner<T> refiner(1e-6, 1e-5, 50, 0.01, 0.5); // You can adjust these parameters as needed
-            auto result = refiner.refine(*best_viewpoint_, target, render_func, comparator);
+            RadiusRefiner<T> refiner(1e-6, 1e-5, 50, 0.01, 0.5);
+            auto result = refiner.refine(*best_viewpoint_, target, renderFunction, comparator);
 
-            LOG_INFO("Final radius refinement complete. Refined viewpoint: {}", result.best_viewpoint.toString());
+            LOG_INFO("Final radius refinement complete.");
 
             return result;
         }
