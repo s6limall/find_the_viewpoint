@@ -10,7 +10,6 @@
 #include "common/logging/logger.hpp"
 #include "core/perception.hpp"
 #include "core/view.hpp"
-#include "processing/image_processor.hpp"
 #include "processing/vision/estimator.hpp"
 #include "types/viewpoint.hpp"
 
