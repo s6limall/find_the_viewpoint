@@ -1,65 +1,96 @@
-# cmake/Dependencies.cmake
+# File: cmake/Dependencies.cmake
 
-# Find necessary packages
-#find_package(OpenCV REQUIRED)
-#find_package(PCL REQUIRED COMPONENTS common io visualization)
-#find_package(Eigen3 REQUIRED NO_MODULE)
-#find_package(jsoncpp CONFIG REQUIRED)
-#find_package(Freetype REQUIRED)
-#find_package(fmt REQUIRED)
-#find_package(spdlog REQUIRED)
-#find_package(yaml-cpp REQUIRED)
+include(FindPackageHandleStandardArgs)
 
-# Check if the dependencies have already been included to avoid conflicts
-if (NOT TARGET OpenCV)
-    find_package(OpenCV REQUIRED)
+# Ensure vcpkg is being used
+if (NOT DEFINED VCPKG_ROOT)
+    message(FATAL_ERROR "VCPKG_ROOT is not defined. Make sure vcpkg.cmake is included before this file.")
 endif ()
 
-if (NOT TARGET PCL)
-    find_package(PCL REQUIRED COMPONENTS common io visualization)
-endif ()
+# Option to prefer system packages
+option(PREFER_SYSTEM_PACKAGES "Prefer system packages over vcpkg if available" OFF)
 
-if (NOT TARGET Eigen3)
-    find_package(Eigen3 REQUIRED NO_MODULE)
-endif ()
-
-if (NOT TARGET JsonCpp)
-    find_package(jsoncpp CONFIG REQUIRED)
-endif ()
-
-if (NOT TARGET Freetype)
-    find_package(Freetype REQUIRED)
-endif ()
-
-if (NOT TARGET fmt)
-    find_package(fmt REQUIRED)
-endif ()
-
-if (NOT TARGET spdlog)
-    find_package(spdlog REQUIRED)
-endif ()
-
-if (NOT TARGET yaml-cpp)
-    find_package(yaml-cpp REQUIRED)
-endif ()
-
-# Set include directories and libraries for the project
-set(INCLUDE_DIRS
-        ${PROJECT_SOURCE_DIR}/include
-        ${OpenCV_INCLUDE_DIRS}
-        ${PCL_INCLUDE_DIRS}
-        ${Eigen3_INCLUDE_DIRS}
-        ${JSONCPP_INCLUDE_DIRS}
-        ${FREETYPE_INCLUDE_DIRS}
-        ${SPDLOG_INCLUDE_DIRS}
+# Define the list of required packages with their arguments
+set(REQUIRED_PACKAGES
+        "OpenCV"
+        "Eigen3 NO_MODULE"
+        "spdlog"
+        "yaml-cpp CONFIG"
+        "jsoncpp CONFIG"
+        "PCL COMPONENTS common io visualization"
+        "fmt CONFIG"
 )
 
-set(LIBRARIES
-        ${OpenCV_LIBS}
-        ${PCL_LIBRARIES}
-        ${JSONCPP_LIBRARIES}
-        ${FREETYPE_LIBRARIES}
-        spdlog::spdlog
-        yaml-cpp
-        fmt::fmt
-)
+# Initialize project-wide variables
+set(PROJECT_INCLUDE_DIRS "")
+set(PROJECT_LIBRARIES "")
+set(PROJECT_DEFINITIONS "")
+
+# Helper function to find and configure packages
+function(find_and_configure_package PACKAGE_NAME)
+    if (PREFER_SYSTEM_PACKAGES)
+        find_package(${PACKAGE_NAME} ${ARGN} QUIET)
+        if (${PACKAGE_NAME}_FOUND)
+            message(STATUS "Found system ${PACKAGE_NAME} ${${PACKAGE_NAME}_VERSION}")
+        else ()
+            find_package(${PACKAGE_NAME} ${ARGN} REQUIRED)
+            message(STATUS "Found vcpkg ${PACKAGE_NAME} ${${PACKAGE_NAME}_VERSION}")
+        endif ()
+    else ()
+        find_package(${PACKAGE_NAME} ${ARGN} REQUIRED)
+        message(STATUS "Found vcpkg ${PACKAGE_NAME} ${${PACKAGE_NAME}_VERSION}")
+    endif ()
+
+    if (${PACKAGE_NAME}_INCLUDE_DIRS)
+        list(APPEND PROJECT_INCLUDE_DIRS ${${PACKAGE_NAME}_INCLUDE_DIRS})
+    endif ()
+    if (${PACKAGE_NAME}_LIBRARIES)
+        list(APPEND PROJECT_LIBRARIES ${${PACKAGE_NAME}_LIBRARIES})
+    endif ()
+    if (${PACKAGE_NAME}_DEFINITIONS)
+        list(APPEND PROJECT_DEFINITIONS ${${PACKAGE_NAME}_DEFINITIONS})
+    endif ()
+
+    set(PROJECT_INCLUDE_DIRS ${PROJECT_INCLUDE_DIRS} PARENT_SCOPE)
+    set(PROJECT_LIBRARIES ${PROJECT_LIBRARIES} PARENT_SCOPE)
+    set(PROJECT_DEFINITIONS ${PROJECT_DEFINITIONS} PARENT_SCOPE)
+endfunction()
+
+# Find required packages
+foreach (PACKAGE_SPEC ${REQUIRED_PACKAGES})
+    string(REPLACE " " ";" PACKAGE_LIST ${PACKAGE_SPEC})
+    list(GET PACKAGE_LIST 0 PACKAGE_NAME)
+    list(REMOVE_AT PACKAGE_LIST 0)
+    find_and_configure_package(${PACKAGE_NAME} ${PACKAGE_LIST})
+endforeach ()
+
+# Special handling for Eigen3 (it uses a different naming convention)
+if (TARGET Eigen3::Eigen)
+    list(APPEND PROJECT_LIBRARIES Eigen3::Eigen)
+endif ()
+
+# Special handling for fmt and yaml-cpp
+if (TARGET fmt::fmt)
+    list(APPEND PROJECT_LIBRARIES fmt::fmt)
+endif ()
+
+if (TARGET yaml-cpp::yaml-cpp)
+    list(APPEND PROJECT_LIBRARIES yaml-cpp::yaml-cpp)
+endif ()
+
+# Add project's include directory
+list(APPEND PROJECT_INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/include)
+
+# Remove duplicates
+list(REMOVE_DUPLICATES PROJECT_INCLUDE_DIRS)
+list(REMOVE_DUPLICATES PROJECT_LIBRARIES)
+list(REMOVE_DUPLICATES PROJECT_DEFINITIONS)
+
+# Print found package information
+foreach (PACKAGE_SPEC ${REQUIRED_PACKAGES})
+    string(REPLACE " " ";" PACKAGE_LIST ${PACKAGE_SPEC})
+    list(GET PACKAGE_LIST 0 PACKAGE_NAME)
+    if (${PACKAGE_NAME}_FOUND)
+        message(STATUS "${PACKAGE_NAME} version: ${${PACKAGE_NAME}_VERSION}")
+    endif ()
+endforeach ()

@@ -1,43 +1,58 @@
-# cmake/CompilerSettings.cmake
+# File: cmake/CompilerSettings.cmake
 
-# Compiler and optimization settings
+# Include the PrecompiledHeaders.cmake file
+include(${CMAKE_CURRENT_LIST_DIR}/PrecompiledHeaders.cmake)
 
-# Integrate ccache for faster builds (if available)
-find_program(CCACHE_FOUND ccache)
-if (CCACHE_FOUND)
-    set(CMAKE_C_COMPILER_LAUNCHER ccache)
-    set(CMAKE_CXX_COMPILER_LAUNCHER ccache)
-    message(STATUS "ccache found and integrated.")
+# Set C++ standard
+set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+
+# Compiler flags
+if (MSVC)
+    add_compile_options(/W4 /MP)
+    add_definitions(-D_CRT_SECURE_NO_WARNINGS)
 else ()
-    message(STATUS "ccache not found. Building without ccache.")
+    add_compile_options(-Wall -Wextra -Wpedantic)
 endif ()
+
+# Debug mode optimizations
+if (CMAKE_BUILD_TYPE STREQUAL "Debug")
+    if (MSVC)
+        add_compile_options(/Zi /Od /Ob0)
+    else ()
+        add_compile_options(-g -Og)
+    endif ()
+endif ()
+
+# Release mode optimizations
+if (CMAKE_BUILD_TYPE STREQUAL "Release")
+    if (MSVC)
+        add_compile_options(/O2)
+    else ()
+        add_compile_options(-O3)
+    endif ()
+endif ()
+
+# LTO (Link Time Optimization)
+include(CheckIPOSupported)
+check_ipo_supported(RESULT LTO_SUPPORTED OUTPUT LTO_ERROR)
+if (LTO_SUPPORTED)
+    set(CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE)
+else ()
+    message(WARNING "LTO is not supported: ${LTO_ERROR}")
+endif ()
+
+# Function to set include directories for a target
+function(set_target_includes TARGET_NAME)
+    target_include_directories(${TARGET_NAME} PRIVATE
+            ${CMAKE_SOURCE_DIR}/include
+            ${CMAKE_BINARY_DIR}
+    )
+endfunction()
 
 # Enable C language if MPI is found
 find_package(MPI QUIET)
 if (MPI_FOUND)
     enable_language(C)
-endif ()
-
-# Enable compiler warnings for better code quality
-if (CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-    #    add_compile_options(-Wall -Wextra -Wpedantic -Werror)
-elseif (CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
-    add_compile_options(/W4 /WX)
-endif ()
-
-# Set build types to ensure predictable builds
-set(CMAKE_CONFIGURATION_TYPES "Debug;Release;RelWithDebInfo;MinSizeRel" CACHE STRING "Available build types" FORCE)
-
-# Compiler optimizations for all build types
-if (CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-    add_compile_options(-O3 -flto -march=native)
-    add_link_options(-O3 -flto -march=native)
-elseif (CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
-    add_compile_options(/GL /Ox /O2)
-    add_link_options(/LTCG)
-endif ()
-
-# Set preferred generator to Ninja if available for faster builds
-if (NOT CMAKE_GENERATOR STREQUAL "Ninja")
-    set(CMAKE_GENERATOR "Ninja" CACHE INTERNAL "Ninja generator is preferred for faster builds")
 endif ()
