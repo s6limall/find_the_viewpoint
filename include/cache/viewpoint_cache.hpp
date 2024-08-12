@@ -183,12 +183,12 @@ namespace cache {
         size_t computeSpatialHash(const Eigen::Vector3<T> &position) const noexcept {
             const T cell_size = config_.base_radius;
 
-            int x = static_cast<int>(std::floor(position[0] / cell_size));
-            int y = static_cast<int>(std::floor(position[1] / cell_size));
-            int z = static_cast<int>(std::floor(position[2] / cell_size));
+            const int x = static_cast<int>(std::floor(position[0] / cell_size));
+            const int y = static_cast<int>(std::floor(position[1] / cell_size));
+            const int z = static_cast<int>(std::floor(position[2] / cell_size));
 
             size_t hash = 0;
-            for (int i = 0; i < sizeof(int) * 8; ++i) {
+            for (size_t i = 0; i < sizeof(int) * 8; ++i) {
                 hash |= ((x & (1 << i)) << (2 * i)) | ((y & (1 << i)) << (2 * i + 1)) | ((z & (1 << i)) << (2 * i + 2));
             }
 
