@@ -4,157 +4,249 @@
 #define OPTIMIZATION_GPR_HPP
 
 #include <Eigen/Dense>
-#include <random>
+#include <algorithm>
+#include <array>
+#include <cmath>
 #include <stdexcept>
-#include <vector>
-#include "../../common/logging/logger.hpp"
-#include "../kernel/matern_52.hpp"
+#include "common/logging/logger.hpp"
+#include "optimization/kernel/matern_52.hpp"
 
 namespace optimization {
 
-    /*
-     * Gaussian Process Regression / Kriging
-     */
     template<typename Kernel = kernel::Matern52<>>
     class GaussianProcessRegression {
     public:
         using MatrixXd = Eigen::MatrixXd;
         using VectorXd = Eigen::VectorXd;
 
-        explicit GaussianProcessRegression(const Kernel &kernel, const double noise_variance = 1e-6) :
-            kernel_(kernel), noise_variance_(noise_variance) {}
-
-        void initializeWithPoint(const Eigen::VectorXd &x, const double y) {
-            X_ = x.transpose();
-            y_ = Eigen::VectorXd::Constant(1, y);
-            updateModel();
+        explicit GaussianProcessRegression(const Kernel &kernel, double noise_variance = 1e-6) :
+            kernel_(kernel), noise_variance_(noise_variance) {
+            LOG_INFO("Initialized Gaussian Process Regression with noise variance: {}", noise_variance);
         }
 
-        void fit(const Eigen::MatrixXd &X, const Eigen::VectorXd &y) {
+        // Fit the GPR model to the training data
+        void fit(const MatrixXd &X, const VectorXd &y) {
             X_ = X;
             y_ = y;
             updateModel();
+            LOG_INFO("Fitted GPR model with {} data points", X_.rows());
         }
 
-        std::pair<double, double> predict(const Eigen::VectorXd &x) const {
-            if (X_.rows() == 0)
+        // Predict the mean and variance for a new input point
+        std::pair<double, double> predict(const VectorXd &x) const {
+            if (X_.rows() == 0) {
+                LOG_ERROR("Attempted prediction with unfitted model");
                 throw std::runtime_error("Model not fitted.");
+            }
 
-            const Eigen::VectorXd k_star = computeKernelVector(x);
+            // Compute k(X, x) - correlation between x and all training points
+            VectorXd k_star = kernel_.computeGramMatrix(X_, x.transpose());
+
+            // Compute the mean: E[f(x)] = k(X, x)^T * alpha
+            // alpha is precomputed in updateModel() for efficiency
             double mean = k_star.dot(alpha_);
-            const double variance = kernel_.compute(x, x) - k_star.dot(L_.triangularView<Eigen::Lower>().solve(k_star));
 
+            // Compute the variance: Var[f(x)] = k(x, x) - k(X, x)^T * K^(-1) * k(X, x)
+            // Use Cholesky decomposition for numerical stability
+            double variance = kernel_.compute(x, x) - k_star.dot(L_.triangularView<Eigen::Lower>().solve(k_star));
+
+            LOG_DEBUG("Prediction at x: mean = {}, variance = {}", mean, variance);
             return {mean, std::max(0.0, variance)};
         }
 
-        void update(const Eigen::VectorXd &new_x, const double new_y, const size_t max_points = 1000) {
-            X_.conservativeResize(X_.rows() + 1, Eigen::NoChange);
-            X_.row(X_.rows() - 1) = new_x.transpose();
-            y_.conservativeResize(y_.size() + 1);
-            y_(y_.size() - 1) = new_y;
-
-            if (X_.rows() > max_points) {
-                // Remove the oldest point
-                X_ = X_.bottomRows(max_points);
-                y_ = y_.tail(max_points);
+        // Update the model with a new data point
+        void update(const VectorXd &new_x, double new_y, Eigen::Index max_points = 1000) {
+            if (X_.rows() >= max_points) {
+                // Use sliding window approach for online learning
+                X_.bottomRows(max_points - 1) = X_.topRows(max_points - 1);
+                y_.tail(max_points - 1) = y_.head(max_points - 1);
+                X_.row(max_points - 1) = new_x.transpose();
+                y_(max_points - 1) = new_y;
+            } else {
+                // Append new point if we haven't reached max_points
+                X_.conservativeResize(X_.rows() + 1, Eigen::NoChange);
+                X_.row(X_.rows() - 1) = new_x.transpose();
+                y_.conservativeResize(y_.size() + 1);
+                y_(y_.size() - 1) = new_y;
             }
-
             updateModel();
+            LOG_INFO("Updated model with new point. Total points: {}", X_.rows());
         }
 
-        double expectedImprovement(const Eigen::VectorXd &x, const double f_best) const {
-            auto [mu, sigma2] = predict(x);
-            const double sigma = std::sqrt(sigma2);
-            if (sigma < 1e-10)
-                return 0.0;
-
-            const double z = (mu - f_best) / sigma;
-            return (mu - f_best) * 0.5 * std::erfc(-z / std::sqrt(2.0)) +
-                   sigma * std::exp(-0.5 * z * z) / std::sqrt(2.0 * M_PI);
-        }
-
-        void optimizeHyperparameters(const int max_iterations = 50) {
-            Eigen::Vector3d params = kernel_.getParameters();
-            double learning_rate = 0.01;
+        // Optimize the hyperparameters of the kernel
+        void optimizeHyperparameters(int max_iterations = 100) {
+            LOG_INFO("Starting hyperparameter optimization");
+            VectorXd params = kernel_.getParameters();
+            VectorXd best_params = params;
             double best_lml = -std::numeric_limits<double>::infinity();
 
-            for (int i = 0; i < max_iterations; ++i) {
-                Eigen::Vector3d gradient = computeLogMarginalLikelihoodGradient();
-                params += learning_rate * gradient;
-                params = params.cwiseMax(1e-6).cwiseMin(10.0); // Constrain parameters
+            constexpr int m = 10; // L-BFGS memory
+            std::array<VectorXd, m> s, y;
+            int iter = 0;
+            VectorXd grad = computeLogMarginalLikelihoodGradient();
 
-                kernel_.setParameters(params(0), params(1), params(2));
+            for (int i = 0; i < max_iterations; ++i) {
+                // Compute search direction using L-BFGS
+                VectorXd direction = computeLBFGSDirection(grad, s, y, iter);
+
+                // Perform line search to find step size
+                double step_size = backtrackingLineSearch(params, direction, grad);
+
+                // Update parameters: theta_new = theta + alpha * direction
+                VectorXd new_params = params + step_size * direction;
+                new_params = new_params.cwiseMax(1e-6).cwiseMin(10.0); // Constrain parameters
+
+                setParameters(new_params);
                 updateModel();
 
-                const double lml = computeLogMarginalLikelihood();
+                double lml = computeLogMarginalLikelihood();
+                VectorXd new_grad = computeLogMarginalLikelihoodGradient();
+
                 if (lml > best_lml) {
                     best_lml = lml;
-                } else {
-                    learning_rate *= 0.5; // Reduce learning rate if no improvement
+                    best_params = new_params;
+                    LOG_DEBUG("New best LML: {} at iteration {}", best_lml, i);
                 }
 
-                if (gradient.norm() < 1e-5 || learning_rate < 1e-10) {
-                    break; // Convergence criteria
+                // Update L-BFGS memory
+                VectorXd s_i = new_params - params;
+                VectorXd y_i = new_grad - grad;
+
+                if (iter < m) {
+                    s[iter] = s_i;
+                    y[iter] = y_i;
+                } else {
+                    std::rotate(s.begin(), s.begin() + 1, s.end());
+                    std::rotate(y.begin(), y.begin() + 1, y.end());
+                    s.back() = s_i;
+                    y.back() = y_i;
+                }
+
+                params = new_params;
+                grad = new_grad;
+                iter = std::min(iter + 1, m);
+
+                if (grad.norm() < 1e-5) {
+                    LOG_INFO("Optimization converged after {} iterations", i);
+                    break;
                 }
             }
+
+            setParameters(best_params);
+            updateModel();
+            LOG_INFO("Hyperparameter optimization completed. Final LML: {}", best_lml);
         }
 
     private:
         Kernel kernel_;
         double noise_variance_;
-        Eigen::MatrixXd X_;
-        Eigen::VectorXd y_;
-        Eigen::MatrixXd L_;
-        Eigen::VectorXd alpha_;
+        MatrixXd X_;
+        VectorXd y_;
+        MatrixXd L_; // Cholesky decomposition of K
+        VectorXd alpha_; // alpha = K^(-1) * y, precomputed for efficiency
 
+        // Update the internal model after changes to X_, y_, or kernel parameters
         void updateModel() {
-            Eigen::MatrixXd K = computeKernelMatrix();
-            Eigen::LLT<Eigen::MatrixXd> llt(K);
+            // Compute the kernel matrix K
+            MatrixXd K = kernel_.computeGramMatrix(X_);
+            K.diagonal().array() += noise_variance_;
+
+            // Perform Cholesky decomposition: K = LL^T
+            Eigen::LLT<MatrixXd> llt(K);
             if (llt.info() != Eigen::Success) {
+                LOG_ERROR("Cholesky decomposition failed");
                 throw std::runtime_error("Cholesky decomposition failed.");
             }
             L_ = llt.matrixL();
+
+            // Compute alpha = K^(-1) * y using Cholesky decomposition
+            // First solve L * v = y, then L^T * alpha = v
             alpha_ = L_.triangularView<Eigen::Lower>().solve(y_);
             alpha_ = L_.triangularView<Eigen::Lower>().adjoint().solve(alpha_);
         }
 
-        Eigen::MatrixXd computeKernelMatrix() const {
-            Eigen::MatrixXd K = kernel_.computeGramMatrix(X_);
-            K.diagonal().array() += noise_variance_;
-            return K;
-        }
-
-        Eigen::VectorXd computeKernelVector(const Eigen::VectorXd &x) const {
-            return kernel_.computeGramMatrix(X_, x.transpose().eval());
-        }
-
+        // Compute the log marginal likelihood
+        // LML = -0.5 * (y^T * alpha + log|K| + n*log(2*pi))
         double computeLogMarginalLikelihood() const {
-            const double log_det_K = 2 * L_.diagonal().array().log().sum();
+            double log_det_K = 2 * L_.diagonal().array().log().sum(); // log|K| = 2 * sum(log(diag(L)))
             return -0.5 * (y_.dot(alpha_) + log_det_K + X_.rows() * std::log(2 * M_PI));
         }
 
-        Eigen::Vector3d computeLogMarginalLikelihoodGradient() {
+        // Compute the gradient of the log marginal likelihood
+        // This is used for optimizing the hyperparameters
+        VectorXd computeLogMarginalLikelihoodGradient() const {
             int n = X_.rows();
-            const MatrixXd K_inv = L_.triangularView<Eigen::Lower>().solve(
+            // K^(-1) = L^(-T) * L^(-1)
+            MatrixXd K_inv = L_.triangularView<Eigen::Lower>().solve(
                     L_.triangularView<Eigen::Lower>().transpose().solve(MatrixXd::Identity(n, n)));
-            const MatrixXd alpha_alpha_t = alpha_ * alpha_.transpose();
+            MatrixXd alpha_alpha_t = alpha_ * alpha_.transpose();
+            // dLML/dtheta_i = 0.5 * tr((alpha*alpha^T - K^(-1)) * dK/dtheta_i)
             MatrixXd factor = (alpha_alpha_t - K_inv) * 0.5;
 
-            Eigen::Vector3d gradient;
+            VectorXd gradient(3);
             for (int i = 0; i < 3; ++i) {
-                MatrixXd K_grad(n, n);
-                for (int j = 0; j < n; ++j) {
-                    for (int k = j; k < n; ++k) {
-                        Eigen::VectorXd grad_jk = kernel_.computeGradient(X_.row(j).transpose(), X_.row(k).transpose());
-                        K_grad(j, k) = grad_jk(i);
-                        if (j != k) {
-                            K_grad(k, j) = K_grad(j, k);
-                        }
-                    }
-                }
+                MatrixXd K_grad = kernel_.computeGradientMatrix(X_, i);
                 gradient(i) = (factor.array() * K_grad.array()).sum();
             }
             return gradient;
+        }
+
+        // Compute the L-BFGS direction for optimization
+        // This method implements the two-loop recursion algorithm
+        VectorXd computeLBFGSDirection(const VectorXd &grad, const std::array<VectorXd, 10> &s,
+                                       const std::array<VectorXd, 10> &y, int iter) const {
+            VectorXd q = -grad;
+            std::array<double, 10> alpha;
+
+            // First loop
+            for (int i = iter - 1; i >= 0; --i) {
+                alpha[i] = s[i].dot(q) / y[i].dot(s[i]);
+                q -= alpha[i] * y[i];
+            }
+
+            // Scaling factor
+            VectorXd r = q * (s[iter - 1].dot(y[iter - 1]) / y[iter - 1].squaredNorm());
+
+            // Second loop
+            for (int i = 0; i < iter; ++i) {
+                double beta = y[i].dot(r) / y[i].dot(s[i]);
+                r += s[i] * (alpha[i] - beta);
+            }
+
+            return r;
+        }
+
+        // Perform backtracking line search to find an appropriate step size
+        double backtrackingLineSearch(const VectorXd &x, const VectorXd &p, const VectorXd &grad) {
+            double alpha = 1.0;
+            const double c = 0.5;
+            const double tau = 0.5;
+            double f_x = computeLogMarginalLikelihood();
+            double g_p = grad.dot(p);
+
+            for (int i = 0; i < 10; ++i) { // Max 10 iterations
+                VectorXd x_new = x + alpha * p;
+                setParameters(x_new);
+                updateModel();
+                double f_new = computeLogMarginalLikelihood();
+
+                // Check Armijo condition
+                if (f_new >= f_x + c * alpha * g_p) {
+                    return alpha;
+                }
+                alpha *= tau;
+            }
+
+            LOG_WARN("Line search did not converge, using minimum step size");
+            return alpha;
+        }
+
+        // Utility function
+        void setParameters(const VectorXd &params) {
+            if (params.size() != 3) {
+                throw std::invalid_argument("Expected 3 parameters for Matern52 kernel.");
+            }
+            kernel_.setParameters(params(0), params(1), params(2));
         }
     };
 
