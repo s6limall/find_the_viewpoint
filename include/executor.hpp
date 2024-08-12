@@ -42,16 +42,12 @@ private:
 
     static void initialize();
 
-    static std::shared_ptr<processing::image::FeatureExtractor> fetchDetector();
+    static void loadExtractor();
+    static void loadComparator();
 
     struct Defaults {
-        static constexpr double fov_x = 0.95;
-        static constexpr double fov_y = 0.75;
-        static constexpr int width = 640;
-        static constexpr int height = 480;
         static constexpr std::string_view mesh_path = "./3d_models/obj_000020.ply";
         static constexpr std::string_view target_image_path = "../../task1/target_images/obj_000020/target_2.png";
-        static constexpr std::string_view comparator_type = "SSIM";
     };
 };
 
