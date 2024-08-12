@@ -91,9 +91,7 @@ namespace config {
     }
 
 
-    inline bool Configuration::contains(const std::string &key) const {
-        return config_map_.find(key) != config_map_.end();
-    }
+    inline bool Configuration::contains(const std::string &key) const { return config_map_.contains(key); }
 
     // Convenience functions for getting configuration values
     template<typename T>
