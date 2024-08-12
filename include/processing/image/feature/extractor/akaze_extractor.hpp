@@ -21,7 +21,7 @@ namespace processing::image {
             int octave_layers;
             cv::KAZE::DiffusivityType diffusivity;
             float response_threshold;
-            int max_keypoints;
+            size_t max_keypoints;
 
             Config() :
                 descriptor_type(cv::AKAZE::DESCRIPTOR_MLDB), descriptor_size(0), descriptor_channels(3),
@@ -86,9 +86,9 @@ namespace processing::image {
 
             KeyPoints filtered_keypoints;
             Descriptors filtered_descriptors;
-            filtered_keypoints.reserve(std::min(config_.max_keypoints, static_cast<int>(keypoints.size())));
+            filtered_keypoints.reserve(std::min(config_.max_keypoints, keypoints.size()));
 
-            for (size_t i: indices) {
+            for (const size_t i: indices) {
                 if (keypoints[i].response >= response_threshold && filtered_keypoints.size() < config_.max_keypoints) {
                     filtered_keypoints.push_back(keypoints[i]);
                     filtered_descriptors.push_back(descriptors.row(i));
