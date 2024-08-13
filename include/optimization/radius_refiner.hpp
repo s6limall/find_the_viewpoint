@@ -9,6 +9,7 @@
 #include <opencv2/opencv.hpp>
 #include "common/logging/logger.hpp"
 #include "processing/image/comparator.hpp"
+#include "processing/image/comparison/peak_snr_comparator.hpp"
 #include "types/image.hpp"
 #include "types/viewpoint.hpp"
 
@@ -19,7 +20,6 @@ public:
 
     struct RefineResult {
         ViewPoint<T> best_viewpoint;
-        T best_score;
         int iterations;
     };
 
@@ -29,24 +29,24 @@ public:
         initial_step_size_(initial_step_size), step_reduction_factor_(step_reduction_factor) {}
 
     [[nodiscard]] RefineResult refine(const ViewPoint<T> &initial_viewpoint, const Image<> &target,
-                                      const RenderFunction &render,
-                                      const std::shared_ptr<processing::image::ImageComparator> &comparator) const {
+                                      const RenderFunction &render) const {
         auto [radius, polar, azimuthal] = initial_viewpoint.toSpherical();
-
-        RefineResult result{initial_viewpoint, initial_viewpoint.getScore(), 0};
+        const auto comparator = std::make_shared<processing::image::PeakSNRComparator>();
+        RefineResult result{initial_viewpoint, 0};
         T step_size = initial_step_size_ * radius; // Step size relative to current radius
         int stagnant_iterations = 0;
 
         for (int i = 0; i < max_iterations_; ++i) {
-            const auto current_viewpoint = ViewPoint<T>::fromSpherical(radius, polar, azimuthal);
+            auto current_viewpoint = ViewPoint<T>::fromSpherical(radius, polar, azimuthal);
             const auto current_image = render(current_viewpoint);
             const T current_score = comparator->compare(target, current_image);
+            current_viewpoint.setScore(current_score);
 
             LOG_INFO("Iteration {}: radius = {:.6f}, score = {:.6f}, step = {:.6f}", i, radius, current_score,
                      step_size);
 
-            if (current_score > result.best_score) {
-                result = {current_viewpoint, current_score, i + 1};
+            if (current_score > result.best_viewpoint.getScore()) {
+                result = {current_viewpoint, i + 1};
                 stagnant_iterations = 0;
             } else {
                 stagnant_iterations++;
@@ -81,7 +81,8 @@ public:
             }
         }
 
-        LOG_INFO("Refinement complete. Best score: {:.6f}, Iterations: {}", result.best_score, result.iterations);
+        LOG_INFO("Refinement complete. Best score: {:.6f}, Iterations: {}", result.best_viewpoint.getScore(),
+                 result.iterations);
         return result;
     }
 

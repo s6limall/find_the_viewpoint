@@ -14,9 +14,8 @@
 #include "common/logging/logger.hpp"
 #include "optimization/optimizer/gpr.hpp"
 #include "optimization/optimizer/levenberg_marquardt.hpp"
-#include "precise_refiner.hpp"
+#include "optimization/radius_refiner.hpp"
 #include "processing/image/comparator.hpp"
-#include "radius_refiner.hpp"
 #include "types/concepts.hpp"
 #include "types/viewpoint.hpp"
 
@@ -90,7 +89,7 @@ namespace viewpoint {
                      best_viewpoint_->toString());
 
             // Perform final radius refinement
-            auto refined_result = finalRadiusRefinement(target, comparator);
+            auto refined_result = finalRadiusRefinement(target);
 
             if (!refined_result) {
                 LOG_ERROR("Radius refinement failed");
@@ -108,21 +107,20 @@ namespace viewpoint {
             LOG_INFO("Best viewpoint after main optimization: {}", best_viewpoint_->toString());
             LOG_INFO("Final best viewpoint after radius refinement: {}", refined_result->best_viewpoint.toString());
             LOG_INFO("Initial score: {:.6f}", initial_best.getScore());
-            LOG_INFO("Score after main optimization: {:.6f}", best_viewpoint_->getScore());
-            LOG_INFO("Final score after radius refinement: {:.6f}", refined_result->best_score);
-            LOG_INFO("Total score improvement: {:.6f}", refined_result->best_score - initial_best.getScore());
+            LOG_INFO("Total score improvement: {:.6f}", refined_score - initial_best.getScore());
             LOG_INFO("Radius refinement iterations: {}", refined_result->iterations);
 
-            if (refined_result->best_score > best_viewpoint_->getScore()) {
+            if (refined_score > best_viewpoint_->getScore()) {
                 best_viewpoint_ = refined_result->best_viewpoint;
                 LOG_INFO("Radius refinement improved the viewpoint");
             } else {
-                LOG_INFO("Radius refinement did not improve the viewpoint. Keeping the original best.");
+                LOG_INFO("Radius refinement did not improve the viewpoint. Keeping the original.");
             }
         }
 
 
         [[nodiscard]] std::optional<ViewPoint<T>> getBestViewpoint() const noexcept { return best_viewpoint_; }
+
 
     private:
         std::unique_ptr<Node> root_;
@@ -432,48 +430,8 @@ namespace viewpoint {
             return false;
         }
 
-        void levenbergMarquardtRefinement(const Image<> &target,
-                                          const std::shared_ptr<processing::image::ImageComparator> &comparator,
-                                          optimization::LevenbergMarquardt<T, 3> &lm_optimizer) {
-            auto error_func = [&](const Eigen::Vector3<T> &position) {
-                auto cached_score = cache_.query(position);
-                if (cached_score) {
-                    LOG_DEBUG("Using cached score {} for position {}", *cached_score, position);
-                    return static_cast<T>(1.0) - *cached_score;
-                }
-                ViewPoint<T> viewpoint(position);
-                Image<> rendered_image = Image<>::fromViewPoint(viewpoint);
-                T score = comparator->compare(target, rendered_image);
-                cache_.update(ViewPoint<T>(position, score));
-                LOG_DEBUG("Computed new score {} for position {}", score, position);
-                return static_cast<T>(1.0) - score;
-            };
-
-            auto jacobian_func = [&](const Eigen::Vector3<T> &position) {
-                const T h = static_cast<T>(1e-5);
-                Eigen::Matrix<T, 1, 3> J;
-
-                for (int i = 0; i < 3; ++i) {
-                    Eigen::Vector3<T> perturbed_position = position;
-                    perturbed_position[i] += h;
-                    J(0, i) = (error_func(perturbed_position) - error_func(position)) / h;
-                }
-
-                return J;
-            };
-
-            auto result = lm_optimizer.optimize(best_viewpoint_->getPosition(), error_func, jacobian_func);
-
-            if (result) {
-                ViewPoint<T> new_viewpoint(result->position, static_cast<T>(1.0) - result->final_error);
-                updateBestViewpoint(new_viewpoint);
-                gpr_.update(result->position, new_viewpoint.getScore());
-            }
-        }
-
         [[nodiscard]] std::optional<typename RadiusRefiner<T>::RefineResult>
-        finalRadiusRefinement(const Image<> &target,
-                              const std::shared_ptr<processing::image::ImageComparator> &comparator) const {
+        finalRadiusRefinement(const Image<> &target) const {
             if (!best_viewpoint_) {
                 LOG_WARN("No best viewpoint found for final radius refinement");
                 return std::nullopt;
@@ -482,7 +440,7 @@ namespace viewpoint {
             auto renderFunction = [](const ViewPoint<T> &vp) { return Image<>::fromViewPoint(vp); };
 
             RadiusRefiner<T> refiner(1e-6, 1e-5, 50, 0.01, 0.5);
-            auto result = refiner.refine(*best_viewpoint_, target, renderFunction, comparator);
+            auto result = refiner.refine(*best_viewpoint_, target, renderFunction);
 
             LOG_INFO("Final radius refinement complete.");
 
