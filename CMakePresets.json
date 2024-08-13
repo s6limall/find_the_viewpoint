@@ -1,0 +1,44 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": {
+    "major": 3,
+    "minor": 21,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "default",
+      "displayName": "Default Config",
+      "description": "Default build using vcpkg and Ninja",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_TOOLCHAIN_FILE": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
+        "ENABLE_UNITY_BUILD": "ON",
+        "ENABLE_CCACHE": "ON"
+      }
+    },
+    {
+      "name": "debug",
+      "inherits": "default",
+      "displayName": "Debug Config",
+      "description": "Debug build using vcpkg and Ninja",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "default",
+      "configurePreset": "default",
+      "jobs": 0
+    },
+    {
+      "name": "debug",
+      "configurePreset": "debug",
+      "jobs": 0
+    }
+  ]
+}

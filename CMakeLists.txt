@@ -1,3 +1,5 @@
+# CMakeLists.txt
+
 cmake_minimum_required(VERSION 3.14...3.30)
 
 project(find_the_viewpoint VERSION 1.0.0 LANGUAGES CXX)

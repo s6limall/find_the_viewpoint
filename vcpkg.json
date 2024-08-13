@@ -1,0 +1,13 @@
+{
+  "name": "find-the-viewpoint",
+  "version-string": "1.0.0",
+  "dependencies": [
+    "eigen3",
+    "opencv",
+    "pcl",
+    "spdlog",
+    "yaml-cpp",
+    "jsoncpp",
+    "fmt"
+  ]
+}
