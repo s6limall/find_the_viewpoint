@@ -97,11 +97,10 @@ namespace viewpoint {
             }
 
             Image<T> refined_image = Image<>::fromViewPoint(refined_result->best_viewpoint);
-
             T refined_score = comparator->compare(target, refined_image);
+            refined_result->best_viewpoint.setScore(refined_score);
             refined_image.setScore(refined_score);
             LOG_INFO("Refined viewpoint: {}, Score: {}", refined_image.getViewPoint()->toString(), refined_score);
-
             LOG_INFO("Optimization complete.");
             LOG_INFO("Initial best viewpoint: {}", initial_best.toString());
             LOG_INFO("Best viewpoint after main optimization: {}", best_viewpoint_->toString());
@@ -477,7 +476,8 @@ namespace viewpoint {
 
             auto renderFunction = [](const ViewPoint<T> &vp) { return Image<>::fromViewPoint(vp); };
 
-            RadiusRefiner<T> refiner(1e-6, 1e-5, 50, 0.01, 0.5);
+            // RadiusRefiner<T> refiner(1e-6, 1e-5, 50, 0.01, 0.5);
+            auto refiner = RadiusRefiner<T>();
             auto result = refiner.refine(*best_viewpoint_, target, renderFunction);
 
             LOG_INFO("Final radius refinement complete.");
