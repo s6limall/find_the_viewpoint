@@ -14,7 +14,6 @@
 #include "common/logging/logger.hpp"
 #include "optimization/optimizer/gpr.hpp"
 #include "optimization/optimizer/levenberg_marquardt.hpp"
-#include "precise_refiner.hpp"
 #include "processing/image/comparator.hpp"
 #include "radius_refiner.hpp"
 #include "types/concepts.hpp"
