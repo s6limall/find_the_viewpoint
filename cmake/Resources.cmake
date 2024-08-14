@@ -8,6 +8,9 @@ add_custom_target(copy_resources ALL
         COMMAND ${CMAKE_COMMAND} -E copy_directory
         ${PROJECT_SOURCE_DIR}/3d_models
         $<TARGET_FILE_DIR:${PROJECT_NAME}>/3d_models
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+        ${PROJECT_SOURCE_DIR}/target_images
+        $<TARGET_FILE_DIR:${PROJECT_NAME}>/target_images
         COMMENT "Copying configuration.yaml and 3d_models directory to output directory"
 )
 
