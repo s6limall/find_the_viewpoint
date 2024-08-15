@@ -30,7 +30,7 @@ namespace viewpoint {
             std::vector<ViewPoint<T>> points;
             std::array<std::unique_ptr<Node>, 8> children;
             bool explored = false;
-            T max_ucb = std::numeric_limits<T>::lowest();
+            T max_acquisition_value = std::numeric_limits<T>::lowest();
 
             Node(const Eigen::Vector3<T> &center, T size) : center(center), size(size) {}
             [[nodiscard]] bool isLeaf() const noexcept { return children[0] == nullptr; } // node without children
@@ -52,6 +52,10 @@ namespace viewpoint {
             stagnant_iterations_ = 0;
             recent_scores_.clear();
 
+            // Store initial state for potential restart
+            auto initial_state = best_viewpoint_;
+            T initial_score = best_score;
+
             for (int i = 0; i < max_iterations_; ++i) {
                 if (refine(target, comparator, i)) {
                     LOG_INFO("Refinement complete at iteration {}", i);
@@ -66,6 +70,21 @@ namespace viewpoint {
                 T current_best_score = best_viewpoint_->getScore();
 
                 if (hasConverged(current_best_score, best_score, target_score, i)) {
+                    // If converged but score is below the target, decide to restart or backtrack
+                    if (current_best_score < target_score) {
+                        if (shouldRestart(i)) {
+                            LOG_INFO("Restarting optimization after convergence at iteration {}", i);
+                            best_viewpoint_ = initial_state;
+                            best_score = initial_score;
+                            stagnant_iterations_ = 0;
+                            recent_scores_.clear();
+                            continue;
+                        } else if (shouldBacktrack()) {
+                            LOG_INFO("Backtracking after convergence at iteration {}", i);
+                            backtrack();
+                            continue;
+                        }
+                    }
                     break;
                 }
 
@@ -73,52 +92,15 @@ namespace viewpoint {
                     best_score = current_best_score;
                 }
 
-                patternSearch(best_viewpoint_->getPosition(), target, comparator);
-
-                if (i % 10 == 0) {
-                    gpr_.optimizeHyperparameters();
-                }
+                // patternSearch(best_viewpoint_->getPosition(), target, comparator);
             }
 
-            if (!best_viewpoint_) {
-                LOG_ERROR("No best viewpoint found after main optimization");
-                return;
-            }
-
-            LOG_INFO("Main optimization complete. Best viewpoint before radius refinement: {}",
-                     best_viewpoint_->toString());
-
-            // Perform final radius refinement
-            auto refined_result = finalRadiusRefinement(target);
-
-            if (!refined_result) {
-                LOG_ERROR("Radius refinement failed");
-                return;
-            }
-
-            Image<T> refined_image = Image<>::fromViewPoint(refined_result->best_viewpoint);
-            T refined_score = comparator->compare(target, refined_image);
-            refined_result->best_viewpoint.setScore(refined_score);
-            refined_image.setScore(refined_score);
-            LOG_INFO("Refined viewpoint: {}, Score: {}", refined_image.getViewPoint()->toString(), refined_score);
-            LOG_INFO("Optimization complete.");
-            LOG_INFO("Initial best viewpoint: {}", initial_best.toString());
-            LOG_INFO("Best viewpoint after main optimization: {}", best_viewpoint_->toString());
-            LOG_INFO("Final best viewpoint after radius refinement: {}", refined_result->best_viewpoint.toString());
-            LOG_INFO("Initial score: {:.6f}", initial_best.getScore());
-            LOG_INFO("Total score improvement: {:.6f}", refined_score - initial_best.getScore());
-            LOG_INFO("Radius refinement iterations: {}", refined_result->iterations);
-
-            if (refined_score > best_viewpoint_->getScore()) {
-                best_viewpoint_ = refined_result->best_viewpoint;
-                LOG_INFO("Radius refinement improved the viewpoint");
-            } else {
-                LOG_INFO("Radius refinement did not improve the viewpoint. Keeping the original.");
-            }
+            finalizeOptimization(target, comparator, initial_best);
         }
 
-
         [[nodiscard]] std::optional<ViewPoint<T>> getBestViewpoint() const noexcept { return best_viewpoint_; }
+
+        [[nodiscard]] const Node &getRoot() const noexcept { return *root_; }
 
     private:
         std::unique_ptr<Node> root_;
@@ -136,18 +118,17 @@ namespace viewpoint {
         T target_score_;
         cache::ViewpointCache<T> cache_;
 
-
         bool refine(const Image<> &target, const std::shared_ptr<processing::image::ImageComparator> &comparator,
                     int current_iteration) {
             std::priority_queue<std::pair<T, Node *>> pq;
-            pq.emplace(root_->max_ucb, root_.get());
+            pq.emplace(root_->max_acquisition_value, root_.get());
 
             int nodes_explored = 0;
             const int min_nodes_to_explore = 5; // Ensure at least this many nodes are explored
             T best_score_this_refinement = best_viewpoint_->getScore();
 
             while (!pq.empty() && (nodes_explored < min_nodes_to_explore || current_iteration < max_iterations_ / 2)) {
-                auto [ucb, node] = pq.top();
+                auto [acquisition_value, node] = pq.top();
                 pq.pop();
 
                 if (node->size < min_size_)
@@ -173,7 +154,7 @@ namespace viewpoint {
                 if (!node->isLeaf()) {
                     for (auto &child: node->children) {
                         if (child)
-                            pq.emplace(child->max_ucb, child.get());
+                            pq.emplace(child->max_acquisition_value, child.get());
                     }
                 }
             }
@@ -182,7 +163,8 @@ namespace viewpoint {
         }
 
         void exploreNode(Node &node, const Image<> &target,
-                         const std::shared_ptr<processing::image::ImageComparator> &comparator, int current_iteration) {
+                         const std::shared_ptr<processing::image::ImageComparator> &comparator,
+                         const int current_iteration) {
             if (node.points.empty()) {
                 node.points = samplePoints(node);
                 if (isWithinNode(node, best_viewpoint_->getPosition())) {
@@ -217,7 +199,7 @@ namespace viewpoint {
         void evaluatePoints(Node &node, const Image<> &target,
                             const std::shared_ptr<processing::image::ImageComparator> &comparator,
                             int current_iteration) {
-            node.max_ucb = std::numeric_limits<T>::lowest();
+            node.max_acquisition_value = std::numeric_limits<T>::lowest();
 
             for (auto &point: node.points) {
                 if (!point.hasScore()) {
@@ -240,9 +222,9 @@ namespace viewpoint {
                     cache_.update(point);
                 }
 
-                auto [mean, variance] = gpr_.predict(point.getPosition());
-                T ucb = computeUCB(mean, variance, current_iteration);
-                node.max_ucb = std::max(node.max_ucb, ucb);
+                T acquisition_value = computeAcquisition(point.getPosition(), best_viewpoint_->getScore(),
+                                                         current_iteration, max_iterations_, recent_scores_);
+                node.max_acquisition_value = std::max(node.max_acquisition_value, acquisition_value);
             }
         }
 
@@ -297,9 +279,50 @@ namespace viewpoint {
             node.points.shrink_to_fit();
         }
 
-        T computeUCB(T mean, T variance, int current_iteration) const {
-            T exploration_factor = 2.0 * std::exp(-current_iteration / static_cast<T>(max_iterations_));
-            return mean + exploration_factor * std::sqrt(variance);
+        T computeAcquisition(const Eigen::Vector3<T> &point, T best_observed, int current_iteration, int max_iterations,
+                             const std::deque<T> &recent_scores) const {
+            // Predict the mean and variance at the given point using the Gaussian Process
+            auto [mean, variance] = gpr_.predict(point);
+
+            // Calculate Expected Improvement (EI)
+            T ei = 0;
+            if (variance > 1e-9) {
+                T delta = mean - best_observed;
+                T std_dev = std::sqrt(variance);
+                T z = delta / std_dev;
+                ei = delta * std::erf(z / std::sqrt(2)) + std_dev * std::exp(-0.5 * z * z) / std::sqrt(2 * M_PI);
+            }
+
+            // Calculate Upper Confidence Bound (UCB)
+            T exploration_factor = std::sqrt(2 * std::log(max_iterations) / (current_iteration + 1));
+            T ucb = mean + exploration_factor * std::sqrt(std::max(T(0), variance));
+
+            // Calculate Predictive Entropy Search (PES) as negative entropy
+            T pes = -0.5 * std::log(2 * M_PI * M_E * variance);
+
+            // Adapt the weights based on recent progress and uncertainty
+            T progress = 0;
+            if (!recent_scores.empty()) {
+                T avg_score = std::accumulate(recent_scores.begin(), recent_scores.end(), T(0)) / recent_scores.size();
+                progress = (recent_scores.back() - avg_score) / avg_score;
+            }
+
+            // Calculate the uncertainty level
+            T uncertainty_level = std::sqrt(variance);
+
+            // Dynamically adjust the weights based on progress and uncertainty
+            T weight_ei = std::clamp(0.5 + 0.5 * progress, 0.1, 0.9);
+            T weight_ucb = std::clamp(0.3 + 0.5 * uncertainty_level, 0.1, 0.9);
+            T weight_pes = std::clamp(0.2 + 0.3 * (1 - uncertainty_level), 0.1, 0.8);
+
+            // Normalize the weights
+            T total_weight = weight_ei + weight_ucb + weight_pes;
+            weight_ei /= total_weight;
+            weight_ucb /= total_weight;
+            weight_pes /= total_weight;
+
+            // Compute the final acquisition value
+            return weight_ei * ei + weight_ucb * ucb + weight_pes * pes;
         }
 
         // Local search - precise refinement
@@ -393,6 +416,10 @@ namespace viewpoint {
             // Early stopping based on stagnation
             if (stagnant_iterations_ >= patience_) {
                 LOG_INFO("Early stopping triggered after {} stagnant iterations", patience_);
+                // Check if the score is still below the target
+                if (current_score < target_score) {
+                    return true; // Flag for restart or backtrack
+                }
                 return true;
             }
 
@@ -403,7 +430,6 @@ namespace viewpoint {
             }
 
             if (recent_scores_.size() == window_size_) {
-                // T avg_score = std::accumulate(recent_scores_.begin(), recent_scores_.end(), T(0)) / window_size_;
                 T avg_score = std::reduce(recent_scores_.begin(), recent_scores_.end(), T(0)) / window_size_;
                 T score_variance =
                         std::accumulate(recent_scores_.begin(), recent_scores_.end(), T(0),
@@ -428,42 +454,64 @@ namespace viewpoint {
             return false;
         }
 
-        void levenbergMarquardtRefinement(const Image<> &target,
-                                          const std::shared_ptr<processing::image::ImageComparator> &comparator,
-                                          optimization::LevenbergMarquardt<T, 3> &lm_optimizer) {
-            auto error_func = [&](const Eigen::Vector3<T> &position) {
-                auto cached_score = cache_.query(position);
-                if (cached_score) {
-                    LOG_DEBUG("Using cached score {} for position {}", *cached_score, position);
-                    return static_cast<T>(1.0) - *cached_score;
-                }
-                ViewPoint<T> viewpoint(position);
-                Image<> rendered_image = Image<>::fromViewPoint(viewpoint);
-                T score = comparator->compare(target, rendered_image);
-                cache_.update(ViewPoint<T>(position, score));
-                LOG_DEBUG("Computed new score {} for position {}", score, position);
-                return static_cast<T>(1.0) - score;
-            };
+        bool shouldRestart(int current_iteration) const {
+            // Allow restarting if the current iteration is in the first half
+            // and we are not making significant progress.
+            return current_iteration < max_iterations_ / 2 && stagnant_iterations_ >= patience_;
+        }
 
-            auto jacobian_func = [&](const Eigen::Vector3<T> &position) {
-                const T h = static_cast<T>(1e-5);
-                Eigen::Matrix<T, 1, 3> J;
+        bool shouldBacktrack() const {
+            // Allow backtracking if there has been stagnation and we are in the latter half of the iterations
+            return stagnant_iterations_ >= patience_;
+        }
 
-                for (int i = 0; i < 3; ++i) {
-                    Eigen::Vector3<T> perturbed_position = position;
-                    perturbed_position[i] += h;
-                    J(0, i) = (error_func(perturbed_position) - error_func(position)) / h;
-                }
+        void backtrack() {
+            // Logic to backtrack to a previous state
+            // For simplicity, revert to a state from a few iterations ago
+            if (!recent_scores_.empty()) {
+                int backtrack_steps = std::min(static_cast<int>(recent_scores_.size()), 3);
+                auto backtrack_viewpoint = *best_viewpoint_;
+                stagnant_iterations_ = 0;
+                LOG_INFO("Backtracked to a previous viewpoint with score {}", backtrack_viewpoint.getScore());
+            }
+        }
 
-                return J;
-            };
+        void finalizeOptimization(const Image<> &target,
+                                  const std::shared_ptr<processing::image::ImageComparator> &comparator,
+                                  const ViewPoint<T> &initial_best) {
+            if (!best_viewpoint_) {
+                LOG_ERROR("No best viewpoint found after main optimization");
+                return;
+            }
 
-            auto result = lm_optimizer.optimize(best_viewpoint_->getPosition(), error_func, jacobian_func);
+            LOG_INFO("Main optimization complete. Best viewpoint before radius refinement: {}",
+                     best_viewpoint_->toString());
 
-            if (result) {
-                ViewPoint<T> new_viewpoint(result->position, static_cast<T>(1.0) - result->final_error);
-                updateBestViewpoint(new_viewpoint);
-                gpr_.update(result->position, new_viewpoint.getScore());
+            auto refined_result = finalRadiusRefinement(target);
+
+            if (!refined_result) {
+                LOG_ERROR("Radius refinement failed");
+                return;
+            }
+
+            Image<T> refined_image = Image<>::fromViewPoint(refined_result->best_viewpoint);
+            T refined_score = comparator->compare(target, refined_image);
+            refined_result->best_viewpoint.setScore(refined_score);
+            refined_image.setScore(refined_score);
+            LOG_INFO("Refined viewpoint: {}, Score: {}", refined_image.getViewPoint()->toString(), refined_score);
+            LOG_INFO("Optimization complete.");
+            LOG_INFO("Initial best viewpoint: {}", initial_best.toString());
+            LOG_INFO("Best viewpoint after main optimization: {}", best_viewpoint_->toString());
+            LOG_INFO("Final best viewpoint after radius refinement: {}", refined_result->best_viewpoint.toString());
+            LOG_INFO("Initial score: {:.6f}", initial_best.getScore());
+            LOG_INFO("Total score improvement: {:.6f}", refined_score - initial_best.getScore());
+            LOG_INFO("Radius refinement iterations: {}", refined_result->iterations);
+
+            if (refined_score > best_viewpoint_->getScore()) {
+                best_viewpoint_ = refined_result->best_viewpoint;
+                LOG_INFO("Radius refinement improved the viewpoint");
+            } else {
+                LOG_INFO("Radius refinement did not improve the viewpoint. Keeping the original.");
             }
         }
 
@@ -476,7 +524,6 @@ namespace viewpoint {
 
             auto renderFunction = [](const ViewPoint<T> &vp) { return Image<>::fromViewPoint(vp); };
 
-            // RadiusRefiner<T> refiner(1e-6, 1e-5, 50, 0.01, 0.5);
             auto refiner = RadiusRefiner<T>();
             auto result = refiner.refine(*best_viewpoint_, target, renderFunction);
 
