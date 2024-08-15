@@ -14,7 +14,7 @@ paths:
     view_space_images_directory: "../../task1/viewspace_images"
     selected_views_directory: "../../task1/selected_views"
     target_image_directory: "../../task1/target_images"
-    target_image: "./target_images/obj_000020/target_2.png"
+    target_image: "./target_images/obj_000020/target_1.png"
 
 logging:
     level: "debug" # error, critical, warn, info, debug, trace
@@ -65,10 +65,10 @@ estimation:
         threshold: 0.05
 
 rendering:
-    duration: 10 # Duration of the rendering in ms
+    duration: 0 # Duration of the rendering in ms
 
 sampling:
-    count: 10
+    count: 5
 
 octree:
     min_nodes_to_explore: 8

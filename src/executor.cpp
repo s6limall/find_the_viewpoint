@@ -86,7 +86,7 @@ void Executor::execute() {
 
         // Initialize GPR with all initial points
         gpr.fit(X_train, y_train);
-
+        gpr.optimizeHyperparameters();
         // Main optimization loop
         octree.optimize(target_, comparator_, best_initial_viewpoint, target_score_);
 
