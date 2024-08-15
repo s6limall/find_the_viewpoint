@@ -33,7 +33,7 @@ namespace optimization {
         }
 
         // Predict the mean and variance for a new input point
-        std::pair<double, double> predict(const VectorXd &x) const {
+        [[nodiscard]] std::pair<double, double> predict(const VectorXd &x) const {
             if (X_.rows() == 0) {
                 LOG_ERROR("Attempted prediction with unfitted model");
                 throw std::runtime_error("Model not fitted.");
