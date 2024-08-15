@@ -8,6 +8,8 @@
 
 #include <opencv2/opencv.hpp>
 #include <opencv2/core/core.hpp>
+#include <opencv2/quality/qualityssim.hpp>
+#include <opencv2/quality/qualitypsnr.hpp>
 
 #include <pcl/io/io.h>
 #include <pcl/io/pcd_io.h>
@@ -642,6 +644,22 @@ public:
 		return total_length;
 	}
 
+	double calculate_SSIM(){
+		cv::Mat src_img = render_view_image(output_view);
+
+		cv::Mat Map;
+		cv::Scalar scalar = cv::quality::QualitySSIM::compute(src_img, dst_img, Map);
+		return scalar[0];
+	}
+
+	double calculate_PSNR(){
+		cv::Mat src_img = render_view_image(output_view);
+
+		cv::Mat Map;
+		cv::Scalar scalar = cv::quality::QualityPSNR::compute(src_img, dst_img, Map);
+		return scalar[0];
+	}
+
 	void show_view_image_path(string object_path, string pose_file_path, string rgb_file_path) {
 		bool highlight_initview = true;
 		bool is_show_path = true;
@@ -939,6 +957,8 @@ void main(string object_name) {
 				fout_meta << "number of views: " << view_planning_simulator.selected_views.size() << endl;
 				fout_meta << "traversed distance: " << view_planning_simulator.get_traversed_distance() << endl;
 				fout_meta << "compute time:" << duration.count() << endl;
+				fout_meta << "structural similarity (SSIM):" << view_planning_simulator.calculate_SSIM() << endl;
+				fout_meta << "peak signal to noise ratio (PSNR):" << view_planning_simulator.calculate_PSNR() << endl;
 				fout_meta.close();
 			}
 			

@@ -114,6 +114,8 @@ public:
     // Search the best view until find the target
     void dfs();
     double get_traversed_distance();
+    double calculate_SSIM();
+    double calculate_PSNR();
     void show_view_image_path(string object_path, string pose_file_path, string rgb_file_path);
 };
 
