@@ -38,7 +38,8 @@ public:
 
         auto generate_point = [this, angle_increment](size_t i, T inv_samples) {
             T t = static_cast<T>(i) * inv_samples;
-            T inclination = std::acos(1 - 2 * t);
+            // Only cover the upper hemisphere (0 - pi/2)
+            T inclination = std::acos(1 - t); // Changed from (1 - 2 * t) to (1 - t)
             T azimuth = angle_increment * i;
             T sin_inclination = std::sin(inclination);
 
