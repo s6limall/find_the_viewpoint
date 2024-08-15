@@ -28,7 +28,9 @@ public:
     }
 
     explicit constexpr ViewPoint(const Eigen::Matrix<T, 3, 1> &position, T score = T(0), T uncertainty = T(1)) noexcept
-        : ViewPoint(position.x(), position.y(), position.z(), score, uncertainty) {}
+        : position_(position), score_(score), uncertainty_(uncertainty), cluster_id_(-1) {
+        validatePosition();
+    }
 
     // Rule of five
     ViewPoint(const ViewPoint &) = default;
@@ -38,16 +40,16 @@ public:
     ~ViewPoint() = default;
 
     // Getters
-    [[nodiscard]] constexpr const auto &getPosition() const noexcept { return position_; }
+    [[nodiscard]] constexpr const Eigen::Matrix<T, 3, 1> &getPosition() const noexcept { return position_; }
     [[nodiscard]] constexpr int getClusterId() const noexcept { return cluster_id_; }
     [[nodiscard]] constexpr T getScore() const noexcept { return score_; }
     [[nodiscard]] constexpr T getUncertainty() const noexcept { return uncertainty_; }
 
     [[nodiscard]] const core::View &getView() const {
-        if (!view_) {
+        if (!view_.has_value()) {
             view_ = core::View::fromPosition(position_);
         }
-        return *view_;
+        return view_.value();
     }
 
     // Setters
@@ -89,20 +91,19 @@ public:
 
     [[nodiscard]] static ViewPoint fromSpherical(T radius, T polar_angle, T azimuthal_angle, T score = T(0),
                                                  T uncertainty = T(1)) noexcept {
-        const T x = radius * std::sin(polar_angle) * std::cos(azimuthal_angle);
-        const T y = radius * std::sin(polar_angle) * std::sin(azimuthal_angle);
-        const T z = radius * std::cos(polar_angle);
-        return ViewPoint(x, y, z, score, uncertainty);
+        const Eigen::Matrix<T, 3, 1> position = {radius * std::sin(polar_angle) * std::cos(azimuthal_angle),
+                                                 radius * std::sin(polar_angle) * std::sin(azimuthal_angle),
+                                                 radius * std::cos(polar_angle)};
+        return ViewPoint(position, score, uncertainty);
     }
 
     [[nodiscard]] static ViewPoint fromView(const core::View &view, T score = T(0), T uncertainty = T(1)) noexcept {
-        const auto position = view.getPosition();
-        return ViewPoint(position.x(), position.y(), position.z(), score, uncertainty);
+        return ViewPoint(view.getPosition(), score, uncertainty);
     }
 
     [[nodiscard]] static constexpr ViewPoint fromPosition(const Eigen::Vector3<T> &position, T score = T(0),
                                                           T uncertainty = T(1)) noexcept {
-        return ViewPoint(position.x(), position.y(), position.z(), score, uncertainty);
+        return ViewPoint(position, score, uncertainty);
     }
 
     // Conversion from Eigen
@@ -127,17 +128,20 @@ public:
 
     // Conversion to Spherical coordinates
     [[nodiscard]] std::tuple<T, T, T> toSpherical() const noexcept {
-        const T radius = position_.norm();
-        const T polar_angle = std::acos(position_.z() / radius);
-        const T azimuthal_angle = std::atan2(position_.y(), position_.x());
-        return {radius, polar_angle, azimuthal_angle};
+        if (!spherical_coordinates_.has_value()) {
+            const T radius = position_.norm();
+            const T polar_angle = std::acos(position_.z() / radius);
+            const T azimuthal_angle = std::atan2(position_.y(), position_.x());
+            spherical_coordinates_ = std::make_tuple(radius, polar_angle, azimuthal_angle);
+        }
+        return spherical_coordinates_.value();
     }
 
     [[nodiscard]] core::View toView(const Eigen::Vector3<T> &object_center = Eigen::Vector3<T>::Zero()) const {
-        if (!view_) {
+        if (!view_.has_value()) {
             view_ = core::View::fromPosition(position_, object_center);
         }
-        return *view_;
+        return view_.value();
     }
 
     // Serialization to string
@@ -164,6 +168,7 @@ public:
 private:
     Eigen::Matrix<T, 3, 1> position_;
     mutable std::optional<core::View> view_;
+    mutable std::optional<std::tuple<T, T, T>> spherical_coordinates_; // {radius, polar angle, azimuthal angle}
     T score_;
     T uncertainty_;
     int cluster_id_; // -1 = unset, -2 = noise, >= 0 = cluster_id
