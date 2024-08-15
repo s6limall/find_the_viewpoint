@@ -27,6 +27,7 @@
 #include <Eigen/Geometry>
 #include <opencv2/core/eigen.hpp>
 
+#include "../include/lightglue.hpp"
 #include "../include/config.hpp"
 #include "../include/image.hpp"
 
@@ -112,7 +113,7 @@ public:
 
     // Search the best view until find the target
     void dfs();
-    
+    double get_traversed_distance();
     void show_view_image_path(string object_path, string pose_file_path, string rgb_file_path);
 };
 

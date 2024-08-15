@@ -5,6 +5,8 @@
 #include "../include/image.hpp"
 #include <spdlog/spdlog.h>
 #include <random>
+#include <Python.h>
+#include <iostream>
 
 // Convert image to grayscale
 cv::Mat convertToGrayscale(const cv::Mat &img) {
@@ -71,7 +73,7 @@ size_t computeSIFTMatches(const cv::Mat &src_img, const cv::Mat &dst_img, float 
     return goodMatches.size();
 }
 
-double computeSIFTMatchRatio(const cv::Mat &src_img, const cv::Mat &dst_img, float rt, bool use_HSV) {
+double compute_match_ratio_SIFT(const cv::Mat &src_img, const cv::Mat &dst_img, float rt, bool use_HSV) {
     if (src_img.empty()) {
         spdlog::error("Candiate image is empty.");
         return 0;
@@ -80,7 +82,7 @@ double computeSIFTMatchRatio(const cv::Mat &src_img, const cv::Mat &dst_img, flo
         spdlog::error("Target image is empty.");
         return 0;
     }
-        if (src_img.empty()) { spdlog::error("First input image is empty."); return 0; }
+    if (src_img.empty()) { spdlog::error("First input image is empty."); return 0; }
     if (dst_img.empty()) { spdlog::error("Second input image is empty."); return 0; }
 
     std::vector<cv::KeyPoint> src_kp, dst_kp;
@@ -123,8 +125,54 @@ double computeSIFTMatchRatio(const cv::Mat &src_img, const cv::Mat &dst_img, flo
     }
     mr = src_des_total == 0 ? 0.0 : static_cast<double>(matched_des_total) / src_des_total;
     
-    // spdlog::info("Ratio: {}, {}/{} with {}", mr, matched_des_total ,src_des_total, rt);
+    spdlog::info("Ratio: {}, {}/{} with {}", mr, matched_des_total ,src_des_total, rt);
     return mr;
+}
+
+double compute_match_ratio_LIGHTGLUE(){
+
+    Py_Initialize();
+    PyObject* sysPath = PySys_GetObject("path");
+    PyList_Append(sysPath, PyUnicode_DecodeFSDefault("./LightGlue/"));
+
+    // Load the script file (script.py)
+    PyObject* pName = PyUnicode_DecodeFSDefault("apply_lightglue");
+    PyObject* pModule = PyImport_Import(pName);
+    Py_DECREF(pName);
+
+    if (pModule != nullptr) {
+        // Load the function from the script
+        PyObject* pFunc = PyObject_GetAttrString(pModule, "apply_lightglue");
+
+        // Check if the function is callable
+        if (PyCallable_Check(pFunc)) {
+            // Call the function with no arguments
+            PyObject* pValue = PyObject_CallObject(pFunc, nullptr);
+
+            if (pValue != nullptr) {
+                // Convert the result to a C++ float
+                float result = static_cast<float>(PyFloat_AsDouble(pValue));
+                Py_DECREF(pValue);
+                return result;
+            } else {
+                PyErr_Print();
+                std::cerr << "Failed to call the function." << std::endl;
+            }
+        } else {
+            PyErr_Print();
+            std::cerr << "Function not found or not callable." << std::endl;
+        }
+        Py_XDECREF(pFunc);
+        Py_DECREF(pModule);
+    } else {
+        PyErr_Print();
+        std::cerr << "Failed to load the module." << std::endl;
+    }
+
+    // Finalize the Python interpreter
+    Py_Finalize();
+
+    return 0;
 }
 
 // Compare two images for similarity using SIFT feature matching

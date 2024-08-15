@@ -181,6 +181,30 @@ src/image.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/find_the_viewpoint.dir/build.make CMakeFiles/find_the_viewpoint.dir/src/image.cpp.s
 .PHONY : src/image.cpp.s
 
+src/lightglue.o: src/lightglue.cpp.o
+.PHONY : src/lightglue.o
+
+# target to build an object file
+src/lightglue.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/find_the_viewpoint.dir/build.make CMakeFiles/find_the_viewpoint.dir/src/lightglue.cpp.o
+.PHONY : src/lightglue.cpp.o
+
+src/lightglue.i: src/lightglue.cpp.i
+.PHONY : src/lightglue.i
+
+# target to preprocess a source file
+src/lightglue.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/find_the_viewpoint.dir/build.make CMakeFiles/find_the_viewpoint.dir/src/lightglue.cpp.i
+.PHONY : src/lightglue.cpp.i
+
+src/lightglue.s: src/lightglue.cpp.s
+.PHONY : src/lightglue.s
+
+# target to generate assembly for a file
+src/lightglue.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/find_the_viewpoint.dir/build.make CMakeFiles/find_the_viewpoint.dir/src/lightglue.cpp.s
+.PHONY : src/lightglue.cpp.s
+
 src/main.o: src/main.cpp.o
 .PHONY : src/main.o
 
@@ -316,6 +340,9 @@ help:
 	@echo "... src/image.o"
 	@echo "... src/image.i"
 	@echo "... src/image.s"
+	@echo "... src/lightglue.o"
+	@echo "... src/lightglue.i"
+	@echo "... src/lightglue.s"
 	@echo "... src/main.o"
 	@echo "... src/main.i"
 	@echo "... src/main.s"

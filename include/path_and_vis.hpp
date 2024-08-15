@@ -37,6 +37,7 @@ namespace path_and_vis {
 		float         coeffs[5]; /**< Distortion coefficients */
 	} rs2_intrinsics;
 
+	std::pair<int, double> get_local_path(Eigen::Vector3d M, Eigen::Vector3d N, Eigen::Vector3d O, double r);
 	double get_trajectory_xyz(std::vector<Eigen::Vector3d>& points, Eigen::Vector3d M, Eigen::Vector3d N, Eigen::Vector3d O, double predicted_size, double distanse_of_pre_move, double camera_to_object_dis); 
 	static void rs2_deproject_pixel_to_point(float point[3], const struct rs2_intrinsics* intrin, const float pixel[2], float depth);
 	Eigen::Vector3d project_pixel_to_ray_end(int x, int y, rs2_intrinsics& color_intrinsics, Eigen::Matrix4d& now_camera_pose_world, float max_range);

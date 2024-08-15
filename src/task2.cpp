@@ -4,7 +4,7 @@
 #include <cmath>
 #include <filesystem>
 #include <json/json.h>
-
+#include <chrono>
 
 #include <opencv2/opencv.hpp>
 #include <opencv2/core/core.hpp>
@@ -26,8 +26,10 @@
 #include <opencv2/core/eigen.hpp>
 
 #include "../include/config.hpp"
+#include "../include/lightglue.hpp"
 #include "../include/image.hpp"
 #include "../include/path_and_vis.hpp"
+
 
 typedef unsigned long long pop_t;
 
@@ -208,8 +210,10 @@ public:
 	View output_view;
 	vector<cv::Mat> rendered_images; // rendered images
 	std::unordered_map<std::string, double> ratio_map;
+	//LightGlueWrapper lightglue;
 
 	Json::Value cfg;
+
 	// Constructor
 	View_Planning_Simulator(Perception* _perception_simulator, View _target_view) {
 		perception_simulator = _perception_simulator;
@@ -217,6 +221,12 @@ public:
 
 		Config config = Config(); 
 		cfg = config.get_config();
+
+		string feature_type = cfg["compute_score"]["feature_type"].as<string>();
+
+		if (feature_type == "light_glue") {
+			//lightglue.initialize();
+		}
 	}
 
 	// Destructor
@@ -414,10 +424,72 @@ public:
 			max_loss = bst_loss;
 		}
 
-		//spdlog::info("Before Fine Registration");
-		//is_target(src_view);
-		//spdlog::info("After Fine Registration");
-		//is_target(bst_view);
+		return bst_view;
+	}
+
+	View fine_registration_homography(const View& src_view) { 
+		cv::Mat can_img;
+		double can_loss;
+		View can_view;
+
+		cv::Mat bst_img;
+		double bst_loss;
+		View bst_view;
+
+		double max_loss;
+
+		const int max_iterations 		= cfg["fine_registration"]["max_iterations"].as<int>();
+		double convergence_threshold 	= cfg["fine_registration"]["convergence_threshold"].as<double>();
+		double learning_rate 			= cfg["fine_registration"]["learning_rate"].as<double>();
+		const int max_stagnation 		= cfg["fine_registration"]["max_stagnation"].as<int>();
+		const double learning_decay 	= cfg["fine_registration"]["learning_decay"].as<double>();
+
+
+		bst_view = src_view;
+		bst_img = render_view_image(bst_view);
+		max_loss = calculateLoss(bst_img, dst_img);
+		bst_loss = max_loss;
+		double prev_loss = max_loss;
+		
+
+		int iterations = 0;
+		int stagnation_counter = 0;
+		while (iterations < max_iterations) {
+			iterations++;
+			bool improvement_found = false;
+
+
+			can_view = shift_view(bst_view, learning_rate, learning_rate);
+			can_img = render_view_image(can_view);
+			can_loss = calculateLoss(can_img, dst_img);
+
+			if (can_loss < bst_loss) {
+				bst_loss = can_loss;
+				bst_view = can_view;
+				improvement_found = true;
+			}
+			
+
+			if (!improvement_found) {
+				learning_rate *= learning_decay;
+			} else {
+				stagnation_counter = 0;
+			}
+
+			spdlog::info("loss: {}, lr: {}", bst_loss, learning_rate);
+			is_target(bst_view);
+
+			if (learning_rate < convergence_threshold || abs(prev_loss - bst_loss) < convergence_threshold) {
+				stagnation_counter++;
+				if (stagnation_counter >= max_stagnation) {
+					spdlog::info("registration converged");
+					break;
+				}
+			}
+
+			prev_loss = bst_loss;
+			max_loss = bst_loss;
+		}
 
 		return bst_view;
 	}
@@ -438,7 +510,23 @@ public:
 		}
 
 		cv::Mat src_img = render_view_image(src_view);
-		double ratio = computeSIFTMatchRatio(src_img, dst_img, 0.8f, true);
+
+		string feature_type = cfg["compute_score"]["feature_type"].as<string>();
+		bool enable_HSV = cfg["compute_score"]["use_HSV"].as<bool>();
+
+		double ratio;
+
+		spdlog::info("Selected {}",  feature_type);
+
+		if (feature_type == "sift") {
+			ratio = compute_match_ratio_SIFT(src_img, dst_img, 0.8f, enable_HSV);
+		} else if (feature_type == "light_glue") {
+			cv::imwrite("./LightGlue/assets/img_01.jpg", src_img);
+			cv::imwrite("./LightGlue/assets/img_02.jpg", dst_img);
+			//ratio = lightglue.compute_match_ratio_LIGHTGLUE();
+		}
+
+		spdlog::info("ratio {}",  ratio);
 
 		ratio_map[key] = ratio;
 		selected_views.push_back(src_view);
@@ -460,19 +548,20 @@ public:
     
 		for (const View & can_view : views) {
 			can_score = compute_score(can_view);
+			is_target(can_view);
 			if(can_score>bst_score)
 				bst_score = can_score;
 				bst_view = can_view;
 		}
 		
-		// spdlog::info("bst_score {} vs {} max_score",  bst_score, max_score);
+		//spdlog::info("bst_score {} vs {} max_score",  bst_score, max_score);
 
 		if (max_score >= bst_score)
 			return bst_view;
 		max_view = bst_view;
 		max_score = bst_score;
 		// spdlog::info("going deeper");
-		//test_view(max_view, max_score);
+		test_view(max_view, max_score);
 
 		//check for final perfect match if done return early
 		std::vector<std::pair<View, View>> edges = {
@@ -496,9 +585,11 @@ public:
 			bst_score = can_score;
 		}
 		
-		if (max_score >= bst_score)
+		if (max_score >= bst_score){
+			is_target(bst_view);
 			return max_view;
-		
+		}
+
 		max_score = bst_score;
 		max_view = bst_view; //fine_registration_naive(bst_view, 10, 1e-4);
 		//src_img = render_view_image(bst_view);
@@ -509,7 +600,7 @@ public:
 
 	// depth first search
 	void dfs() {
-		size_t view_num = cfg["dfs"]["num_corners"].as<size_t>();; // Number of triangles to look at (e.g., 4 for a pyramid with a square base)
+		size_t view_num = cfg["dfs"]["num_corners"].as<size_t>(); // Number of triangles to look at (e.g., 4 for a pyramid with a square base)
 		std::vector<View> search_views(view_num + 1); // +1 for the top view
 
 		// Create base views dynamically
@@ -532,7 +623,7 @@ public:
 			can_score = 0;
 			can_view = dfs_next_view(search_views[i], search_views[next_index], search_views[view_num], can_score);
 
-			spdlog::info("Best score for iteration {} is {}", i, can_score);
+			//spdlog::info("Best score for iteration {} is {}", i, can_score);
 			if (can_score > max_score){
 				max_view = can_view;
 				max_score = can_score;
@@ -541,6 +632,15 @@ public:
 		output_view = fine_registration_naive(max_view);
 	}
 
+	double get_traversed_distance(){
+		double total_length = 0.0;
+		for (int i = 1; i < selected_views.size(); i++) {
+			pair<int, double> local_path = path_and_vis::get_local_path(selected_views[i-1].pose_6d.block<3, 1>(0, 3), selected_views[i].pose_6d.block<3, 1>(0, 3), (Eigen::Vector3d(1e-10, 1e-10, 1e-10)).eval(), 1.0);
+			if (local_path.first < 0) { cout << "local path not found." << endl;}
+			total_length += local_path.second;
+		}
+		return total_length;
+	}
 
 	void show_view_image_path(string object_path, string pose_file_path, string rgb_file_path) {
 		bool highlight_initview = true;
@@ -548,6 +648,7 @@ public:
 		bool is_global_path = true;
 		bool is_show_image = true;
 		bool is_show_model = true;
+		int vis_num = cfg["visualization"]["vis_num"].as<int>();
 		/////////////////////////////////////////////////////////////////
 		// Important to modify viewspace path here.                    //
 		/////////////////////////////////////////////////////////////////
@@ -557,7 +658,8 @@ public:
 		vector<View> views;
 		ifstream fin(pose_file_path);
 		if (fin.is_open()) {
-			int num = 100;
+			int num;
+			fin >> num;
 			for (int i = 0; i < num; i++) {
 				Eigen::Vector3d positon;
 				fin >> positon[0] >> positon[1] >> positon[2];
@@ -571,7 +673,12 @@ public:
 			cout << "no view space. check!" << endl;
 		}
 		//Read selected viewpoints with path sequence
-		vector<int> chosen_views = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13 }; // just an example
+		std::vector<int> chosen_views(vis_num);
+		
+		for (int i = 0; i < vis_num; ++i) {
+			chosen_views[i] = i;
+		} // just an example
+
 		// viewer
 		auto viewer = pcl::visualization::PCLVisualizer::Ptr(new pcl::visualization::PCLVisualizer("3D Viewer"));
 		viewer->setBackgroundColor(255, 255, 255);
@@ -662,7 +769,7 @@ public:
 					Eigen::Vector3d now_view_xyz = views[chosen_views[i - 1]].pose_6d.block<3, 1>(0, 3);
 					Eigen::Vector3d next_view_xyz = views[chosen_views[i]].pose_6d.block<3, 1>(0, 3);
 					vector<Eigen::Vector3d> points;
-					int num_of_path = path_and_vis::get_trajectory_xyz(points, now_view_xyz, next_view_xyz, object_center_world, predicted_size, 0.2, 0.0);
+					int num_of_path = path_and_vis::get_trajectory_xyz(points, now_view_xyz, next_view_xyz, object_center_world, predicted_size, 0.2, 1.0);
 					if (num_of_path == -1) {
 						cout << "no path. throw" << endl;
 						continue;
@@ -770,11 +877,11 @@ public:
 		}
 		viewer->saveScreenshot (rgb_file_path +"/render.png");
 
-		// while (!viewer->wasStopped())
-		// {
-		// 	viewer->spinOnce(100);
-		// 	boost::this_thread::sleep(boost::posix_time::microseconds(100000));
-		// }
+		while (!viewer->wasStopped())
+		{
+		 	viewer->spinOnce(100);
+		 	//boost::this_thread::sleep(boost::posix_time::microseconds(100000));
+		 }
 	}
 };
 
@@ -786,55 +893,66 @@ double randomDouble(double min, double max) {
 void main(string object_name) {
 	spdlog::info("Version {}", 8);
 
-	View test_view;
+	View target_view;
 	string object_path = "./3d_models/" + object_name + ".ply";
 	
 	Config config = Config(); 
 	Json::Value cfg = config.get_config();
 
 	int test_num =cfg["main"]["test_num"].as<int>();
-	bool enable_visulize =cfg["main"]["visulization"].as<bool>();
-	bool enable_dfs =cfg["main"]["dfs"].as<bool>();
+	bool enable_dfs =cfg["main"]["enable_dfs"].as<bool>();
+	bool enable_generate_imgs =cfg["main"]["enable_generate_imgs"].as<bool>();
+	bool enable_meta =cfg["main"]["enable_meta"].as<bool>();
+	bool enable_visulize =cfg["main"]["enable_vis"].as<bool>();
 	
-	//bool calc_dis_traveled =cfg["post_analysis"]["dis_traveled"].as<bool>();
 
 	Perception* perception_simulator = new Perception(object_path);
 
-	// for each test, select a view
-	set<int> selected_view_indices;
 	for (int test_id = 0; test_id < test_num; test_id++) {
 		string pose_file_path = "./task2/selected_views/" + object_name + "/" + to_string(test_id) + "_views.txt";
-		string meta_file_path = "./task2/selected_views/" + object_name + "/" + to_string(test_id) + "_meta.txt";
+		string meta_file_path = "./task2/dfs_meta/" + object_name + "/" + to_string(test_id) + "_meta.txt";
 		string rgb_file_path = "./task2/selected_views/" + object_name + "/" + to_string(test_id);
 		try {
 			std::filesystem::create_directories(rgb_file_path);
 		} catch (const std::filesystem::filesystem_error& e) {
 			std::cout << "Error creating directory: " << e.what() << '\n';
 		}
-		View target_view;
-		//target_view.compute_pose_from_positon_and_object_center(Eigen::Vector3d(-0.879024, 0.427971, 0.210138).normalized() * 3.0, Eigen::Vector3d(1e-100, 1e-100, 1e-100));
-		test_view.compute_pose_from_positon_and_object_center(Eigen::Vector3d(randomDouble(-1.0, 1.0), randomDouble(-1.0, 1.0), randomDouble(0.0, 1.0)).normalized() * 3.0, Eigen::Vector3d(1e-100, 1e-100, 1e-100));
+		target_view.compute_pose_from_positon_and_object_center(Eigen::Vector3d(-0.879024, 0.427971, 0.210138).normalized() * 3.0, Eigen::Vector3d(1e-100, 1e-100, 1e-100));
+		//target_view.compute_pose_from_positon_and_object_center(Eigen::Vector3d(randomDouble(-1.0, 1.0), randomDouble(-1.0, 1.0), randomDouble(0.0, 1.0)).normalized() * 3.0, Eigen::Vector3d(1e-100, 1e-100, 1e-100));
 
 		View_Planning_Simulator view_planning_simulator(perception_simulator, target_view);
 		if (enable_dfs){
+			auto start = std::chrono::high_resolution_clock::now();
 			view_planning_simulator.dfs();
+			auto end = std::chrono::high_resolution_clock::now();
+			std::chrono::duration<double, std::milli> duration = end - start;
+
 			// Save the selected views
-			Eigen::Vector3d dst_view = Eigen::Vector3d(-0.879024, 0.427971, 0.210138).normalized() * 3.0;
+			//Eigen::Vector3d dst_view = Eigen::Vector3d(-0.879024, 0.427971, 0.210138).normalized() * 3.0;
 			double dis = (target_view.pose_6d.block<3, 1>(0, 3) - view_planning_simulator.output_view.pose_6d.block<3, 1>(0, 3)).norm();
 
-			ofstream fout_meta(meta_file_path);
-			fout_meta << "distance_to_target: " << dis << endl;
-			fout_meta << "num_views: " << view_planning_simulator.selected_views.size() << endl;
-			fout_meta.close();
 
-			ofstream fout_pose(pose_file_path);
-			fout_pose << view_planning_simulator.selected_views.size() << endl;
-			for (int i = 0; i < view_planning_simulator.selected_views.size(); i++) {
-				fout_pose << view_planning_simulator.selected_views[i].pose_6d << endl;
-				perception_simulator->render(view_planning_simulator.selected_views[i], rgb_file_path + "/rgb_" + to_string(i) + ".png");
+
+			if (enable_meta){
+				ofstream fout_meta(meta_file_path);
+				fout_meta << "distance to target: " << dis << endl;
+				fout_meta << "number of views: " << view_planning_simulator.selected_views.size() << endl;
+				fout_meta << "traversed distance: " << view_planning_simulator.get_traversed_distance() << endl;
+				fout_meta << "compute time:" << duration.count() << endl;
+				fout_meta.close();
 			}
-			fout_pose.close();
-
+			
+			if (enable_generate_imgs){
+				ofstream fout_pose(pose_file_path);
+				fout_pose << view_planning_simulator.selected_views.size() << endl;
+				Eigen::Vector3d position;
+				for (int i = 0; i < view_planning_simulator.selected_views.size(); i++) {
+					position = view_planning_simulator.selected_views[i].pose_6d.block<3, 1>(0, 3);
+					fout_pose << position(0) << " " << position(1) << " " << position(2) << endl;
+					perception_simulator->render(view_planning_simulator.selected_views[i], rgb_file_path + "/rgb_" + to_string(i) + ".png");
+				}
+				fout_pose.close();
+			}
 			perception_simulator->render(view_planning_simulator.output_view, "./task2/selected_views/" + object_name + "/" + to_string(test_id) + "_final.png");
 			perception_simulator->render(target_view, "./task2/selected_views/" + object_name + "/" + to_string(test_id) + "_target.png");
 		}

@@ -243,10 +243,6 @@ std::pair<int, double> get_local_path(Eigen::Vector3d M, Eigen::Vector3d N, Eige
 	return make_pair(ErrorPath, 1e10);
 }
 
-////////// Usage of path length
-// pair<int, double> local_path = get_local_path(views[u].init_pos.eval(), views[v].init_pos.eval(), (share_data->object_center_world + Eigen::Vector3d(1e-10, 1e-10, 1e-10)).eval(), share_data->predicted_size);
-// if (local_path.first < 0) { cout << "local path not found." << endl;}
-// cout << local_path.second <<endl;
 
 
 //////////////////////////////////////// Get waypoints on the path with obstacle

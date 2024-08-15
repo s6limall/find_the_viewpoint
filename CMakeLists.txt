@@ -14,6 +14,7 @@ find_package(PCL REQUIRED COMPONENTS common io visualization)
 find_package(jsoncpp CONFIG REQUIRED)   
 find_package(Freetype REQUIRED)
 find_package(spdlog REQUIRED)
+find_package(Python3 COMPONENTS Interpreter Development)
 
 # Collect include directories and libraries
 set(INCLUDE_DIRS
@@ -23,12 +24,14 @@ set(INCLUDE_DIRS
         ${JSONCPP_INCLUDE_DIRS}
         ${FREETYPE_INCLUDE_DIRS}
         ${SPDLOG_INCLUDE_DIRS}
+        ${Python3_INCLUDE_DIRS}
 )
 set(LIBRARIES
         ${OpenCV_LIBS}
         ${PCL_LIBRARIES}
         ${JSONCPP_LIBRARIES}
         ${FREETYPE_LIBRARIES}
+        ${Python3_LIBRARIES}
         spdlog::spdlog
 )
 # Include directories
