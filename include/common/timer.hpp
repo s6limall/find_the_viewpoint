@@ -16,14 +16,20 @@ class Timer {
 public:
     explicit Timer(std::string name) :
         name_(std::move(name)), start_time_(std::chrono::high_resolution_clock::now()), stopped_(false) {
-        LOG_DEBUG("Created timer for {}. Starting at {} ({} µs)", name_,
+        LOG_DEBUG("Created timer for [{}]. Starting at {} ({} µs)", name_,
                   toHumanReadable(start_time_.time_since_epoch().count()),
                   std::chrono::duration_cast<std::chrono::microseconds>(start_time_.time_since_epoch()).count());
     }
 
-    ~Timer() { stop(); }
+    ~Timer() {
+        if (!stopped_) { // Prevent unnecessary atomic operation if already stopped
+            stop();
+        }
+    }
 
-    void stop() {
+
+    // Stop the timer and log the duration
+    void stop() noexcept {
         if (!stopped_.exchange(true)) {
             const auto end_time = std::chrono::high_resolution_clock::now();
             const auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end_time - start_time_).count();
@@ -31,12 +37,15 @@ public:
         }
     }
 
+
+    // Move constructor
     Timer(Timer &&other) noexcept :
         name_(std::move(other.name_)), start_time_(other.start_time_), stopped_(other.stopped_.exchange(true)) {}
 
+    // Move assignment operator
     Timer &operator=(Timer &&other) noexcept {
         if (this != &other) {
-            if (!stopped_.exchange(true)) {
+            if (!stopped_) { // Stop current timer if not already stopped
                 stop();
             }
             name_ = std::move(other.name_);
@@ -50,21 +59,33 @@ public:
     Timer(const Timer &) = delete;
     Timer &operator=(const Timer &) = delete;
 
+
 private:
     std::string name_;
     std::chrono::time_point<std::chrono::high_resolution_clock> start_time_;
     std::atomic<bool> stopped_;
 
-    static std::string toHumanReadable(int64_t msec) {
+    static std::string toHumanReadable(const int64_t micros) {
         using namespace std::chrono;
-        const auto h = duration_cast<hours>(microseconds(msec));
-        msec -= duration_cast<microseconds>(h).count();
-        const auto m = duration_cast<minutes>(microseconds(msec));
-        msec -= duration_cast<microseconds>(m).count();
-        const auto s = duration_cast<seconds>(microseconds(msec));
-        msec -= duration_cast<microseconds>(s).count();
 
-        return std::format("{:02}h {:02}m {:02}s {:06}µs", h.count(), m.count(), s.count(), msec);
+        auto duration = microseconds(micros);
+        const auto h = duration_cast<hours>(duration);
+        duration -= h;
+        const auto m = duration_cast<minutes>(duration);
+        duration -= m;
+        const auto s = duration_cast<seconds>(duration);
+        duration -= s;
+        const auto ms = duration_cast<milliseconds>(duration);
+        duration -= ms;
+
+        // Utilize std::format with conditional inclusion of time units
+        return std::format("{}{}{}{}{}µs", h.count() > 0 ? std::format("{}h ", h.count()) : "",
+                           m.count() > 0 || h.count() > 0 ? std::format("{}m ", m.count()) : "",
+                           s.count() > 0 || m.count() > 0 || h.count() > 0 ? std::format("{}s ", s.count()) : "",
+                           ms.count() > 0 || s.count() > 0 || m.count() > 0 || h.count() > 0
+                                   ? std::format("{}ms ", ms.count())
+                                   : "",
+                           duration.count());
     }
 };
 
