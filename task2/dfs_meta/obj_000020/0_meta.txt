@@ -1,0 +1,4 @@
+distance to target: 0.331936
+number of views: 42
+traversed distance: 70.3288
+compute time:18029.9

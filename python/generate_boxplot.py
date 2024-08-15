@@ -33,7 +33,6 @@ def aggregate_key_values(base_directory, target_key):
         folder_name = os.path.basename(folder)
         aggregated_data[folder_name] = []
 
-        # Find all files that end with "_meta"
         meta_files = glob.glob(os.path.join(folder, '*_meta.txt'))
 
         for meta_file in meta_files:
@@ -50,32 +49,36 @@ def aggregate_key_values(base_directory, target_key):
 
     return aggregated_data
 
-def make_violinplot
+def make_violinplot(base_directorym, key_name):
+    data = aggregate_key_values(base_directory, key_name)
+    print(data)
+
+    # Convert the values to floats for plotting
+    for key in data:
+        data[key] = list(map(float, data[key]))
+
+    # Prepare data for plotting
+    x_data = []
+    y_data = []
+
+    for obj_name, values in data.items():
+        x_data.extend([obj_name] * len(values))
+        y_data.extend(values)
+
+    # Create the violin plot
+    plt.figure(figsize=(10, 6))
+    sns.violinplot(x=x_data, y=y_data)
+
+    plt.xlabel('Objects')
+    plt.ylabel('Values')
+    plt.title('Violin Plot of Values by Object')
+    plt.xticks(rotation=45)  # Rotate x labels for better readability
+    plt.savefig("./python/output/" + key_name + ".svg")
+
 # Usage
-base_directory = './task2/selected_views/'  # Replace with the path to the directory containing obj_ folders
-key_name = 'distance_to_target'
+base_directory = './task2/dfs_meta/'  # Replace with the path to the directory containing obj_ folders with the meta data
+make_violinplot(base_directory,'distance to target')
+make_violinplot(base_directory,'number of views')
+make_violinplot(base_directory,'traversed distance')
+make_violinplot(base_directory,'compute time')
 
-data = aggregate_key_values(base_directory, key_name)
-print(data)
-
-# Convert the values to floats for plotting
-for key in data:
-    data[key] = list(map(float, data[key]))
-
-# Prepare data for plotting
-x_data = []
-y_data = []
-
-for obj_name, values in data.items():
-    x_data.extend([obj_name] * len(values))
-    y_data.extend(values)
-
-# Create the violin plot
-plt.figure(figsize=(10, 6))
-sns.violinplot(x=x_data, y=y_data)
-
-plt.xlabel('Objects')
-plt.ylabel('Values')
-plt.title('Violin Plot of Values by Object')
-plt.xticks(rotation=45)  # Rotate x labels for better readability
-plt.savefig("./python/output/test.svg")
