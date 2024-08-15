@@ -38,9 +38,10 @@ namespace cache {
         };
 
         explicit ViewpointCache(CacheConfig config = CacheConfig{}) : config_(std::move(config)) {
-            LOG_INFO("ViewpointCache initialized with max_size: {}, score_threshold: {}, base_radius: {}, eviction: {}",
-                     config_.max_size, config_.score_threshold, config_.base_radius,
-                     config_.evict ? "enabled" : "disabled");
+            LOG_INFO(
+                    "Viewpoint Cache initialized with max_size: {}, score_threshold: {}, base_radius: {}, eviction: {}",
+                    config_.max_size, config_.score_threshold, config_.base_radius,
+                    config_.evict ? "enabled" : "disabled");
         }
 
         std::optional<T> query(const Eigen::Vector3<T> &position) const noexcept {
