@@ -8,7 +8,7 @@ if (NOT DEFINED VCPKG_ROOT)
 endif ()
 
 # Option to prefer system packages
-option(PREFER_SYSTEM_PACKAGES "Prefer system packages over vcpkg if available" OFF)
+option(PREFER_SYSTEM_PACKAGES "Prefer system packages over vcpkg if available" ON)
 
 # Define the list of required packages with their arguments
 set(REQUIRED_PACKAGES
