@@ -1,6 +1,5 @@
 #include "executor.hpp"
 
-#include "../include/optimization/optimizer/gpr.hpp"
 #include "common/utilities/camera.hpp"
 #include "common/utilities/visualizer.hpp"
 #include "optimization/kernel/matern_52.hpp"
@@ -44,7 +43,7 @@ void Executor::execute() {
         optimization::kernel::Matern52<> kernel(initial_length_scale, initial_variance, initial_noise_variance);
         optimization::GaussianProcessRegression gpr(kernel);
 
-        // Initialize Octree
+        // Initialize ViewpointOptimizer
         const double min_size = 0.01 * size;
         constexpr int max_iterations = 5; // Increase from 5 to allow for more optimization steps
         viewpoint::Octree<> octree(Eigen::Vector3d::Zero(), size, min_size, max_iterations, gpr, radius_, 0.1);
@@ -63,7 +62,7 @@ void Executor::execute() {
 
         for (int i = 0; i < initial_sample_count; ++i) {
             Eigen::Vector3d position = initial_samples.col(i);
-            ViewPoint<double> viewpoint(position);
+            ViewPoint<> viewpoint(position);
             Image<> viewpoint_image = Image<>::fromViewPoint(viewpoint, extractor_);
             double score = comparator_->compare(target_, viewpoint_image);
 
