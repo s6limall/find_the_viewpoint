@@ -30,7 +30,11 @@ namespace optimization::kernel {
             // Compute the scaled distance
             const T z = sqrt_5_ * r / length_scale_;
             // Calculate and return the kernel value
-            return variance_ * (1.0 + z + z * z / 3.0) * std::exp(-z);
+            T result = variance_ * (1.0 + z + z * z / 3.0) * std::exp(-z);
+            if (x.isApprox(y)) {
+                result += noise_variance_;
+            }
+            return result;
         }
 
         // Compute the Gram matrix K where K_ij = k(x_i, y_j)
@@ -144,9 +148,9 @@ namespace optimization::kernel {
 
         // Update the kernel parameters
         void setParameters(T length_scale, T variance, T noise_variance) {
-            length_scale_ = length_scale;
-            variance_ = variance;
-            noise_variance_ = noise_variance;
+            length_scale_ = std::max(T(1e-6), length_scale);
+            variance_ = std::max(T(1e-6), variance);
+            noise_variance_ = std::max(T(0), noise_variance); // Ensure non-negative
             validateParameters();
             LOG_DEBUG("Updated kernel parameters: length_scale={}, variance={}, noise_variance={}", length_scale_,
                       variance_, noise_variance_);
