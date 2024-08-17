@@ -1,20 +1,9 @@
 # File: configuration.yaml
 
-viewpoints:
-    from_file: false
-    file_path: "../../view_space/5.txt"
-    count: 100
-    dimensions: 3
-
 paths:
     log_directory: "logs"
     mesh: "./3d_models/obj_000020.ply"
-    model_directory: "./3d_models"
-    view_space_file: "../../view_space/100.txt"
-    view_space_images_directory: "../../task1/viewspace_images"
-    selected_views_directory: "../../task1/selected_views"
-    target_image_directory: "../../task1/target_images"
-    target_image: "../../task1/target_images/obj_000020/target_1.png"
+    target_image: "./target_images/obj_000020/target_5.png"
 
 logging:
     level: "debug" # error, critical, warn, info, debug, trace
@@ -35,7 +24,7 @@ camera:
 image:
     feature:
         extractor:
-            type: "AKAZE"                    # Feature extractor type (AKAZE, ORB, SIFT)"
+            type: "SIFT"                    # Feature extractor type (AKAZE, ORB, SIFT)"
         matcher:
             type: "FLANN"                   # Feature matcher type (FLANN, BF)
             flann:
@@ -46,30 +35,36 @@ image:
                 cross_check: false          # Cross-check for matching
 
     comparator:
-        type: "FEATURE"                   # Selected image comparison method (FEATURE, SSIM, COMPOSITE)
+        type: "COMPOSITE"                   # Selected image comparison method (FEATURE, SSIM, COMPOSITE)
         ssim:
             threshold: 0.95                 # Higher is better
         feature:
             threshold: 0.95                 # Higher is better
         composite:
-            threshold: 0.95                 # Higher is better
+            threshold: 1.0                 # Higher is better
 
 optimization:
-    patience: 30
-    max_iterations: 100
+    max_iterations: 20
+    patience: 30 # Number of allowed stagnant iterations before stopping the optimization
+    improvement_threshold: 1e-4 # DEFAULT: 1e-4; improvement less than this will be considered stagnant
 
 estimation:
     distance:
         max_iterations: 1
-        initial_guess: 1.7
+        initial_guess: 2.0
         threshold: 0.05
 
 rendering:
     duration: 0 # Duration of the rendering in ms
 
 sampling:
-    count: 10
+    count: 1
 
-convergence:
-    max_iterations: 10
-    threshold: 0.95
+octree:
+    min_nodes_to_explore: 8
+
+cache:
+    evict: true
+    max_size: 300
+    base_radius: 0.1 # Base radius for the cache (radius within which the cache will return pre-computed results)
+    score_threshold: 0.4 # pre-computed results returned with a score below this threshold (if available)

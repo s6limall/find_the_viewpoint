@@ -23,6 +23,9 @@
 
 namespace viewpoint {
 
+
+    // TODO: Try Normalized Cross Correlation for shape matching
+
     template<FloatingPoint T = double>
     class Octree {
     public:
