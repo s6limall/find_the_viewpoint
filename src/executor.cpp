@@ -27,7 +27,8 @@ void Executor::initialize() {
     loadComparator();
     matcher_ = processing::image::FeatureMatcher::create<processing::image::FLANNMatcher>();
     target_ = Image<>(common::io::image::readImage(image_path), extractor_);
-    radius_ = processing::vision::DistanceEstimator().estimate(target_.getImage());
+    // radius_ = processing::vision::DistanceEstimator().estimate(target_.getImage());
+    radius_ = config::get("estimation.distance.initial_guess", 1.5);
 }
 
 void Executor::execute() {
