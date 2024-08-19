@@ -9,6 +9,7 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
 #include <yaml-cpp/yaml.h>
@@ -21,7 +22,6 @@ namespace config {
     public:
         // Delete copy constructor and assignment operator
         Configuration(const Configuration &) = delete;
-
         Configuration &operator=(const Configuration &) = delete;
 
         explicit Configuration(const std::string &filename);
@@ -52,7 +52,6 @@ namespace config {
         static std::shared_ptr<Configuration> instance_;
         static std::once_flag init_flag_;
 
-
         // Load the entire configuration into a map
         void load(const YAML::Node &node, const std::string &prefix = "");
 
@@ -79,6 +78,16 @@ namespace config {
         }
     }
 
+    // Specialization for std::string_view
+    template<>
+    inline std::optional<std::string_view> Configuration::get<std::string_view>(const std::string &key) const {
+        auto str_opt = get<std::string>(key);
+        if (str_opt) {
+            return std::string_view(*str_opt);
+        }
+        return std::nullopt;
+    }
+
     template<typename T>
     T Configuration::get(const std::string &key, T default_value) const {
         auto value = get<T>(key);
@@ -89,7 +98,6 @@ namespace config {
     inline std::string Configuration::get(const std::string &key, const char *default_value) const {
         return get<std::string>(key, std::string(default_value));
     }
-
 
     inline bool Configuration::contains(const std::string &key) const { return config_map_.contains(key); }
 
@@ -108,7 +116,6 @@ namespace config {
     inline std::string get(const std::string &key, const char *default_value) {
         return Configuration::getInstance().get(key, default_value);
     }
-
 
 } // namespace config
 

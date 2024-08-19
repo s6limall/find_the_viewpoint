@@ -4,9 +4,6 @@ cmake_minimum_required(VERSION 3.14...3.30)
 
 project(find_the_viewpoint VERSION 1.0.0 LANGUAGES CXX)
 
-# Setup vcpkg
-include(cmake/vcpkg.cmake)
-
 # Include modular CMake configurations
 include(cmake/ProjectSettings.cmake)
 include(cmake/CompilerSettings.cmake)
@@ -21,7 +18,12 @@ add_executable(${PROJECT_NAME})
 add_project_sources(${PROJECT_NAME})
 
 # Set include directories
-target_include_directories(${PROJECT_NAME} PRIVATE ${PROJECT_INCLUDE_DIRS})
+target_include_directories(${PROJECT_NAME}
+        PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+        ${PROJECT_INCLUDE_DIRS}
+)
 
 # Apply precompiled headers
 add_precompiled_headers(${PROJECT_NAME})

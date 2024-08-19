@@ -5,6 +5,7 @@
 
 #include <atomic>
 #include <chrono>
+#include <fmt/format.h>
 #include <iostream>
 #include <string>
 #include <utility>
@@ -78,12 +79,12 @@ private:
         const auto ms = duration_cast<milliseconds>(duration);
         duration -= ms;
 
-        // Utilize std::format with conditional inclusion of time units
-        return std::format("{}{}{}{}{}µs", h.count() > 0 ? std::format("{}h ", h.count()) : "",
-                           m.count() > 0 || h.count() > 0 ? std::format("{}m ", m.count()) : "",
-                           s.count() > 0 || m.count() > 0 || h.count() > 0 ? std::format("{}s ", s.count()) : "",
+        // Utilize fmt::format with conditional inclusion of time units
+        return fmt::format("{}{}{}{}{}µs", h.count() > 0 ? fmt::format("{}h ", h.count()) : "",
+                           m.count() > 0 || h.count() > 0 ? fmt::format("{}m ", m.count()) : "",
+                           s.count() > 0 || m.count() > 0 || h.count() > 0 ? fmt::format("{}s ", s.count()) : "",
                            ms.count() > 0 || s.count() > 0 || m.count() > 0 || h.count() > 0
-                                   ? std::format("{}ms ", ms.count())
+                                   ? fmt::format("{}ms ", ms.count())
                                    : "",
                            duration.count());
     }

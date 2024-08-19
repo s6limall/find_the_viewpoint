@@ -1,96 +1,81 @@
 # File: cmake/Dependencies.cmake
 
-include(FindPackageHandleStandardArgs)
+# Dependencies.cmake
 
-# Ensure vcpkg is being used
-if (NOT DEFINED VCPKG_ROOT)
-    message(FATAL_ERROR "VCPKG_ROOT is not defined. Make sure vcpkg.cmake is included before this file.")
-endif ()
+# Optionally prefer system packages
+option(PREFER_SYSTEM_PACKAGES "Prefer system packages over other methods if available" ON)
 
-# Option to prefer system packages
-option(PREFER_SYSTEM_PACKAGES "Prefer system packages over vcpkg if available" ON)
+# Find and configure required packages
 
-# Define the list of required packages with their arguments
-set(REQUIRED_PACKAGES
-        "OpenCV"
-        "Eigen3 NO_MODULE"
-        "spdlog"
-        "yaml-cpp CONFIG"
-        "jsoncpp CONFIG"
-        "PCL COMPONENTS common io visualization"
-        "fmt CONFIG"
+# OpenCV with Contrib modules
+find_package(OpenCV REQUIRED COMPONENTS core imgproc highgui xfeatures2d quality)
+
+# Eigen3 library
+find_package(Eigen3 REQUIRED NO_MODULE)
+
+# Logging library
+find_package(spdlog REQUIRED)
+
+# YAML and JSON libraries
+find_package(yaml-cpp REQUIRED)
+find_package(jsoncpp REQUIRED)
+
+# Point Cloud Library (PCL)
+find_package(PCL REQUIRED COMPONENTS common io visualization)
+
+# Formatting library
+find_package(fmt REQUIRED)
+
+# ROS 2 packages
+find_package(ament_cmake REQUIRED)
+find_package(rclcpp REQUIRED)
+find_package(sensor_msgs REQUIRED)
+find_package(geometry_msgs REQUIRED)
+find_package(cv_bridge REQUIRED)
+find_package(image_transport REQUIRED)
+find_package(std_msgs REQUIRED)
+find_package(std_srvs REQUIRED)
+
+# Aggregate include directories
+set(PROJECT_INCLUDE_DIRS
+        ${CMAKE_SOURCE_DIR}/include  # Add this line
+        ${CMAKE_SOURCE_DIR}/src      # Add this line
+        ${OpenCV_INCLUDE_DIRS}
+        ${EIGEN3_INCLUDE_DIR}
+        ${spdlog_INCLUDE_DIRS}
+        ${YAML_CPP_INCLUDE_DIR}
+        ${JSONCPP_INCLUDE_DIRS}
+        ${PCL_INCLUDE_DIRS}
+        ${fmt_INCLUDE_DIRS}
+        ${rclcpp_INCLUDE_DIRS}
+        ${sensor_msgs_INCLUDE_DIRS}
+        ${geometry_msgs_INCLUDE_DIRS}
+        ${cv_bridge_INCLUDE_DIRS}
+        ${image_transport_INCLUDE_DIRS}
+        ${std_msgs_INCLUDE_DIRS}
+        ${std_srvs_INCLUDE_DIRS}
 )
 
-# Initialize project-wide variables
-set(PROJECT_INCLUDE_DIRS "")
-set(PROJECT_LIBRARIES "")
-set(PROJECT_DEFINITIONS "")
 
-# Helper function to find and configure packages
-function(find_and_configure_package PACKAGE_NAME)
-    if (PREFER_SYSTEM_PACKAGES)
-        find_package(${PACKAGE_NAME} ${ARGN} QUIET)
-        if (${PACKAGE_NAME}_FOUND)
-            message(STATUS "Found system ${PACKAGE_NAME} ${${PACKAGE_NAME}_VERSION}")
-        else ()
-            find_package(${PACKAGE_NAME} ${ARGN} REQUIRED)
-            message(STATUS "Found vcpkg ${PACKAGE_NAME} ${${PACKAGE_NAME}_VERSION}")
-        endif ()
-    else ()
-        find_package(${PACKAGE_NAME} ${ARGN} REQUIRED)
-        message(STATUS "Found vcpkg ${PACKAGE_NAME} ${${PACKAGE_NAME}_VERSION}")
-    endif ()
+# Aggregate libraries
+set(PROJECT_LIBRARIES
+        ${OpenCV_LIBS}
+        Eigen3::Eigen
+        spdlog::spdlog
+        yaml-cpp
+        jsoncpp
+        ${PCL_LIBRARIES}
+        fmt::fmt
+        rclcpp
+        ${sensor_msgs_TARGETS}
+        ${geometry_msgs_TARGETS}
+        ${cv_bridge_TARGETS}
+        ${image_transport_TARGETS}
+        ${std_msgs_TARGETS}
+        ${std_srvs_TARGETS}
+)
 
-    if (${PACKAGE_NAME}_INCLUDE_DIRS)
-        list(APPEND PROJECT_INCLUDE_DIRS ${${PACKAGE_NAME}_INCLUDE_DIRS})
-    endif ()
-    if (${PACKAGE_NAME}_LIBRARIES)
-        list(APPEND PROJECT_LIBRARIES ${${PACKAGE_NAME}_LIBRARIES})
-    endif ()
-    if (${PACKAGE_NAME}_DEFINITIONS)
-        list(APPEND PROJECT_DEFINITIONS ${${PACKAGE_NAME}_DEFINITIONS})
-    endif ()
+# Include ROS 2 specific directories
+list(APPEND PROJECT_INCLUDE_DIRS
 
-    set(PROJECT_INCLUDE_DIRS ${PROJECT_INCLUDE_DIRS} PARENT_SCOPE)
-    set(PROJECT_LIBRARIES ${PROJECT_LIBRARIES} PARENT_SCOPE)
-    set(PROJECT_DEFINITIONS ${PROJECT_DEFINITIONS} PARENT_SCOPE)
-endfunction()
-
-# Find required packages
-foreach (PACKAGE_SPEC ${REQUIRED_PACKAGES})
-    string(REPLACE " " ";" PACKAGE_LIST ${PACKAGE_SPEC})
-    list(GET PACKAGE_LIST 0 PACKAGE_NAME)
-    list(REMOVE_AT PACKAGE_LIST 0)
-    find_and_configure_package(${PACKAGE_NAME} ${PACKAGE_LIST})
-endforeach ()
-
-# Special handling for Eigen3 (it uses a different naming convention)
-if (TARGET Eigen3::Eigen)
-    list(APPEND PROJECT_LIBRARIES Eigen3::Eigen)
-endif ()
-
-# Special handling for fmt and yaml-cpp
-if (TARGET fmt::fmt)
-    list(APPEND PROJECT_LIBRARIES fmt::fmt)
-endif ()
-
-if (TARGET yaml-cpp::yaml-cpp)
-    list(APPEND PROJECT_LIBRARIES yaml-cpp::yaml-cpp)
-endif ()
-
-# Add project's include directory
-list(APPEND PROJECT_INCLUDE_DIRS ${CMAKE_CURRENT_SOURCE_DIR}/include)
-
-# Remove duplicates
-list(REMOVE_DUPLICATES PROJECT_INCLUDE_DIRS)
-list(REMOVE_DUPLICATES PROJECT_LIBRARIES)
-list(REMOVE_DUPLICATES PROJECT_DEFINITIONS)
-
-# Print found package information
-foreach (PACKAGE_SPEC ${REQUIRED_PACKAGES})
-    string(REPLACE " " ";" PACKAGE_LIST ${PACKAGE_SPEC})
-    list(GET PACKAGE_LIST 0 PACKAGE_NAME)
-    if (${PACKAGE_NAME}_FOUND)
-        message(STATUS "${PACKAGE_NAME} version: ${${PACKAGE_NAME}_VERSION}")
-    endif ()
-endforeach ()
+)
