@@ -8,8 +8,8 @@
 
 #include "common/io/image.hpp"
 #include "common/logging/logger.hpp"
-#include "core/perception.hpp"
 #include "core/view.hpp"
+#include "core/vision/simulator.hpp"
 #include "processing/vision/estimator.hpp"
 #include "types/viewpoint.hpp"
 

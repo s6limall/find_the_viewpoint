@@ -4,6 +4,7 @@
 
 #include "common/utilities/camera.hpp"
 #include "common/utilities/image.hpp"
+#include "core/eye.hpp"
 
 namespace processing::vision {
 
@@ -26,7 +27,7 @@ namespace processing::vision {
             double cumulative_area_ratio = 0.0;
 
             for (const auto &pose: poses) {
-                cv::Mat rendered_image = core::Perception::render(pose);
+                cv::Mat rendered_image = core::Eye::render(pose);
                 const double current_area_ratio = calculateObjectAreaRatio(rendered_image);
                 cumulative_area_ratio += current_area_ratio;
             }

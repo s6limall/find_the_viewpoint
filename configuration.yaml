@@ -24,7 +24,7 @@ camera:
 image:
     feature:
         extractor:
-            type: "SIFT"                    # Feature extractor type (AKAZE, ORB, SIFT)"
+            type: "AKAZE"                    # Feature extractor type (AKAZE, ORB, SIFT)"
         matcher:
             type: "FLANN"                   # Feature matcher type (FLANN, BF)
             flann:
@@ -58,7 +58,7 @@ rendering:
     duration: 0 # Duration of the rendering in ms
 
 sampling:
-    count: 1
+    count: 5
 
 octree:
     min_nodes_to_explore: 8
@@ -68,3 +68,6 @@ cache:
     max_size: 300
     base_radius: 0.1 # Base radius for the cache (radius within which the cache will return pre-computed results)
     score_threshold: 0.4 # pre-computed results returned with a score below this threshold (if available)
+
+perception:
+    type: simulator

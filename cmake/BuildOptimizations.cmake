@@ -13,7 +13,7 @@ if (NINJA_PROGRAM)
 endif ()
 
 # Enable unity build
-set_target_properties(${PROJECT_NAME} PROPERTIES UNITY_BUILD ON)
+set_target_properties(${PROJECT_NAME} PROPERTIES UNITY_BUILD OFF)
 
 # Enable IPO/LTO if supported
 include(CheckIPOSupported)

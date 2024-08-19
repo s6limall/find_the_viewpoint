@@ -42,15 +42,16 @@ namespace viewpoint {
         };
 
         struct NodeScore {
-            T ucb_value;
+            T acquisition_value;
             T distance_penalty;
             Node *node;
 
-            NodeScore(T ucb, T dist_penalty, Node *n) : ucb_value(ucb), distance_penalty(dist_penalty), node(n) {}
+            NodeScore(T acquisition, T dist_penalty, Node *n) :
+                acquisition_value(acquisition), distance_penalty(dist_penalty), node(n) {}
 
             bool operator<(const NodeScore &other) const {
                 // Higher values have higher priority
-                return (ucb_value - distance_penalty) < (other.ucb_value - other.distance_penalty);
+                return (acquisition_value - distance_penalty) < (other.acquisition_value - other.distance_penalty);
             }
         };
 
@@ -234,7 +235,7 @@ namespace viewpoint {
             T best_score_this_refinement = best_viewpoint_->getScore();
 
             while (!pq.empty() && (nodes_explored < min_nodes_to_explore || current_iteration < max_iterations_ / 2)) {
-                auto [ucb_value, distance_penalty, node] = pq.top();
+                auto [acquisition_value, distance_penalty, node] = pq.top();
                 pq.pop();
 
                 if (node->size < min_size_)

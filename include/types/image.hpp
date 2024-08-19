@@ -10,7 +10,7 @@
 
 #include "common/logging/logger.hpp"
 #include "config/configuration.hpp"
-#include "core/perception.hpp"
+#include "core/eye.hpp"
 #include "processing/image/feature/extractor.hpp"
 #include "processing/image/feature/extractor/akaze_extractor.hpp"
 #include "processing/image/feature/extractor/orb_extractor.hpp"
@@ -90,7 +90,7 @@ public:
 
     [[nodiscard]] static Image<T>
     fromViewPoint(ViewPoint<T> viewpoint, std::shared_ptr<processing::image::FeatureExtractor> extractor = nullptr) {
-        cv::Mat rendered_image = core::Perception::render(viewpoint.toView().getPose());
+        cv::Mat rendered_image = core::Eye::render(viewpoint.toView().getPose());
         Image<T> image(std::move(rendered_image), std::move(extractor));
         image.setViewPoint(std::move(viewpoint));
         return image;

@@ -1,10 +1,13 @@
 #include "executor.hpp"
 
-#include "../include/optimization/optimizer/gpr.hpp"
 #include "common/utilities/camera.hpp"
 #include "common/utilities/visualizer.hpp"
+#include "interface/pose_callback.hpp"
+#include "interface/pose_publisher.hpp"
+#include "opencv2/xfeatures2d.hpp"
 #include "optimization/kernel/matern_52.hpp"
 #include "optimization/octree.hpp"
+#include "optimization/optimizer/gpr.hpp"
 #include "processing/image/comparison/composite_comparator.hpp"
 #include "processing/image/feature/extractor/orb_extractor.hpp"
 #include "processing/image/feature/extractor/sift_extractor.hpp"
@@ -39,6 +42,16 @@ void Executor::execute() {
 
         // Size of the optimization space / octree
         const double size = 2 * radius_;
+
+        auto pose_callback = std::make_shared<PoseCallback>();
+        auto pose_publisher = std::make_shared<PosePublisher>(pose_callback);
+
+
+        pose_callback->registerCallback([](const ViewPoint<> &viewpoint) {
+            LOG_INFO("Received new best viewpoint: {}", viewpoint.toString());
+            // TODO: publish the viewpoint to a ROS2 topic
+        });
+
 
         // Initialize GPR
         const double initial_length_scale = 0.5 * size, initial_variance = 1.0, initial_noise_variance = 1e-6;
