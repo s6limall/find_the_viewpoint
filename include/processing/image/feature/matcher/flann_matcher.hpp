@@ -14,17 +14,17 @@ namespace processing::image {
         enum class IndexType { KDTree, LSH };
 
         explicit FLANNMatcher(const IndexType index_type = IndexType::KDTree) noexcept :
-            ratio_thresh_(config::get("feature_matcher.flann.ratio_thresh", 0.75f)),
-            min_good_matches_(config::get("feature_matcher.flann.min_good_matches", 10)),
-            min_homography_matches_(config::get("feature_matcher.flann.min_homography_matches", 4)) {
+            ratio_thresh_(config::get("image.feature.matcher.flann.ratio_thresh", 0.75f)),
+            min_good_matches_(config::get("image.feature.matcher.flann.min_good_matches", 10)),
+            min_homography_matches_(config::get("image.feature.matcher.flann.min_homography_matches", 4)) {
 
             if (index_type == IndexType::KDTree) {
-                int trees = config::get("feature_matcher.flann.trees", 5);
+                int trees = config::get("image.feature.matcher.flann.trees", 5);
                 matcher_ = cv::makePtr<cv::FlannBasedMatcher>(cv::makePtr<cv::flann::KDTreeIndexParams>(trees));
             } else {
-                int table_number = config::get("feature_matcher.flann.lsh_table_number", 12);
-                int key_size = config::get("feature_matcher.flann.lsh_key_size", 20);
-                int multi_probe_level = config::get("feature_matcher.flann.lsh_multi_probe_level", 2);
+                int table_number = config::get("image.feature.matcher.flann.lsh_table_number", 12);
+                int key_size = config::get("image.feature.matcher.flann.lsh_key_size", 20);
+                int multi_probe_level = config::get("image.feature.matcher.flann.lsh_multi_probe_level", 2);
                 matcher_ = cv::makePtr<cv::FlannBasedMatcher>(
                         cv::makePtr<cv::flann::LshIndexParams>(table_number, key_size, multi_probe_level));
             }

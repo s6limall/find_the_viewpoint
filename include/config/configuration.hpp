@@ -16,6 +16,24 @@
 
 #include "common/logging/logger.hpp"
 
+namespace YAML {
+    template<>
+    struct convert<std::string_view> {
+        static Node encode(const std::string_view& rhs) {
+            return Node(std::string(rhs));
+        }
+
+        static bool decode(const Node& node, std::string_view& rhs) {
+            if (!node.IsScalar()) {
+                return false;
+            }
+            rhs = node.Scalar();
+            return true;
+        }
+    };
+}
+
+
 namespace config {
 
     class Configuration {

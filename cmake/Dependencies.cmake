@@ -29,6 +29,9 @@ find_package(fmt REQUIRED)
 # ROS 2 packages
 find_package(ament_cmake REQUIRED)
 find_package(rclcpp REQUIRED)
+find_package(ament_cmake_auto REQUIRED)
+ament_auto_find_build_dependencies()
+
 find_package(sensor_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(cv_bridge REQUIRED)
@@ -66,7 +69,7 @@ set(PROJECT_LIBRARIES
         jsoncpp
         ${PCL_LIBRARIES}
         fmt::fmt
-        rclcpp
+        ${rclcpp_LIBRARIES}
         ${sensor_msgs_TARGETS}
         ${geometry_msgs_TARGETS}
         ${cv_bridge_TARGETS}

@@ -3,9 +3,10 @@
 #ifndef COMMON_IMAGE_IO_HPP
 #define COMMON_IMAGE_IO_HPP
 
-#include <opencv2/opencv.hpp>
-#include <functional>
 #include <filesystem>
+#include <functional>
+#include <opencv2/core/utils/logger.hpp>
+#include <opencv2/opencv.hpp>
 #include "common/io/io.hpp"
 #include "common/logging/logger.hpp"
 
