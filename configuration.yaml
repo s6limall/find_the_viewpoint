@@ -24,7 +24,7 @@ camera:
 image:
     feature:
         extractor:
-            type: "SIFT"                    # Feature extractor type (AKAZE, ORB, SIFT)"
+            type: "AKAZE"                    # Feature extractor type (AKAZE, ORB, SIFT)"
         matcher:
             type: "FLANN"                   # Feature matcher type (FLANN, BF)
             flann:
@@ -40,7 +40,7 @@ image:
                 cross_check: false          # Cross-check for matching
 
     comparator:
-        type: "FEATURE"                   # Selected image comparison method (FEATURE, SSIM, COMPOSITE)
+        type: "COMPOSITE"                   # Selected image comparison method (FEATURE, SSIM, COMPOSITE)
         ssim:
             threshold: 0.95                 # Higher is better
         feature:
@@ -63,7 +63,7 @@ rendering:
     duration: 0 # Duration of the rendering in ms
 
 sampling:
-    count: 10
+    count: 15
 
 octree:
     min_nodes_to_explore: 8

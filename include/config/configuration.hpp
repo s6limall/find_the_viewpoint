@@ -16,7 +16,7 @@
 
 #include "common/logging/logger.hpp"
 
-namespace YAML {
+/*namespace YAML {
     template<>
     struct convert<std::string_view> {
         static Node encode(const std::string_view& rhs) {
@@ -31,7 +31,7 @@ namespace YAML {
             return true;
         }
     };
-}
+}*/
 
 
 namespace config {
