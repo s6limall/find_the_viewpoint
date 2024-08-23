@@ -29,10 +29,15 @@ namespace optimization {
             T momentum;
             int iteration_count;
 
-            explicit Config(const Strategy strategy = Strategy::UCB, T beta = 2.0, T exploration_weight = 1.0,
-                            T exploitation_weight = 1.0, T momentum = 0.1, const int iteration_count = 0) :
-                strategy(strategy), beta(beta), exploration_weight(exploration_weight),
-                exploitation_weight(exploitation_weight), momentum(momentum), iteration_count(iteration_count) {}
+            explicit Config(const Strategy strategy = Strategy::ADAPTIVE, T beta = 2.0, T exploration_weight = 1.0,
+                            T exploitation_weight = 1.0, T momentum = 0.1, int iteration_count = 0) {
+                this->strategy = stringToStrategy(config::get("optimization.gp.acquisition.strategy", "ADAPTIVE"));
+                this->beta = config::get("optimization.gp.acquisition.beta", 2.0);
+                this->exploration_weight = config::get("optimization.gp.acquisition.exploration_weight", 1.0);
+                this->exploitation_weight = config::get("optimization.gp.acquisition.exploitation_weight", 1.0);
+                this->momentum = config::get("optimization.gp.acquisition.momentum", 0.1);
+                this->iteration_count = config::get("optimization.gp.acquisition.iterations", 0);
+            }
         };
 
         explicit Acquisition(Config config = Config()) : config_(config), rng_(std::random_device{}()) {
@@ -170,7 +175,7 @@ namespace optimization {
             return result;
         }
 
-        static std::string_view strategyToString(Strategy strategy) {
+        static std::string_view strategyToString(const Strategy strategy) {
             switch (strategy) {
                 case Strategy::UCB:
                     return "UCB";
@@ -184,8 +189,21 @@ namespace optimization {
                     return "UNKNOWN";
             }
         }
-    };
 
+        static Strategy stringToStrategy(const std::string_view str) {
+            if (str == "UCB") {
+                return Strategy::UCB;
+            } else if (str == "EI") {
+                return Strategy::EI;
+            } else if (str == "PI") {
+                return Strategy::PI;
+            } else if (str == "ADAPTIVE") {
+                return Strategy::ADAPTIVE;
+            } else {
+                return Strategy::ADAPTIVE; // Default to adaptive
+            }
+        }
+    };
 } // namespace optimization
 
 #endif // ACQUISITION_HPP

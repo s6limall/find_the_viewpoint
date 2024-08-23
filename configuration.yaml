@@ -54,6 +54,13 @@ optimization:
                 initial_length_scale_multiplier: 0.5
                 initial_variance: 1.0
                 initial_noise_variance: 1e-6
+        acquisition:
+            strategy: ADAPTIVE              # ADAPTIVE, EI, PI, UCB
+            beta: 2.0                       # DEFAULT: 2.0; Exploration-exploitation trade-off parameter
+            exploration_weight: 1.0         # DEFAULT: 1.0; Exploration weight for the acquisition function
+            exploitation_weight: 1.0        # DEFAULT: 1.0; Exploitation weight for the acquisition function
+            momentum: 0.1                   # DEFAULT: 0.1; Momentum for the acquisition function
+            iterations: 1                   # Number of iterations for the acquisition function
 
 estimation:
     distance:
