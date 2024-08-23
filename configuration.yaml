@@ -3,7 +3,7 @@
 paths:
     log_directory: "logs"
     mesh: "./3d_models/obj_000020.ply"
-    target_image: "./target_images/obj_000020/target_5.png"
+    target_image: "./target_images/obj_000020/target_2.png"
 
 logging:
     level: "debug" # error, critical, warn, info, debug, trace
@@ -24,7 +24,7 @@ camera:
 image:
     feature:
         extractor:
-            type: "AKAZE"                    # Feature extractor type (AKAZE, ORB, SIFT)"
+            type: "AKAZE"                    # Feature extractor type (AKAZE, ORB, SIFT)
         matcher:
             type: "FLANN"                   # Feature matcher type (FLANN, BF)
             flann:
@@ -41,16 +41,24 @@ image:
         feature:
             threshold: 0.95                 # Higher is better
         composite:
-            threshold: 1.0                 # Higher is better
+            threshold: 1.0                  # Higher is better
 
 optimization:
-    max_iterations: 20
+    max_restarts: 3 # Maximum number of restarts (0 = no restarts)
+    max_points: 20 # Maximum number of points to optimize (0 = no limit)
     patience: 30 # Number of allowed stagnant iterations before stopping the optimization
     improvement_threshold: 1e-4 # DEFAULT: 1e-4; improvement less than this will be considered stagnant
+    gp:
+        kernel:
+            matern52:
+                initial_length_scale_multiplier: 0.5
+                initial_variance: 1.0
+                initial_noise_variance: 1e-6
 
 estimation:
     distance:
-        max_iterations: 1
+        skip: true
+        max_iterations: 2
         initial_guess: 2.0
         threshold: 0.05
 
@@ -62,6 +70,9 @@ sampling:
 
 octree:
     min_nodes_to_explore: 8
+    min_size_multiplier: 0.01 # CRITICAL - DO NOT CHANGE (0.01)
+    max_iterations: 20
+    tolerance: 0.01
 
 cache:
     evict: true
