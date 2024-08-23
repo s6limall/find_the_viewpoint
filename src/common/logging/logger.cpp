@@ -5,7 +5,7 @@
 namespace common::logging {
 
     std::shared_ptr<spdlog::logger> Logger::logger_ = nullptr;
-    spdlog::level::level_enum Logger::level_ = spdlog::level::debug;
+    spdlog::level::level_enum Logger::level_ = spdlog::level::trace;
     std::string Logger::pattern_ = "[%Y-%m-%d %H:%M:%S.%e] [%^%l%$] [%t] [%n] [%s:%# %!] %v";
     std::once_flag Logger::init_flag_;
 
@@ -56,13 +56,9 @@ namespace common::logging {
 
     spdlog::level::level_enum Logger::getLogLevel(const std::string &level) {
         static const std::unordered_map<std::string_view, spdlog::level::level_enum> level_map = {
-                {"trace", spdlog::level::trace},
-                {"debug", spdlog::level::debug},
-                {"info", spdlog::level::info},
-                {"warn", spdlog::level::warn},
-                {"error", spdlog::level::err},
-                {"critical", spdlog::level::critical}
-        };
+                {"trace", spdlog::level::trace}, {"debug", spdlog::level::debug},
+                {"info", spdlog::level::info},   {"warn", spdlog::level::warn},
+                {"error", spdlog::level::err},   {"critical", spdlog::level::critical}};
         const auto iterator = level_map.find(level);
         return iterator != level_map.end() ? iterator->second : spdlog::level::debug;
     }
@@ -72,4 +68,4 @@ namespace common::logging {
         return logger_;
     }
 
-}
+} // namespace common::logging

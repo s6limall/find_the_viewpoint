@@ -31,16 +31,21 @@ namespace config {
     }
 
     void Configuration::load(const YAML::Node &node, const std::string &prefix) {
-        for (const auto &it: node) {
-            std::string key = prefix.empty() ? it.first.as<std::string>() : prefix + "." + it.first.as<std::string>();
-            if (it.second.IsMap()) {
-                load(it.second, key); // Recursively load nested maps
-            } else {
-                config_map_[key] = it.second;
-                LOG_TRACE("Loaded key: '{}', value: '{}'", key, it.second.as<std::string>());
-            }
+    for (const auto &it: node) {
+        std::string key = prefix.empty() ? it.first.as<std::string>() : prefix + "." + it.first.as<std::string>();
+        if (it.second.IsMap()) {
+            LOG_DEBUG("Loading nested map for key: '{}'", key);
+            load(it.second, key); // Recursively load nested maps
+        } else {
+            config_map_[key] = it.second;
+            LOG_DEBUG("Loaded key: '{}', value type: '{}', value: '{}'",
+                      key,
+                      it.second.Type(),
+                      it.second.IsScalar() ? it.second.as<std::string>() : "[non-scalar]");
         }
     }
+}
+
 
     std::vector<std::string> Configuration::split(const std::string &str, const char delimiter) {
         std::vector<std::string> tokens;

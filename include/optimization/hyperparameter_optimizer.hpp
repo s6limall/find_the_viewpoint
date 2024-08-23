@@ -109,7 +109,7 @@ namespace optimization {
 
             VectorXd z = q * ((s.back().dot(y.back()) / y.back().squaredNorm()));
 
-            for (int i = 0; i < s.size(); ++i) {
+            for (size_t i = 0; i < s.size(); ++i) {
                 double beta = y[i].dot(z) / y[i].dot(s[i]);
                 z += s[i] * (alpha[i] - beta);
             }

@@ -27,11 +27,23 @@ std::shared_ptr<processing::image::ImageComparator> Executor::comparator_;
 void Executor::initialize() {
     const auto image_path = config::get("paths.target_image", Defaults::target_image_path);
     loadExtractor();
-    loadComparator();
+    LOG_INFO("Extractor loaded");
+
     matcher_ = processing::image::FeatureMatcher::create<processing::image::FLANNMatcher>();
-    target_ = Image<>(common::io::image::readImage(image_path), extractor_);
+    if (!matcher_) {
+        LOG_ERROR("Failed to create feature matcher");
+        throw std::runtime_error("Failed to create feature matcher");
+    }
+    LOG_INFO("Matcher created successfully");
+
+    loadComparator();
+    LOG_INFO("Comparator loaded");
+
+    target_ = Image<>(cv::imread("./target_images/obj_000020/target_1.png"), extractor_);
     // radius_ = processing::vision::DistanceEstimator().estimate(target_.getImage());
     radius_ = config::get("estimation.distance.initial_guess", 1.5);
+
+    LOG_INFO("Initialization completed successfully");
 }
 
 void Executor::execute() {
@@ -127,7 +139,7 @@ void Executor::execute() {
 }
 
 void Executor::loadExtractor() {
-    const auto detector_type = config::get("image.detector.type", "SIFT");
+    const auto detector_type = config::get("image.feature.extractor.type", "SIFT");
     if (detector_type == "SIFT") {
         LOG_INFO("Using SIFT feature extractor.");
         extractor_ = std::make_shared<processing::image::SIFTExtractor>();
@@ -141,24 +153,60 @@ void Executor::loadExtractor() {
         LOG_WARN("Invalid feature extractor type, defaulting to SIFT.");
         extractor_ = std::make_shared<processing::image::SIFTExtractor>();
     }
+
+    if (!extractor_) {
+        LOG_ERROR("Failed to create feature extractor");
+        throw std::runtime_error("Failed to create feature extractor");
+    }
+    LOG_INFO("Feature extractor created successfully");
 }
 
 void Executor::loadComparator() {
     auto comparator_type = config::get("image.comparator.type", "SSIM");
-    std::ranges::transform(comparator_type.begin(), comparator_type.end(), comparator_type.begin(), ::tolower);
-    const std::string target_score_key = "image.comparator." + comparator_type + ".threshold";
+    std::string target_score_key = "image.comparator." + comparator_type + ".threshold";
+    std::transform(target_score_key.begin(), target_score_key.end(), target_score_key.begin(),
+                   [](unsigned char c) { return std::tolower(c); });
+
     target_score_ = config::get(target_score_key, 0.80);
-    if (comparator_type == "SSIM") {
-        LOG_INFO("Using SSIM image comparator.");
-        comparator_ = std::make_shared<processing::image::SSIMComparator>();
-    } else if (comparator_type == "FEATURE") {
-        LOG_INFO("Using feature-based image comparator.");
-        comparator_ = std::make_shared<processing::image::FeatureComparator>(extractor_, matcher_);
-    } else if (comparator_type == "COMPOSITE") {
-        LOG_INFO("Using composite image comparator.");
-        comparator_ = std::make_shared<processing::image::CompositeComparator>(extractor_, matcher_);
-    } else {
-        LOG_WARN("Invalid image comparator type, defaulting to SSIM.");
-        comparator_ = std::make_shared<processing::image::SSIMComparator>();
+
+    if (!extractor_) {
+        LOG_ERROR("Extractor is null when creating comparator");
+        throw std::runtime_error("Extractor is null when creating comparator");
     }
+    if (!matcher_) {
+        LOG_ERROR("Matcher is null when creating comparator");
+        throw std::runtime_error("Matcher is null when creating comparator");
+    }
+
+    try {
+        if (comparator_type == "SSIM") {
+            LOG_INFO("Using SSIM image comparator.");
+            comparator_ = std::make_shared<processing::image::SSIMComparator>();
+        } else if (comparator_type == "FEATURE") {
+            LOG_INFO("Using feature-based image comparator.");
+            comparator_ = std::make_shared<processing::image::FeatureComparator>(extractor_, matcher_);
+        } else if (comparator_type == "COMPOSITE") {
+            LOG_INFO("Using composite image comparator.");
+            comparator_ = std::make_shared<processing::image::CompositeComparator>(extractor_, matcher_);
+        } else {
+            LOG_WARN("Invalid image comparator type '{}', defaulting to SSIM.", comparator_type);
+            comparator_ = std::make_shared<processing::image::SSIMComparator>();
+        }
+    } catch (const std::exception &e) {
+        LOG_ERROR("Failed to create comparator: {}", e.what());
+        throw;
+    }
+
+    if (!comparator_) {
+        LOG_ERROR("Failed to create comparator");
+        throw std::runtime_error("Failed to create comparator");
+    }
+    LOG_INFO("Comparator created successfully");
 }
+
+
+// TODO: Docker RUN COMMANDS (Container Settings)
+/*
+ * --entrypoint= --rm -e DISPLAY=:0 -e XAUTHORITY=/tmp/.docker.xauth -v /tmp/.X11-unix:/tmp/.X11-unix -v
+ * /tmp/.docker.xauth:/tmp/.docker.xauth
+ */

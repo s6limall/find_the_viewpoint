@@ -287,9 +287,9 @@ namespace viewpoint {
 
             node.max_ucb = std::numeric_limits<T>::lowest();
             for (auto &point: node.points) {
-                evaluatePoint(point, target, comparator, current_iteration);
+                evaluatePoint(point, target, comparator);
                 auto [mean, std_dev] = gpr_.predict(point.getPosition());
-                T acquisition_value = computeAcquisition(point.getPosition(), mean, std_dev, current_iteration);
+                T acquisition_value = computeAcquisition(point.getPosition(), mean, std_dev);
                 node.max_ucb = std::max(node.max_ucb, acquisition_value);
             }
 
@@ -316,8 +316,7 @@ namespace viewpoint {
         }
 
         void evaluatePoint(ViewPoint<T> &point, const Image<> &target,
-                           const std::shared_ptr<processing::image::ImageComparator> &comparator,
-                           int current_iteration) {
+                           const std::shared_ptr<processing::image::ImageComparator> &comparator) {
             if (!point.hasScore()) {
                 auto cached_score = cache_.query(point.getPosition());
                 if (cached_score) {
@@ -434,7 +433,7 @@ namespace viewpoint {
             node.points.shrink_to_fit();
         }
 
-        T computeAcquisition(const Eigen::Vector3<T> &x, T mean, T std_dev, int current_iteration) const {
+        T computeAcquisition(const Eigen::Vector3<T> &x, T mean, T std_dev) const {
             acquisition_.incrementIteration();
             if (best_viewpoint_) {
                 acquisition_.updateBestPoint(best_viewpoint_->getPosition());

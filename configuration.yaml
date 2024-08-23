@@ -3,7 +3,7 @@
 paths:
     log_directory: "logs"
     mesh: "./3d_models/obj_000020.ply"
-    target_image: "./target_images/obj_000020/target_5.png"
+    target_image: "./target_images/obj_000020/target_1.png"
 
 logging:
     level: "debug" # error, critical, warn, info, debug, trace
@@ -30,6 +30,11 @@ image:
             flann:
                 ratio_thresh: 0.8           # Ratio threshold for Lowe’s ratio test
                 min_good_matches: 5         # Minimum number of good matches required
+                min_homography_matches: 4   # Minimum number of matches required for homography estimation
+                trees: 5                    # Number of trees in the KD-tree index
+                lsh_table_number: 12        # Number of hash tables in the LSH index
+                lsh_key_size: 20            # Size of the key in the LSH index
+                lsh_multi_probe_level: 2    # Number of levels in the LSH index
             bf:
                 norm_type: 4                # Norm type (NORM_L2 = 4, NORM_HAMMING = 6)
                 cross_check: false          # Cross-check for matching
@@ -45,8 +50,8 @@ image:
 
 optimization:
     max_iterations: 20
-    patience: 30 # Number of allowed stagnant iterations before stopping the optimization
-    improvement_threshold: 1e-4 # DEFAULT: 1e-4; improvement less than this will be considered stagnant
+    patience: 10 # Number of allowed stagnant iterations before stopping the optimization
+    improvement_threshold: 1e-3 # DEFAULT: 1e-4; improvement less than this will be considered stagnant
 
 estimation:
     distance:
@@ -58,7 +63,7 @@ rendering:
     duration: 0 # Duration of the rendering in ms
 
 sampling:
-    count: 5
+    count: 15
 
 octree:
     min_nodes_to_explore: 8

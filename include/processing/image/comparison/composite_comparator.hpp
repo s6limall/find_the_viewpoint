@@ -37,8 +37,33 @@ namespace processing::image {
         CompositeComparator(std::shared_ptr<FeatureExtractor> extractor, std::shared_ptr<FeatureMatcher> matcher,
                             const Config &config = Config()) :
             config_(config), ssim_comparator_(std::make_shared<SSIMComparator>()),
-            feature_comparator_(std::make_shared<FeatureComparator>(std::move(extractor), std::move(matcher))),
-            color_comparator_(std::make_shared<ColorHistogramComparator>()) {}
+            feature_comparator_(nullptr), // Initialize to nullptr first
+            color_comparator_(std::make_shared<ColorHistogramComparator>()) {
+
+            if (!extractor) {
+                LOG_ERROR("CompositeComparator: extractor is null");
+                throw std::invalid_argument("CompositeComparator: extractor is null");
+            }
+            if (!matcher) {
+                LOG_ERROR("CompositeComparator: matcher is null");
+                throw std::invalid_argument("CompositeComparator: matcher is null");
+            }
+
+            // Create FeatureComparator after null checks
+            try {
+                feature_comparator_ = std::make_shared<FeatureComparator>(extractor, matcher);
+            } catch (const std::exception &e) {
+                LOG_ERROR("Failed to create FeatureComparator: {}", e.what());
+                throw;
+            }
+
+            if (!ssim_comparator_ || !feature_comparator_ || !color_comparator_) {
+                LOG_ERROR("CompositeComparator: Failed to initialize one or more comparators");
+                throw std::runtime_error("CompositeComparator: Failed to initialize one or more comparators");
+            }
+
+            LOG_INFO("CompositeComparator created successfully");
+        }
 
         [[nodiscard]] double compare(const cv::Mat &image1, const cv::Mat &image2) const override {
             return computeWeightedScore(image1, image2);

@@ -43,7 +43,7 @@ namespace optimization::kernel {
             Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic> K(n, m);
 
             // Computation of the Gram matrix
-#pragma omp parallel for collapse(2)
+            // #pragma omp parallel for collapse(2)
             for (int i = 0; i < n; ++i) {
                 for (int j = 0; j < m; ++j) {
                     K(i, j) = compute(X.row(i).transpose(), Y.row(j).transpose());
@@ -59,9 +59,9 @@ namespace optimization::kernel {
             const int n = X.rows();
             Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic> K(n, n);
 
-// Use OpenMP to parallelize
-// Only compute upper triangular part due to symmetry
-#pragma omp parallel for
+            // Use OpenMP to parallelize
+            // Only compute upper triangular part due to symmetry
+            // #pragma omp parallel for
             for (int i = 0; i < n; ++i) {
                 for (int j = i; j < n; ++j) {
                     K(i, j) = compute(X.row(i).transpose(), X.row(j).transpose());
@@ -108,7 +108,7 @@ namespace optimization::kernel {
             const int n = X.rows();
             Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic> K_grad(n, n);
 
-#pragma omp parallel for
+            // #pragma omp parallel for
             for (int i = 0; i < n; ++i) {
                 for (int j = i; j < n; ++j) {
                     Eigen::Matrix<T, Eigen::Dynamic, 1> x_i = X.row(i).transpose();

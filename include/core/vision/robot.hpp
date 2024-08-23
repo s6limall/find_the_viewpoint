@@ -1,45 +1,42 @@
-/*
-// File: core/vision/robot.hpp
-
 #ifndef ROBOT_HPP
 #define ROBOT_HPP
 
-#include <Eigen/Core>
+#include <functional>
+#include <memory>
 #include <opencv2/opencv.hpp>
-#include "common/logging/logger.hpp"
+#include "core/camera.hpp"
 #include "core/vision/perception.hpp"
 
-#include <cv_bridge/cv_bridge.h>
-#include <moveit/move_group_interface/move_group_interface.h>
-#include <moveit/planning_scene_interface/planning_scene_interface.h>
-#include <rclcpp/rclcpp.hpp>
-#include <sensor_msgs/msg/image.hpp>
-
 namespace core {
-    class Robot final : public Perception, public rclcpp::Node {
-    public:
-        Robot();
-        ~Robot() override = default;
 
-        [[nodiscard]] cv::Mat render(const Eigen::Matrix4d &extrinsics, std::string_view save_path) override;
-        [[nodiscard]] std::shared_ptr<Camera> getCamunera() override { return camera_; }
+    class Robot final : public Perception {
+    public:
+        using MoveCallback = std::function<void(const Eigen::Matrix4d &)>;
+        using CaptureCallback = std::function<cv::Mat()>;
+
+        Robot(MoveCallback move_cb, CaptureCallback capture_cb) :
+            move_callback_(std::move(move_cb)), capture_callback_(std::move(capture_cb)) {}
+
+        cv::Mat render(const Eigen::Matrix4d &extrinsics, const std::string_view save_path) override {
+            // Move the robot to the desired position
+            move_callback_(extrinsics);
+
+            // Capture an image using the provided callback
+            cv::Mat captured_image = capture_callback_();
+
+            // Save the image if a save path is provided
+            if (!save_path.empty()) {
+                cv::imwrite(std::string(save_path), captured_image);
+            }
+
+            return captured_image;
+        }
 
     private:
-        void initialize();
-        std::shared_ptr<Camera> camera_;
-
-        // ROS2 and MoveIt components
-        std::shared_ptr<moveit::planning_interface::MoveGroupInterface> move_group_;
-        std::shared_ptr<moveit::planning_interface::PlanningSceneInterface> planning_scene_interface_;
-        rclcpp::Subscription<sensor_msgs::msg::Image>::SharedPtr image_subscription_;
-
-        cv::Mat latest_image_;
-        std::mutex image_mutex_;
-
-        void imageCallback(const sensor_msgs::msg::Image::SharedPtr msg);
-        bool moveRobotToPosition(const Eigen::Matrix4d &extrinsics);
+        MoveCallback move_callback_;
+        CaptureCallback capture_callback_;
     };
+
 } // namespace core
 
 #endif // ROBOT_HPP
-*/

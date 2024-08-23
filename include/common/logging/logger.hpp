@@ -20,6 +20,7 @@
 #include "common/formatting/fmt_cv.hpp"
 #include "common/formatting/fmt_eigen.hpp"
 #include "common/formatting/fmt_vector.hpp"
+#include "common/formatting/fmt_yaml.hpp"
 // #include "common/formatting/fmt_view.hpp"
 
 // NOTE: Logger MUST NOT depend on config::Configuration, as it will cause a circular dependency
@@ -53,7 +54,7 @@ namespace common::logging {
         static std::once_flag init_flag_;
 
         static void init(const std::string &log_directory = "./logs",
-                         const std::string &log_filename = "application.log", const std::string &log_level = "debug",
+                         const std::string &log_filename = "application.log", const std::string &log_level = "trace",
                          const std::string &pattern = "[%Y-%m-%d %H:%M:%S.%e] [%^%l%$] [%t] [%n] [%s:%# %!] %v");
 
         static void initialize(const std::string &log_directory, const std::string &log_filename);

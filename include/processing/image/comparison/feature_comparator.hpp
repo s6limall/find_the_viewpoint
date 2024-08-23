@@ -22,8 +22,12 @@ namespace processing::image {
 
     class FeatureComparator final : public ImageComparator {
     public:
-        FeatureComparator(std::shared_ptr<FeatureExtractor> extractor, std::shared_ptr<FeatureMatcher> matcher) noexcept
-            : extractor_(std::move(extractor)), matcher_(std::move(matcher)) {}
+        FeatureComparator(const std::shared_ptr<FeatureExtractor> &extractor,
+                          const std::shared_ptr<FeatureMatcher> &matcher) : extractor_(extractor), matcher_(matcher) {
+            if (!extractor_ || !matcher_) {
+                throw std::invalid_argument("FeatureComparator: extractor or matcher is null");
+            }
+        }
 
         [[nodiscard]] double compare(const cv::Mat &image1, const cv::Mat &image2) const override {
             const auto features1 = extractor_->extract(image1);
@@ -49,6 +53,11 @@ namespace processing::image {
                                              const FeatureMatcher::Features &features2) const {
             if (features1.first.empty() || features2.first.empty()) {
                 LOG_WARN("Descriptors are empty for one or both images");
+                return 0.0;
+            }
+
+            if (!matcher_) {
+                LOG_ERROR("matcher_ is null in FeatureComparator");
                 return 0.0;
             }
 
