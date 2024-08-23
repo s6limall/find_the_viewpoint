@@ -51,6 +51,6 @@ function(add_project_sources TARGET_NAME)
     source_group(TREE ${CMAKE_CURRENT_SOURCE_DIR} FILES ${PROJECT_SOURCES} ${PROJECT_HEADERS})
 
     # Print the list of sources and headers (optional, for debugging)
-    #[[message(STATUS "Project sources: ${PROJECT_SOURCES}")
-    message(STATUS "Project headers: ${PROJECT_HEADERS}")]]
+    message(STATUS "Project sources: ${PROJECT_SOURCES}")
+    message(STATUS "Project headers: ${PROJECT_HEADERS}")
 endfunction()
