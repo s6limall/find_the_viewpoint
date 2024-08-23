@@ -30,8 +30,11 @@ void Executor::initialize() {
     loadComparator();
     matcher_ = processing::image::FeatureMatcher::create<processing::image::FLANNMatcher>();
     target_ = Image<>(common::io::image::readImage(image_path), extractor_);
-    // radius_ = processing::vision::DistanceEstimator().estimate(target_.getImage());
-    radius_ = config::get("estimation.distance.initial_guess", 1.5);
+    if (config::get("estimation.distance.skip", true)) {
+        radius_ = config::get("estimation.distance.initial_guess", 1.5);
+    } else {
+        radius_ = processing::vision::DistanceEstimator().estimate(target_.getImage());
+    }
 }
 
 void Executor::execute() {
@@ -40,36 +43,26 @@ void Executor::execute() {
     try {
         LOG_INFO("Starting viewpoint optimization.");
 
-        // Size of the optimization space / octree
         const double size = 2 * radius_;
+        const auto max_points = config::get("optimization.max_points", 0);
 
         auto pose_callback = std::make_shared<PoseCallback>();
         auto pose_publisher = std::make_shared<PosePublisher>(pose_callback);
 
-
         pose_callback->registerCallback([](const ViewPoint<> &viewpoint) {
             LOG_INFO("Received new best viewpoint: {}", viewpoint.toString());
-            // TODO: publish the viewpoint to a ROS2 topic
         });
 
-
-        // Initialize GPR
-        const double initial_length_scale = 0.5 * size, initial_variance = 1.0, initial_noise_variance = 1e-6;
+        const auto initial_length_scale = config::get("optimization.gp.kernel.matern.initial_length_scale_multiplier", 0.5) * size;
+        const auto initial_variance = config::get("optimization.gp.kernel.matern.initial_variance", 1.0);
+        const auto initial_noise_variance = config::get("optimization.gp.kernel.matern.initial_noise_variance", 1e-6);
         optimization::kernel::Matern52<> kernel(initial_length_scale, initial_variance, initial_noise_variance);
         optimization::GaussianProcessRegression gpr(kernel);
 
-        // Initialize Octree
-        const double min_size = 0.01 * size;
-        constexpr int max_iterations = 5; // Increase from 5 to allow for more optimization steps
-        viewpoint::Octree<> octree(Eigen::Vector3d::Zero(), size, min_size, max_iterations, gpr, radius_, 0.1);
-
-
-        // Generate initial samples using Fibonacci lattice sampler
         FibonacciLatticeSampler<> sampler({0, 0, 0}, {1, 1, 1}, radius_);
         const int initial_sample_count = config::get("sampling.count", 20);
         Eigen::MatrixXd initial_samples = sampler.generate(initial_sample_count);
 
-        // Evaluate initial samples
         ViewPoint<> best_initial_viewpoint;
         double best_initial_score = -std::numeric_limits<double>::infinity();
         Eigen::MatrixXd X_train(initial_sample_count, 3);
@@ -77,7 +70,7 @@ void Executor::execute() {
 
         for (int i = 0; i < initial_sample_count; ++i) {
             Eigen::Vector3d position = initial_samples.col(i);
-            ViewPoint<double> viewpoint(position);
+            ViewPoint<> viewpoint(position);
             Image<> viewpoint_image = Image<>::fromViewPoint(viewpoint, extractor_);
             double score = comparator_->compare(target_, viewpoint_image);
 
@@ -91,31 +84,55 @@ void Executor::execute() {
                 best_initial_viewpoint = viewpoint;
             }
 
-            LOG_INFO("Initial viewpoint {}: ({}, {}, {}) - Score: {}", i, position.x(), position.y(), position.z(),
-                     score);
+            LOG_INFO("Initial viewpoint {}: ({}, {}, {}) - Score: {}", i, position.x(), position.y(), position.z(), score);
         }
 
         LOG_INFO("Best initial viewpoint: ({}, {}, {}) - Score: {}", best_initial_viewpoint.getPosition().x(),
                  best_initial_viewpoint.getPosition().y(), best_initial_viewpoint.getPosition().z(),
                  best_initial_score);
 
-        // Initialize GPR with all initial points
         gpr.fit(X_train, y_train);
 
-        // Main optimization loop
-        octree.optimize(target_, comparator_, best_initial_viewpoint, target_score_);
+        const auto min_size = config::get("octree.min_size_multiplier", 0.01) * size;
+        const auto max_iterations = config::get("octree.max_iterations", 5);
+        const auto tolerance = config::get("octree.tolerance", 0.1);
+        viewpoint::Octree<> octree(Eigen::Vector3d::Zero(), size, min_size, max_iterations, gpr, radius_, tolerance);
 
-        // Get the final best viewpoint
-        auto best_viewpoint = octree.getBestViewpoint();
+        size_t restart_count = 1;
+        const size_t max_restarts = config::get("optimization.max_restarts", 5);
+        std::optional<ViewPoint<>> best_viewpoint = best_initial_viewpoint;
+
+
+        do {
+            octree.optimize(target_, comparator_, best_viewpoint.value(), target_score_);
+            best_viewpoint = octree.getBestViewpoint();
+            ++restart_count;
+
+            LOG_INFO("Restart {}: Best viewpoint: ({}, {}, {}) - Score: {}",
+                     restart_count,
+                     best_viewpoint->getPosition().x(), best_viewpoint->getPosition().y(),
+                     best_viewpoint->getPosition().z(), best_viewpoint->getScore());
+
+            // Update the search radius based on the current best score
+            double current_radius = radius_ * std::exp(-5 * (best_viewpoint->getScore() - 0.5) / 0.5);
+            current_radius = std::max(current_radius, min_size / 2);
+            octree.setCurrentRadius(current_radius);
+
+            LOG_INFO("Updated search radius: {}", current_radius);
+
+        } while (max_restarts == 0 || restart_count < max_restarts && best_viewpoint && (best_viewpoint->getScore() - target_score_) > -0.05);
+
+
         if (best_viewpoint) {
             LOG_INFO("Optimization completed. Best viewpoint: ({}, {}, {}) - Score: {}",
                      best_viewpoint->getPosition().x(), best_viewpoint->getPosition().y(),
                      best_viewpoint->getPosition().z(), best_viewpoint->getScore());
 
-            // Visualize the difference between the target image and the best viewpoint image
-            Image<> best_image = Image<>::fromViewPoint(best_viewpoint.value(), extractor_);
+            Image<> best_image = Image<>::fromViewPoint(*best_viewpoint, extractor_);
             common::utilities::Visualizer::diff(target_, best_image);
 
+            // Visualize the search progression
+            octree.visualizeSearchProgression();
         } else {
             LOG_WARN("No suitable viewpoint found");
         }
@@ -125,6 +142,15 @@ void Executor::execute() {
         throw;
     }
 }
+
+// Add this function to the Executor class to handle intermediate results:
+static void handleIntermediateResult(const ViewPoint<>& viewpoint) {
+    LOG_INFO("Intermediate best viewpoint: {} - Score: {}",
+             viewpoint.toString(), viewpoint.getScore());
+    // Here you can add code to visualize or further process intermediate results
+}
+
+
 
 void Executor::loadExtractor() {
     const auto detector_type = config::get("image.detector.type", "SIFT");

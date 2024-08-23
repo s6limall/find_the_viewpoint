@@ -1,7 +1,7 @@
 # File: cmake/Dependencies.cmake
 
 # Find and configure required packages
-find_package(OpenCV REQUIRED COMPONENTS core imgproc highgui xfeatures2d quality)
+find_package(OpenCV REQUIRED COMPONENTS core imgproc highgui xfeatures2d quality viz)
 find_package(Eigen3 REQUIRED NO_MODULE)
 find_package(spdlog REQUIRED)
 find_package(yaml-cpp REQUIRED)
