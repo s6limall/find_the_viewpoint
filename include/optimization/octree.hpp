@@ -307,7 +307,7 @@ namespace viewpoint {
             points.reserve(10);
             for (int i = 0; i < 10; ++i) {
                 Eigen::Vector3<T> position =
-                        node.center + node.size * Eigen::Vector3<T>(dist(rng_), dist(rng_), dist(rng_));
+                        node.center + node.size * Eigen::Vector3<T>(dist(rng_), dist(rng_), std::abs(dist(rng_)));
                 position = projectToShell(position);
                 points.emplace_back(position);
             }
@@ -534,7 +534,7 @@ namespace viewpoint {
             }
         }
 
-        Eigen::Vector3<T> projectToShell(const Eigen::Vector3<T> &point) const {
+        /*Eigen::Vector3<T> projectToShell(const Eigen::Vector3<T> &point) const {
             if (!radius_ || !tolerance_)
                 return point;
 
@@ -549,6 +549,73 @@ namespace viewpoint {
                 return root_->center + direction.normalized() * max_radius;
             }
             return point;
+        }*/
+
+        Eigen::Vector3<T> projectToShell(const Eigen::Vector3<T> &point) const {
+            const Eigen::Vector3<T> best_viewpoint = best_viewpoint_->getPosition();
+            T best_score = best_viewpoint_->getScore();
+            if (!radius_ || !tolerance_)
+                return point;
+
+            Eigen::Vector3<T> direction = point - root_->center;
+            T distance = direction.norm();
+            T min_radius = *radius_ * (1 - *tolerance_);
+            T max_radius = *radius_ * (1 + *tolerance_);
+
+            // Convert best_viewpoint to spherical coordinates
+            T best_r = (best_viewpoint - root_->center).norm();
+            T best_theta = std::atan2(best_viewpoint.y() - root_->center.y(), best_viewpoint.x() - root_->center.x());
+            T best_phi = std::acos((best_viewpoint.z() - root_->center.z()) / best_r);
+
+            // Convert point to spherical coordinates
+            T r = distance;
+            T theta = std::atan2(direction.y(), direction.x());
+            T phi = std::acos(direction.z() / r);
+
+            // Restrict to upper hemisphere
+            phi = std::min(phi, static_cast<T>(M_PI_2));
+
+            // Calculate the maximum allowed angular distance based on the current best score
+            bool restrict_vicinity = config::get("octree.restrict_vicinity", false);
+            T max_angular_distance = M_PI_2;
+
+            if (restrict_vicinity) {
+                T vicinity_multiplier = config::get("octree.vicinity_multiplier", 0.5);
+                if (vicinity_multiplier <= 0 || vicinity_multiplier > 1) {
+                    LOG_WARN("Invalid vicinity multiplier: {}. Disabling vicinity restriction.", vicinity_multiplier);
+                } else {
+                    max_angular_distance = M_PI_2 * (1 - best_score) * vicinity_multiplier;
+                }
+            }
+
+            max_angular_distance = std::max(max_angular_distance, config::get("octree.min_vicinity", T(M_PI_2 / 6))); // Minimum search area
+
+            // Restrict theta and phi to be within max_angular_distance of the best viewpoint
+            T delta_theta = std::abs(theta - best_theta);
+            if (delta_theta > M_PI) {
+                delta_theta = 2 * M_PI - delta_theta;
+            }
+            if (delta_theta > max_angular_distance) {
+                theta = best_theta + max_angular_distance * (theta > best_theta ? 1 : -1);
+            }
+
+            T delta_phi = std::abs(phi - best_phi);
+            if (delta_phi > max_angular_distance) {
+                phi = best_phi + max_angular_distance * (phi > best_phi ? 1 : -1);
+            }
+
+            // Convert back to Cartesian coordinates
+            Eigen::Vector3<T> projected_point(r * std::sin(phi) * std::cos(theta), r * std::sin(phi) * std::sin(theta),
+                                              r * std::cos(phi));
+
+            // Ensure the radius is within the allowed range
+            if (r < min_radius) {
+                projected_point *= min_radius / r;
+            } else if (r > max_radius) {
+                projected_point *= max_radius / r;
+            }
+
+            return root_->center + projected_point;
         }
 
         bool hasConverged(T current_score, T best_score, T target_score, int current_iteration) {

@@ -55,12 +55,14 @@ optimization:
                 initial_variance: 1.0
                 initial_noise_variance: 1e-6
         acquisition:
-            strategy: ADAPTIVE              # ADAPTIVE, EI, PI, UCB
+            strategy: ADAPTIVE              # DEFAULT: ADAPTIVE; ADAPTIVE, EI, PI, UCB
+            distance_penalty: false          # DEFAULT: false; Penalize large distances in the acquisition function
             beta: 2.0                       # DEFAULT: 2.0; Exploration-exploitation trade-off parameter
             exploration_weight: 1.0         # DEFAULT: 1.0; Exploration weight for the acquisition function
             exploitation_weight: 1.0        # DEFAULT: 1.0; Exploitation weight for the acquisition function
             momentum: 0.1                   # DEFAULT: 0.1; Momentum for the acquisition function
             iterations: 1                   # Number of iterations for the acquisition function
+            distance_weight: 1.0            # DEFAULT: 0.5; Weight for the distance term in the acquisition function
 
 estimation:
     distance:
@@ -80,6 +82,9 @@ octree:
     min_size_multiplier: 0.01 # CRITICAL - DO NOT CHANGE (0.01)
     max_iterations: 20
     tolerance: 0.01
+    restrict_vicinity: false # Restricts search space to the vicinity of the current best point
+    vicinity_multiplier: 0.9 # Multiplier/Importance for the vicinity radius
+    min_vicinity: 0.5 # Minimum vicinity radius
 
 cache:
     evict: true
