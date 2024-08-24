@@ -4,6 +4,7 @@
 #include "common/utilities/visualizer.hpp"
 #include "interface/pose_callback.hpp"
 #include "interface/pose_publisher.hpp"
+#include "misc/target_generator.hpp"
 #include "opencv2/xfeatures2d.hpp"
 #include "optimization/kernel/matern_52.hpp"
 #include "optimization/octree.hpp"
@@ -24,17 +25,129 @@ std::shared_ptr<processing::image::FeatureExtractor> Executor::extractor_;
 std::shared_ptr<processing::image::FeatureMatcher> Executor::matcher_;
 std::shared_ptr<processing::image::ImageComparator> Executor::comparator_;
 
+std::shared_ptr<core::Simulator> Executor::simulator_ = std::make_shared<core::Simulator>();
+std::string Executor::object_name_;
+std::filesystem::path Executor::output_directory_;
+std::filesystem::path Executor::models_directory_;
+
 void Executor::initialize() {
-    const auto image_path = config::get("paths.target_image", Defaults::target_image_path);
     loadExtractor();
     loadComparator();
     matcher_ = processing::image::FeatureMatcher::create<processing::image::FLANNMatcher>();
-    target_ = Image<>(common::io::image::readImage(image_path), extractor_);
+
+    object_name_ = config::get("object.name", "obj_000001");
+    output_directory_ = config::get("paths.output_directory", "target_images");
+    models_directory_ = config::get("paths.models_directory", "3d_models");
+
     if (config::get("estimation.distance.skip", true)) {
         radius_ = config::get("estimation.distance.initial_guess", 1.5);
     } else {
         radius_ = processing::vision::DistanceEstimator().estimate(target_.getImage());
     }
+
+    generateTargetImages();
+
+    const auto image_path = getRandomTargetImagePath();
+    target_ = Image<>(common::io::image::readImage(image_path), extractor_);
+
+
+}
+
+void Executor::generateTargetImages() {
+    const bool generate_images = config::get("target_images.generate", false);
+    if (!generate_images) {
+        LOG_INFO("Target image generation skipped as per configuration.");
+        return;
+    }
+
+    const std::filesystem::path model_path = models_directory_ / (object_name_ + ".ply");
+    const std::filesystem::path output_dir = output_directory_ / object_name_;
+    std::filesystem::create_directories(output_dir);
+
+    simulator_->loadMesh(model_path.string());
+
+    const int num_images = config::get("target_images.num_images", 5);
+    const double min_distance = config::get("target_images.min_distance", 1.0);
+    const double max_distance = config::get("target_images.max_distance", 3.0);
+
+    for (int i = 0; i < num_images; ++i) {
+        const Eigen::Matrix4d extrinsics = generateRandomExtrinsics();
+        const std::string image_path = (output_dir / ("target_" + std::to_string(i + 1) + ".png")).string();
+
+        cv::Mat rendered_image = simulator_->render(extrinsics, image_path);
+
+        if (!rendered_image.empty()) {
+            LOG_INFO("Generated target image: {}", image_path);
+        } else {
+            LOG_ERROR("Failed to generate target image: {}", image_path);
+        }
+    }
+}
+
+std::string Executor::getRandomTargetImagePath() {
+    const std::filesystem::path output_dir = output_directory_ / object_name_;
+    std::vector<std::string> image_paths;
+
+    for (const auto &entry: std::filesystem::directory_iterator(output_dir)) {
+        if (entry.path().extension() == ".png") {
+            image_paths.push_back(entry.path().string());
+        }
+    }
+
+    if (!image_paths.empty()) {
+        std::random_device rd;
+        std::mt19937 gen(rd());
+        std::uniform_int_distribution<> dis(0, image_paths.size() - 1);
+        return image_paths[dis(gen)];
+    }
+
+    // If no generated images found, return a default path
+    return (output_directory_ / object_name_ / "target_1.png").string();
+}
+
+Eigen::Matrix4d Executor::generateRandomExtrinsics() {
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_real_distribution<> dis(-1.0, 1.0);
+    const auto tolerance = config::get("octree.tolerance", 0.1);  // Get tolerance from config
+    std::uniform_real_distribution<> dis_radius(radius_ - tolerance, radius_ + tolerance);
+
+    Eigen::Vector3d position;
+
+    // Generate a random point on the unit sphere in the upper hemisphere
+    do {
+        position = Eigen::Vector3d(dis(gen), dis(gen), dis(gen));
+    } while (position.squaredNorm() > 1.0 || position.z() < 0.0);
+
+    position.normalize();
+
+    // Scale to a random radius within [radius_ - tolerance, radius_ + tolerance]
+    double final_radius = dis_radius(gen);
+    position *= final_radius;
+
+    // Create the extrinsics matrix with the computed position
+    Eigen::Matrix4d extrinsics = Eigen::Matrix4d::Identity();
+    extrinsics.block<3, 1>(0, 3) = position;
+
+    // Manually compute a simple rotation matrix to align the camera's view
+    Eigen::Vector3d z_axis = -position.normalized();
+    Eigen::Vector3d y_axis(0, 1, 0); // Arbitrary up direction
+
+    if (std::abs(z_axis.dot(y_axis)) > 0.999) {
+        y_axis = Eigen::Vector3d(1, 0, 0); // Change up direction if z is close to y
+    }
+
+    Eigen::Vector3d x_axis = y_axis.cross(z_axis).normalized();
+    y_axis = z_axis.cross(x_axis).normalized();
+
+    Eigen::Matrix3d rotation;
+    rotation.col(0) = x_axis;
+    rotation.col(1) = y_axis;
+    rotation.col(2) = z_axis;
+
+    extrinsics.block<3, 3>(0, 0) = rotation;
+
+    return extrinsics;
 }
 
 void Executor::execute() {
@@ -53,68 +166,77 @@ void Executor::execute() {
             LOG_INFO("Received new best viewpoint: {}", viewpoint.toString());
         });
 
-        const auto initial_length_scale = config::get("optimization.gp.kernel.matern.initial_length_scale_multiplier", 0.5) * size;
+        const auto initial_length_scale =
+                config::get("optimization.gp.kernel.matern.initial_length_scale_multiplier", 0.5) * size;
         const auto initial_variance = config::get("optimization.gp.kernel.matern.initial_variance", 1.0);
         const auto initial_noise_variance = config::get("optimization.gp.kernel.matern.initial_noise_variance", 1e-6);
-        optimization::kernel::Matern52<> kernel(initial_length_scale, initial_variance, initial_noise_variance);
-        optimization::GaussianProcessRegression gpr(kernel);
 
-        FibonacciLatticeSampler<> sampler({0, 0, 0}, {1, 1, 1}, radius_);
-        const int initial_sample_count = config::get("sampling.count", 20);
-        Eigen::MatrixXd initial_samples = sampler.generate(initial_sample_count);
 
-        ViewPoint<> best_initial_viewpoint;
-        double best_initial_score = -std::numeric_limits<double>::infinity();
-        Eigen::MatrixXd X_train(initial_sample_count, 3);
-        Eigen::VectorXd y_train(initial_sample_count);
-
-        for (int i = 0; i < initial_sample_count; ++i) {
-            Eigen::Vector3d position = initial_samples.col(i);
-            ViewPoint<> viewpoint(position);
-            Image<> viewpoint_image = Image<>::fromViewPoint(viewpoint, extractor_);
-            double score = comparator_->compare(target_, viewpoint_image);
-
-            viewpoint.setScore(score);
-
-            X_train.row(i) = position.transpose();
-            y_train(i) = score;
-
-            if (score > best_initial_score) {
-                best_initial_score = score;
-                best_initial_viewpoint = viewpoint;
-            }
-
-            LOG_INFO("Initial viewpoint {}: ({}, {}, {}) - Score: {}", i, position.x(), position.y(), position.z(), score);
-        }
-
-        LOG_INFO("Best initial viewpoint: ({}, {}, {}) - Score: {}", best_initial_viewpoint.getPosition().x(),
-                 best_initial_viewpoint.getPosition().y(), best_initial_viewpoint.getPosition().z(),
-                 best_initial_score);
-
-        gpr.fit(X_train, y_train);
-
-        const auto min_size = config::get("octree.min_size_multiplier", 0.01) * size;
-        const auto max_iterations = config::get("octree.max_iterations", 5);
-        const auto tolerance = config::get("octree.tolerance", 0.1);
-        viewpoint::Octree<> octree(Eigen::Vector3d::Zero(), size, min_size, max_iterations, gpr, radius_, tolerance);
+        std::optional<ViewPoint<>> best_viewpoint;
 
         size_t restart_count = 1;
         const size_t max_restarts = config::get("optimization.max_restarts", 5);
-        std::optional<ViewPoint<>> best_viewpoint = best_initial_viewpoint;
-
 
         do {
+
+            optimization::kernel::Matern52<> kernel(initial_length_scale, initial_variance, initial_noise_variance);
+            optimization::GaussianProcessRegression gpr(kernel);
+
+            FibonacciLatticeSampler<> sampler({0, 0, 0}, {1, 1, 1}, radius_);
+            const int initial_sample_count = config::get("sampling.count", 20);
+            Eigen::MatrixXd initial_samples = sampler.generate(initial_sample_count);
+
+            ViewPoint<> best_initial_viewpoint;
+            double best_initial_score = -std::numeric_limits<double>::infinity();
+            Eigen::MatrixXd X_train(initial_sample_count, 3);
+            Eigen::VectorXd y_train(initial_sample_count);
+
+            for (int i = 0; i < initial_sample_count; ++i) {
+                Eigen::Vector3d position = initial_samples.col(i);
+                ViewPoint<> viewpoint(position);
+                Image<> viewpoint_image = Image<>::fromViewPoint(viewpoint, extractor_);
+                double score = comparator_->compare(target_, viewpoint_image);
+
+                viewpoint.setScore(score);
+
+                X_train.row(i) = position.transpose();
+                y_train(i) = score;
+
+                if (score > best_initial_score) {
+                    best_initial_score = score;
+                    best_initial_viewpoint = viewpoint;
+                }
+
+                LOG_INFO("Initial viewpoint {}: ({}, {}, {}) - Score: {}", i, position.x(), position.y(), position.z(),
+                         score);
+            }
+
+            LOG_INFO("Best initial viewpoint: ({}, {}, {}) - Score: {}", best_initial_viewpoint.getPosition().x(),
+                     best_initial_viewpoint.getPosition().y(), best_initial_viewpoint.getPosition().z(),
+                     best_initial_score);
+
+            gpr.fit(X_train, y_train);
+
+            const auto min_size = config::get("octree.min_size_multiplier", 0.01) * size;
+            const auto max_iterations = config::get("octree.max_iterations", 5);
+            const auto tolerance = config::get("octree.tolerance", 0.1);
+            viewpoint::Octree<> octree(Eigen::Vector3d::Zero(), size, min_size, max_iterations, gpr, radius_,
+                                       tolerance);
+
+
+            best_viewpoint = best_initial_viewpoint;
+
             octree.optimize(target_, comparator_, best_viewpoint.value(), target_score_);
             best_viewpoint = octree.getBestViewpoint();
             ++restart_count;
 
-            LOG_INFO("Restart {}: Best viewpoint: ({}, {}, {}) - Score: {}",
-                     restart_count,
+            LOG_INFO("Restart {}: Best viewpoint: ({}, {}, {}) - Score: {}", restart_count,
                      best_viewpoint->getPosition().x(), best_viewpoint->getPosition().y(),
                      best_viewpoint->getPosition().z(), best_viewpoint->getScore());
 
 
-        } while (max_restarts == 0 || restart_count < max_restarts && best_viewpoint && (best_viewpoint->getScore() - target_score_) > -0.02);
+        } while (max_restarts == 0 || restart_count < max_restarts && best_viewpoint &&
+                                              (best_viewpoint->getScore() - target_score_) > -0.02);
 
 
         if (best_viewpoint) {

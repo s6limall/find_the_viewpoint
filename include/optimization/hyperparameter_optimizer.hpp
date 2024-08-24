@@ -23,6 +23,11 @@ namespace optimization {
             max_iterations_(max_iterations), convergence_tol_(convergence_tol) {}
 
         VectorXd optimize(const MatrixXd &X, const VectorXd &y, Kernel &kernel) {
+            if (X.rows() != y.rows() || X.rows() == 0) {
+                LOG_ERROR("Invalid input dimensions: X rows: {}, y rows: {}", X.rows(), y.rows());
+                return kernel.getParameters(); // Return current parameters if input is invalid
+            }
+
             VectorXd params = kernel.getParameters();
             VectorXd best_params = params;
             double best_nlml = std::numeric_limits<double>::infinity();
@@ -32,6 +37,11 @@ namespace optimization {
 
             for (int iter = 0; iter < max_iterations_; ++iter) {
                 double nlml = computeNLML(X, y, kernel, params, grad);
+
+                if (!std::isfinite(nlml)) {
+                    LOG_WARN("Non-finite NLML encountered. Using best parameters so far.");
+                    break;
+                }
 
                 if (nlml < best_nlml) {
                     best_nlml = nlml;
@@ -44,23 +54,50 @@ namespace optimization {
                 }
 
                 VectorXd direction = computeLBFGSDirection(grad, s, y_lbfgs);
-                double step_size = lineSearch(X, y, kernel, params, direction, grad, nlml);
 
-                VectorXd new_params = params + step_size * direction;
-                new_params = new_params.cwiseMax(1e-6).cwiseMin(10.0); // Constrain parameters
-
-                s.emplace_back(new_params - params);
-                y_lbfgs.push_back(computeGradient(X, y, kernel, new_params) - grad);
-
-                if (s.size() > 10) { // Limit memory of L-BFGS
-                    s.erase(s.begin());
-                    y_lbfgs.erase(y_lbfgs.begin());
+                if (direction.norm() < std::numeric_limits<double>::epsilon()) {
+                    LOG_WARN("Zero direction vector. Stopping optimization.");
+                    break;
                 }
 
-                params = new_params;
+                double step_size = lineSearch(X, y, kernel, params, direction, grad, nlml);
+
+                if (step_size > std::numeric_limits<double>::epsilon()) {
+                    VectorXd new_params = params + step_size * direction;
+                    new_params = new_params.cwiseMax(1e-6).cwiseMin(10.0); // Constrain parameters
+
+                    VectorXd s_k = new_params - params;
+                    VectorXd y_k = computeGradient(X, y, kernel, new_params) - grad;
+
+                    if (s_k.norm() > std::numeric_limits<double>::epsilon() &&
+                        y_k.norm() > std::numeric_limits<double>::epsilon()) {
+                        s.push_back(s_k);
+                        y_lbfgs.push_back(y_k);
+
+                        if (s.size() > 10) { // Limit memory of L-BFGS
+                            s.erase(s.begin());
+                            y_lbfgs.erase(y_lbfgs.begin());
+                        }
+                    }
+
+                    params = new_params;
+                } else {
+                    LOG_WARN("Optimization stopped: step size is effectively zero");
+                    break;
+                }
             }
 
-            kernel.setParameters(best_params(0), best_params(1), best_params(2));
+            // Ensure best_params are within valid range
+            best_params = best_params.cwiseMax(1e-6).cwiseMin(10.0);
+
+            // Use try-catch to handle potential exceptions from setParameters
+            try {
+                kernel.setParameters(best_params(0), best_params(1), best_params(2));
+            } catch (const std::exception &e) {
+                LOG_ERROR("Failed to set kernel parameters: {}", e.what());
+                // Revert to original parameters
+                kernel.setParameters(params(0), params(1), params(2));
+            }
 
             return best_params;
         }
@@ -99,18 +136,36 @@ namespace optimization {
 
         static VectorXd computeLBFGSDirection(const VectorXd &grad, const std::vector<VectorXd> &s,
                                               const std::vector<VectorXd> &y) {
+            if (s.empty() || y.empty() || s.size() != y.size()) {
+                return -grad;
+            }
+
             VectorXd q = -grad;
             std::vector<double> alpha(s.size());
 
-            for (size_t i = s.size() - 1; i >= 0; --i) {
-                alpha[i] = s[i].dot(q) / y[i].dot(s[i]);
+            for (int i = static_cast<int>(s.size()) - 1; i >= 0; --i) {
+                double denominator = y[i].dot(s[i]);
+                if (std::abs(denominator) < std::numeric_limits<double>::epsilon()) {
+                    LOG_WARN("Division by zero avoided in L-BFGS computation");
+                    continue;
+                }
+                alpha[i] = s[i].dot(q) / denominator;
                 q -= alpha[i] * y[i];
             }
 
-            VectorXd z = q * ((s.back().dot(y.back()) / y.back().squaredNorm()));
+            double scale = 1.0;
+            double denominator = y.back().squaredNorm();
+            if (denominator > std::numeric_limits<double>::epsilon()) {
+                scale = s.back().dot(y.back()) / denominator;
+            }
+            VectorXd z = q * scale;
 
-            for (int i = 0; i < s.size(); ++i) {
-                double beta = y[i].dot(z) / y[i].dot(s[i]);
+            for (size_t i = 0; i < s.size(); ++i) {
+                double denominator = y[i].dot(s[i]);
+                if (std::abs(denominator) < std::numeric_limits<double>::epsilon()) {
+                    continue;
+                }
+                double beta = y[i].dot(z) / denominator;
                 z += s[i] * (alpha[i] - beta);
             }
 

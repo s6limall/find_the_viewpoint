@@ -1,9 +1,19 @@
 # File: configuration.yaml
 
+object:
+    name: "obj_000021"
+
+target_images:
+    generate: true
+    output_directory: "target_images"
+    num_images: 5
+
 paths:
     log_directory: "logs"
-    mesh: "./3d_models/obj_000020.ply"
-    target_image: "./target_images/obj_000020/target_2.png"
+    mesh: "./3d_models/obj_000021.ply"
+    target_image: "./target_images/obj_000021/target_1.png"
+    models_directory: "./3d_models"
+    object_name: "obj_000021"
 
 logging:
     level: "debug" # error, critical, warn, info, debug, trace
@@ -44,10 +54,10 @@ image:
             threshold: 1.0                  # Higher is better
 
 optimization:
-    max_restarts: 3 # Maximum number of restarts (0 = no restarts)
-    max_points: 20 # Maximum number of points to optimize (0 = no limit)
-    patience: 30 # Number of allowed stagnant iterations before stopping the optimization
-    improvement_threshold: 1e-4 # DEFAULT: 1e-4; improvement less than this will be considered stagnant
+    max_restarts: 10 # Maximum number of restarts (0 = no restarts)
+    max_points: 20 # Maximum number of points to optimize (0 = no limit) TODO: Implement
+    patience: 50 # Number of allowed stagnant iterations before stopping the optimization
+    improvement_threshold: 1e-9 # DEFAULT: 1e-4; improvement less than this will be considered stagnant
     gp:
         kernel:
             matern52:
@@ -58,9 +68,9 @@ optimization:
             strategy: ADAPTIVE              # DEFAULT: ADAPTIVE; ADAPTIVE, EI, PI, UCB
             distance_penalty: false          # DEFAULT: false; Penalize large distances in the acquisition function
             beta: 2.0                       # DEFAULT: 2.0; Exploration-exploitation trade-off parameter
-            exploration_weight: 1.0         # DEFAULT: 1.0; Exploration weight for the acquisition function
+            exploration_weight: 5.0         # DEFAULT: 1.0; Exploration weight for the acquisition function
             exploitation_weight: 1.0        # DEFAULT: 1.0; Exploitation weight for the acquisition function
-            momentum: 0.1                   # DEFAULT: 0.1; Momentum for the acquisition function
+            momentum: 0.9                   # DEFAULT: 0.1; Momentum for the acquisition function
             iterations: 1                   # Number of iterations for the acquisition function
             distance_weight: 1.0            # DEFAULT: 0.5; Weight for the distance term in the acquisition function
 
@@ -75,7 +85,7 @@ rendering:
     duration: 0 # Duration of the rendering in ms
 
 sampling:
-    count: 5
+    count: 1
 
 octree:
     min_nodes_to_explore: 8
@@ -88,7 +98,7 @@ octree:
 
 cache:
     evict: true
-    max_size: 300
+    max_size: 500
     base_radius: 0.1 # Base radius for the cache (radius within which the cache will return pre-computed results)
     score_threshold: 0.4 # pre-computed results returned with a score below this threshold (if available)
 

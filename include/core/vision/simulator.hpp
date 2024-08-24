@@ -29,7 +29,10 @@ namespace core {
     public:
         enum class NormalizationMethod { UnitCube, UnitSphere };
 
-        Simulator();
+        explicit Simulator(const std::optional<std::string_view> &mesh_path = std::nullopt);
+        void loadMesh(std::string_view object_path);
+
+        [[nodiscard]]
         cv::Mat render(const Eigen::Matrix4d &extrinsics, std::string_view save_path) override;
 
         [[nodiscard]] std::shared_ptr<pcl::visualization::PCLVisualizer> getViewer();
@@ -39,7 +42,6 @@ namespace core {
         std::shared_ptr<pcl::PolygonMesh> mesh_; // Polygon mesh loaded from a file
 
         void configureCamera();
-        void loadMesh(std::string_view object_path);
 
         void setupViewer();
 

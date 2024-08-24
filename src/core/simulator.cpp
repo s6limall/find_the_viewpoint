@@ -4,9 +4,9 @@
 
 namespace core {
 
-    Simulator::Simulator() {
+    Simulator::Simulator(const std::optional<std::string_view> &mesh_path) {
         configureCamera();
-        loadMesh(config::get("paths.mesh", Defaults::mesh_path.data()));
+        loadMesh(mesh_path.value_or(config::get("paths.mesh", Defaults::mesh_path.data())));
         setupViewer();
         normalizeMesh();
     }

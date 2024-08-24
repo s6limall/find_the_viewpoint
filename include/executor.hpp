@@ -38,12 +38,21 @@ private:
     static std::shared_ptr<processing::image::FeatureExtractor> extractor_;
     static std::shared_ptr<processing::image::FeatureMatcher> matcher_;
 
+    static std::shared_ptr<core::Simulator> simulator_;
+    static std::string object_name_;
+    static std::filesystem::path output_directory_;
+    static std::filesystem::path models_directory_;
+
     Executor() = default;
 
     static void initialize();
 
     static void loadExtractor();
     static void loadComparator();
+
+    static void generateTargetImages();
+    static std::string getRandomTargetImagePath();
+    static Eigen::Matrix4d generateRandomExtrinsics();
 
     struct Defaults {
         static constexpr std::string_view mesh_path = "./3d_models/obj_000020.ply";
