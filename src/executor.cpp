@@ -5,7 +5,6 @@
 #include "interface/pose_callback.hpp"
 #include "interface/pose_publisher.hpp"
 #include "misc/target_generator.hpp"
-#include "opencv2/xfeatures2d.hpp"
 #include "optimization/kernel/matern_52.hpp"
 #include "optimization/octree.hpp"
 #include "optimization/optimizer/gpr.hpp"

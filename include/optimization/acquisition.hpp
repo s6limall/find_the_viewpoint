@@ -19,7 +19,7 @@ namespace optimization {
         using VectorXt = Eigen::Matrix<T, Eigen::Dynamic, 1>;
         using AcquisitionFunc = std::function<T(const VectorXt &, T, T)>;
 
-        enum class Strategy { UCB, EI, PI, ADAPTIVE };
+        enum class Strategy { UCB, EI, PI, ADAPTIVE, ADAPTIVE_UCB, ADAPTIVE_EI, ADAPTIVE_PI };
 
         struct Config {
             Strategy strategy;
@@ -30,13 +30,16 @@ namespace optimization {
             int iteration_count;
 
             explicit Config(const Strategy strategy = Strategy::ADAPTIVE, T beta = 2.0, T exploration_weight = 1.0,
-                            T exploitation_weight = 1.0, T momentum = 0.1, int iteration_count = 0) {
-                this->strategy = stringToStrategy(config::get("optimization.gp.acquisition.strategy", "ADAPTIVE"));
-                this->beta = config::get("optimization.gp.acquisition.beta", 2.0);
-                this->exploration_weight = config::get("optimization.gp.acquisition.exploration_weight", 1.0);
-                this->exploitation_weight = config::get("optimization.gp.acquisition.exploitation_weight", 1.0);
-                this->momentum = config::get("optimization.gp.acquisition.momentum", 0.1);
-                this->iteration_count = config::get("optimization.gp.acquisition.iterations", 0);
+                            T exploitation_weight = 1.0, T momentum = 0.1, const int iteration_count = 0) {
+                this->strategy = stringToStrategy(
+                        config::get("optimization.gp.acquisition.strategy", strategyToString(strategy)));
+                this->beta = config::get("optimization.gp.acquisition.beta", beta);
+                this->exploration_weight =
+                        config::get("optimization.gp.acquisition.exploration_weight", exploration_weight);
+                this->exploitation_weight =
+                        config::get("optimization.gp.acquisition.exploitation_weight", exploitation_weight);
+                this->momentum = config::get("optimization.gp.acquisition.momentum", momentum);
+                this->iteration_count = config::get("optimization.gp.acquisition.iterations", iteration_count);
             }
         };
 
@@ -47,8 +50,16 @@ namespace optimization {
 
         Config getConfig() { return config_; }
 
-        T compute(const VectorXt &x, T mean, T std_dev) const {
+        T compute(const VectorXt &x, T mean, T std_dev) {
             LOG_DEBUG("Computing acquisition function with mean: {}, std_dev: {}", mean, std_dev);
+
+            // Check if this is the new best point and update accordingly
+            if (!best_known_value_ || mean > *best_known_value_) {
+                best_known_value_ = mean;
+                best_point_ = x;
+                LOG_DEBUG("New best point found: {} with value: {}", best_point_, *best_known_value_);
+            }
+
             T result = acquisition_func_(x, mean, std_dev);
             LOG_TRACE("Acquisition function result: {}", result);
             return result;
@@ -79,37 +90,27 @@ namespace optimization {
         std::optional<T> best_known_value_ = std::nullopt;
 
         void updateAcquisitionFunction() {
-            switch (config_.strategy) {
-                case Strategy::UCB:
-                    acquisition_func_ = [beta = config_.beta](const VectorXt &, T mean, T std_dev) {
-                        LOG_TRACE("UCB strategy selected");
-                        return mean + beta * std_dev;
-                    };
-                    break;
-                case Strategy::EI:
-                    acquisition_func_ = [this](const VectorXt &, T mean, T std_dev) {
-                        LOG_TRACE("EI strategy selected");
-                        return computeEI(mean, std_dev);
-                    };
-                    break;
-                case Strategy::PI:
-                    acquisition_func_ = [this](const VectorXt &, T mean, T std_dev) {
-                        LOG_TRACE("PI strategy selected");
-                        return computePI(mean, std_dev);
-                    };
-                    break;
-                case Strategy::ADAPTIVE:
-                    acquisition_func_ = [this](const VectorXt &x, T mean, T std_dev) {
-                        LOG_TRACE("ADAPTIVE strategy selected");
-                        return computeAdaptive(x, mean, std_dev);
-                    };
-                    break;
-                default: {
-                    LOG_ERROR("Unknown acquisition function strategy selected");
-                    throw std::invalid_argument("Unknown acquisition function strategy");
-                }
+            static const std::unordered_map<Strategy, AcquisitionFunc> strategy_map = {
+                    {Strategy::UCB, [this](const VectorXt &, T mean, T std_dev) { return computeUCB(mean, std_dev); }},
+                    {Strategy::EI, [this](const VectorXt &, T mean, T std_dev) { return computeEI(mean, std_dev); }},
+                    {Strategy::PI, [this](const VectorXt &, T mean, T std_dev) { return computePI(mean, std_dev); }},
+                    {Strategy::ADAPTIVE,
+                     [this](const VectorXt &x, T mean, T std_dev) { return computeAdaptive(x, mean, std_dev, true, true, true); }},
+                    {Strategy::ADAPTIVE_UCB,
+                     [this](const VectorXt &x, T mean, T std_dev) { return computeAdaptive(x, mean, std_dev, true, false, false); }},
+                    {Strategy::ADAPTIVE_EI,
+                     [this](const VectorXt &x, T mean, T std_dev) { return computeAdaptive(x, mean, std_dev, false, true, false); }},
+                    {Strategy::ADAPTIVE_PI,
+                     [this](const VectorXt &x, T mean, T std_dev) { return computeAdaptive(x, mean, std_dev, false, false, true); }}
+            };
+
+            if (strategy_map.contains(config_.strategy)) {
+                acquisition_func_ = strategy_map.at(config_.strategy);
+                LOG_DEBUG("Acquisition function strategy set to {}", strategyToString(config_.strategy));
+            } else {
+                LOG_ERROR("Unknown acquisition function strategy selected");
+                throw std::invalid_argument("Unknown acquisition function strategy");
             }
-            LOG_DEBUG("Acquisition function strategy set to {}", strategyToString(config_.strategy));
         }
 
         T computeEI(T mean, T std_dev) const {
@@ -133,10 +134,10 @@ namespace optimization {
             return result;
         }
 
-        T computeAdaptive(const VectorXt &x, T mean, T std_dev) const {
-            T ucb = computeUCB(mean, std_dev);
-            T ei = computeEI(mean, std_dev);
-            T pi = computePI(mean, std_dev);
+        T computeAdaptive(const VectorXt &x, T mean, T std_dev, bool use_ucb, bool use_ei, bool use_pi) const {
+            T ucb = use_ucb ? computeUCB(mean, std_dev) : 0;
+            T ei = use_ei ? computeEI(mean, std_dev) : 0;
+            T pi = use_pi ? computePI(mean, std_dev) : 0;
 
             T distance_factor = best_point_.size() ? std::exp(-config_.momentum * (x - best_point_).norm()) : 1.0;
             T exploration_factor = getExplorationFactor();
@@ -175,33 +176,42 @@ namespace optimization {
             return result;
         }
 
-        static std::string_view strategyToString(const Strategy strategy) {
-            switch (strategy) {
-                case Strategy::UCB:
-                    return "UCB";
-                case Strategy::EI:
-                    return "EI";
-                case Strategy::PI:
-                    return "PI";
-                case Strategy::ADAPTIVE:
-                    return "ADAPTIVE";
-                default:
-                    return "UNKNOWN";
-            }
+        static const std::unordered_map<Strategy, std::string_view> &getStrategyMap() {
+            static const std::unordered_map<Strategy, std::string_view> strategy_map = {
+                    {Strategy::UCB, "UCB"},
+                    {Strategy::EI, "EI"},
+                    {Strategy::PI, "PI"},
+                    {Strategy::ADAPTIVE, "ADAPTIVE"},
+                    {Strategy::ADAPTIVE_UCB, "ADAPTIVE_UCB"},
+                    {Strategy::ADAPTIVE_EI, "ADAPTIVE_EI"},
+                    {Strategy::ADAPTIVE_PI, "ADAPTIVE_PI"}
+            };
+            return strategy_map;
         }
 
-        static Strategy stringToStrategy(const std::string_view str) {
-            if (str == "UCB") {
-                return Strategy::UCB;
-            } else if (str == "EI") {
-                return Strategy::EI;
-            } else if (str == "PI") {
-                return Strategy::PI;
-            } else if (str == "ADAPTIVE") {
-                return Strategy::ADAPTIVE;
-            } else {
-                return Strategy::ADAPTIVE; // Default to adaptive
+        static std::string_view strategyToString(Strategy strategy) {
+            const auto &strategy_map = getStrategyMap();
+            if (auto it = strategy_map.find(strategy); it != strategy_map.end()) {
+                return it->second;
             }
+
+            LOG_WARN("Unknown strategy encountered: {}", static_cast<int>(strategy));
+            return "UNKNOWN";
+        }
+
+        static Strategy stringToStrategy(std::string_view str) {
+            const auto &strategy_map = getStrategyMap();
+
+            // Reverse lookup
+            auto it = std::find_if(strategy_map.begin(), strategy_map.end(),
+                                   [str](const auto &pair) { return pair.second == str; });
+
+            if (it != strategy_map.end()) {
+                return it->first;
+            }
+
+            LOG_WARN("Unknown strategy string: {}, defaulting to ADAPTIVE", str);
+            return Strategy::ADAPTIVE;
         }
     };
 } // namespace optimization

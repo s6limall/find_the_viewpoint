@@ -1,7 +1,7 @@
 # File: configuration.yaml
 
 object:
-    name: "obj_000021"
+    name: "obj_000023"
 
 target_images:
     generate: true
@@ -10,10 +10,10 @@ target_images:
 
 paths:
     log_directory: "logs"
-    mesh: "./3d_models/obj_000021.ply"
-    target_image: "./target_images/obj_000021/target_1.png"
+    mesh: "./3d_models/obj_000023.ply"
+    target_image: "./target_images/obj_000023/target_1.png"
     models_directory: "./3d_models"
-    object_name: "obj_000021"
+    object_name: "obj_000023"
 
 logging:
     level: "debug" # error, critical, warn, info, debug, trace
@@ -65,10 +65,12 @@ optimization:
                 initial_variance: 1.0
                 initial_noise_variance: 1e-6
         acquisition:
-            strategy: ADAPTIVE              # DEFAULT: ADAPTIVE; ADAPTIVE, EI, PI, UCB
-            distance_penalty: false          # DEFAULT: false; Penalize large distances in the acquisition function
+            # ADAPTIVE =  adaptive exploration-exploitation + EI + PI + UCB
+            # ADAPTIVE_{strategy} = adaptive exploration-exploitation + {strategy} - other strategies are set to 0
+            strategy: ADAPTIVE              # DEFAULT: ADAPTIVE; EI, PI, UCB, ADAPTIVE, ADAPTIVE_EI, ADAPTIVE_PI, ADAPTIVE_UCB
+            distance_penalty: false         # DEFAULT: false; Penalize large distances in the acquisition function
             beta: 2.0                       # DEFAULT: 2.0; Exploration-exploitation trade-off parameter
-            exploration_weight: 5.0         # DEFAULT: 1.0; Exploration weight for the acquisition function
+            exploration_weight: 1.0         # DEFAULT: 1.0; Exploration weight for the acquisition function
             exploitation_weight: 1.0        # DEFAULT: 1.0; Exploitation weight for the acquisition function
             momentum: 0.9                   # DEFAULT: 0.1; Momentum for the acquisition function
             iterations: 1                   # Number of iterations for the acquisition function
