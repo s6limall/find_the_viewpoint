@@ -45,12 +45,14 @@ void Executor::initialize() {
         radius_ = processing::vision::DistanceEstimator().estimate(target_.getImage());
     }
 
-    generateTargetImages();
-
-    const auto image_path = getRandomTargetImagePath();
-    target_ = Image<>(common::io::image::readImage(image_path), extractor_);
-
-
+    if (config::get("target_images.generate", false)) {
+        generateTargetImages();
+        const auto image_path = getRandomTargetImagePath();
+        target_ = Image<>(common::io::image::readImage(getRandomTargetImagePath()), extractor_);
+    } else {
+        const auto image_path = config::get("paths.target_image", "./target.png");
+        target_ = Image<>(common::io::image::readImage(image_path), extractor_);
+    }
 }
 
 void Executor::generateTargetImages() {
