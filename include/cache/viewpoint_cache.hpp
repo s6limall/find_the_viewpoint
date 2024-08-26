@@ -30,8 +30,10 @@ namespace cache {
 
             explicit CacheConfig(const size_t max_size = 10000, T score_threshold = 0.8, T base_radius = 0.1,
                                  const bool enable_eviction = true) :
-                max_size(max_size), score_threshold(score_threshold), base_radius(base_radius),
-                enable_eviction(enable_eviction) {}
+                max_size(config::get("cache.max_size", max_size)),
+                score_threshold(config::get("cache.score_threshold", score_threshold)),
+                base_radius(config::get("cache.base_radius", base_radius)),
+                enable_eviction(config::get("cache.evict", enable_eviction)) {}
         };
 
 
