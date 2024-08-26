@@ -19,7 +19,7 @@ namespace optimization {
         using VectorXt = Eigen::Matrix<T, Eigen::Dynamic, 1>;
         using AcquisitionFunc = std::function<T(const VectorXt &, T, T)>;
 
-        enum class Strategy { UCB, EI, PI, ADAPTIVE, ADAPTIVE_UCB, ADAPTIVE_EI, ADAPTIVE_PI };
+        enum class Strategy { UCB, EI, PI, ADAPTIVE, ADAPTIVE_UCB, ADAPTIVE_EI, ADAPTIVE_PI, UCB_ALT };
 
         struct Config {
             Strategy strategy;
@@ -95,14 +95,23 @@ namespace optimization {
                     {Strategy::EI, [this](const VectorXt &, T mean, T std_dev) { return computeEI(mean, std_dev); }},
                     {Strategy::PI, [this](const VectorXt &, T mean, T std_dev) { return computePI(mean, std_dev); }},
                     {Strategy::ADAPTIVE,
-                     [this](const VectorXt &x, T mean, T std_dev) { return computeAdaptive(x, mean, std_dev, true, true, true); }},
+                     [this](const VectorXt &x, T mean, T std_dev) {
+                         return computeAdaptive(x, mean, std_dev, true, true, true);
+                     }},
                     {Strategy::ADAPTIVE_UCB,
-                     [this](const VectorXt &x, T mean, T std_dev) { return computeAdaptive(x, mean, std_dev, true, false, false); }},
+                     [this](const VectorXt &x, T mean, T std_dev) {
+                         return computeAdaptive(x, mean, std_dev, true, false, false);
+                     }},
                     {Strategy::ADAPTIVE_EI,
-                     [this](const VectorXt &x, T mean, T std_dev) { return computeAdaptive(x, mean, std_dev, false, true, false); }},
+                     [this](const VectorXt &x, T mean, T std_dev) {
+                         return computeAdaptive(x, mean, std_dev, false, true, false);
+                     }},
                     {Strategy::ADAPTIVE_PI,
-                     [this](const VectorXt &x, T mean, T std_dev) { return computeAdaptive(x, mean, std_dev, false, false, true); }}
-            };
+                     [this](const VectorXt &x, T mean, T std_dev) {
+                         return computeAdaptive(x, mean, std_dev, false, false, true);
+                     }},
+                    {Strategy::UCB_ALT,
+                     [this](const VectorXt &x, T mean, T std_dev) { return computeOriginalUCB(x, mean, std_dev); }}};
 
             if (strategy_map.contains(config_.strategy)) {
                 acquisition_func_ = strategy_map.at(config_.strategy);
@@ -153,6 +162,19 @@ namespace optimization {
             return result;
         }
 
+        T computeOriginalUCB(const VectorXt &x, T mean, T std_dev) const {
+            T ucb = computeUCB(mean, std_dev);
+
+            T distance_factor = best_point_.size() ? std::exp(-config_.momentum * (x - best_point_).norm()) : 1.0;
+            T exploration_factor = getExplorationFactor();
+
+            T result = exploration_factor * ucb * distance_factor;
+            LOG_TRACE("Original UCB acquisition computed with mean: {}, std_dev: {}, result: {}", mean, std_dev,
+                      result);
+            return result;
+        }
+
+
         void updateExplorationFactor() {
             T factor = std::exp(-static_cast<T>(config_.iteration_count) / 100.0);
             config_.exploration_weight = std::max(T(0.1), factor);
@@ -184,8 +206,8 @@ namespace optimization {
                     {Strategy::ADAPTIVE, "ADAPTIVE"},
                     {Strategy::ADAPTIVE_UCB, "ADAPTIVE_UCB"},
                     {Strategy::ADAPTIVE_EI, "ADAPTIVE_EI"},
-                    {Strategy::ADAPTIVE_PI, "ADAPTIVE_PI"}
-            };
+                    {Strategy::ADAPTIVE_PI, "ADAPTIVE_PI"},
+                    {Strategy::UCB_ALT, "UCB_ALT"}};
             return strategy_map;
         }
 

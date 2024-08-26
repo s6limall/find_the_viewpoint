@@ -15,6 +15,22 @@
 
 #include "common/logging/logger.hpp"
 
+/*template<>
+struct YAML::convert<std::basic_string_view<char>> {
+    static Node encode(const std::basic_string_view<char>& rhs) {
+        return Node(std::string(rhs)); // Convert string_view to string
+    }
+
+    static bool decode(const Node& node, std::basic_string_view<char>& rhs) {
+        if(!node.IsScalar()) {
+            return false;
+        }
+        static std::string value = node.as<std::string>();
+        rhs = std::basic_string_view<char>(value);
+        return true;
+    }
+};*/
+
 namespace config {
 
     class Configuration {

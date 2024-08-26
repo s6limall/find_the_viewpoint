@@ -2,8 +2,8 @@
 
 #include "common/utilities/camera.hpp"
 #include "common/utilities/visualizer.hpp"
-#include "interface/pose_callback.hpp"
-#include "interface/pose_publisher.hpp"
+#include "api/pose_callback.hpp"
+#include "api/pose_publisher.hpp"
 #include "misc/target_generator.hpp"
 #include "optimization/kernel/matern_52.hpp"
 #include "optimization/octree.hpp"
@@ -68,8 +68,6 @@ void Executor::generateTargetImages() {
     simulator_->loadMesh(model_path.string());
 
     const int num_images = config::get("target_images.num_images", 5);
-    const double min_distance = config::get("target_images.min_distance", 1.0);
-    const double max_distance = config::get("target_images.max_distance", 3.0);
 
     for (int i = 0; i < num_images; ++i) {
         const Eigen::Matrix4d extrinsics = generateRandomExtrinsics();
@@ -110,7 +108,7 @@ Eigen::Matrix4d Executor::generateRandomExtrinsics() {
     std::random_device rd;
     std::mt19937 gen(rd());
     std::uniform_real_distribution<> dis(-1.0, 1.0);
-    const auto tolerance = config::get("octree.tolerance", 0.1);  // Get tolerance from config
+    const auto tolerance = config::get("octree.tolerance", 0.1); // Get tolerance from config
     std::uniform_real_distribution<> dis_radius(radius_ - tolerance, radius_ + tolerance);
 
     Eigen::Vector3d position;
@@ -158,8 +156,6 @@ void Executor::execute() {
         LOG_INFO("Starting viewpoint optimization.");
 
         const double size = 2 * radius_;
-        const auto max_points = config::get("optimization.max_points", 0);
-
         auto pose_callback = std::make_shared<PoseCallback>();
         auto pose_publisher = std::make_shared<PosePublisher>(pose_callback);
 
@@ -172,14 +168,17 @@ void Executor::execute() {
         const auto initial_variance = config::get("optimization.gp.kernel.matern.initial_variance", 1.0);
         const auto initial_noise_variance = config::get("optimization.gp.kernel.matern.initial_noise_variance", 1e-6);
 
+        std::optional<ViewPoint<>> global_best_viewpoint;
+        double global_best_score = -std::numeric_limits<double>::infinity();
 
-        std::optional<ViewPoint<>> best_viewpoint;
-
-        size_t restart_count = 1;
+        size_t restart_count = 0;
         const size_t max_restarts = config::get("optimization.max_restarts", 5);
 
         do {
+            ++restart_count;
+            LOG_INFO("Starting optimization restart {} of {}", restart_count, max_restarts);
 
+            // Reset GPR and other components for each restart
             optimization::kernel::Matern52<> kernel(initial_length_scale, initial_variance, initial_noise_variance);
             optimization::GaussianProcessRegression gpr(kernel);
 
@@ -208,13 +207,10 @@ void Executor::execute() {
                     best_initial_viewpoint = viewpoint;
                 }
 
-                LOG_INFO("Initial viewpoint {}: ({}, {}, {}) - Score: {}", i, position.x(), position.y(), position.z(),
-                         score);
+                LOG_INFO("Initial viewpoint {}: {} - Score: {}", i, viewpoint.toString(), score);
             }
 
-            LOG_INFO("Best initial viewpoint: ({}, {}, {}) - Score: {}", best_initial_viewpoint.getPosition().x(),
-                     best_initial_viewpoint.getPosition().y(), best_initial_viewpoint.getPosition().z(),
-                     best_initial_score);
+            LOG_INFO("Best initial viewpoint: {} - Score: {}", best_initial_viewpoint.toString(), best_initial_score);
 
             gpr.fit(X_train, y_train);
 
@@ -224,32 +220,31 @@ void Executor::execute() {
             viewpoint::Octree<> octree(Eigen::Vector3d::Zero(), size, min_size, max_iterations, gpr, radius_,
                                        tolerance);
 
-
-            best_viewpoint = best_initial_viewpoint;
-
+            std::optional<ViewPoint<>> best_viewpoint = best_initial_viewpoint;
             octree.optimize(target_, comparator_, best_viewpoint.value(), target_score_);
             best_viewpoint = octree.getBestViewpoint();
-            ++restart_count;
 
-            LOG_INFO("Restart {}: Best viewpoint: ({}, {}, {}) - Score: {}", restart_count,
-                     best_viewpoint->getPosition().x(), best_viewpoint->getPosition().y(),
-                     best_viewpoint->getPosition().z(), best_viewpoint->getScore());
+            LOG_INFO("Restart {}: Best viewpoint: {} - Score: {}", restart_count,
+                     best_viewpoint->toString(), best_viewpoint->getScore());
 
+            // Update global best viewpoint if necessary
+            if (best_viewpoint && best_viewpoint->getScore() > global_best_score) {
+                global_best_viewpoint = best_viewpoint;
+                global_best_score = best_viewpoint->getScore();
+            }
 
-        } while (max_restarts == 0 || restart_count < max_restarts && best_viewpoint &&
-                                              (best_viewpoint->getScore() - target_score_) > -0.02);
+        } while (restart_count < max_restarts &&
+                 (!global_best_viewpoint ||
+                  (global_best_viewpoint->getScore() - target_score_) < -0.02));
 
+        if (global_best_viewpoint) {
+            LOG_INFO("Optimization completed. Best viewpoint: {} - Score: {}",
+                     global_best_viewpoint->toString(), global_best_viewpoint->getScore());
 
-        if (best_viewpoint) {
-            LOG_INFO("Optimization completed. Best viewpoint: ({}, {}, {}) - Score: {}",
-                     best_viewpoint->getPosition().x(), best_viewpoint->getPosition().y(),
-                     best_viewpoint->getPosition().z(), best_viewpoint->getScore());
-
-            Image<> best_image = Image<>::fromViewPoint(*best_viewpoint, extractor_);
+            Image<> best_image = Image<>::fromViewPoint(*global_best_viewpoint, extractor_);
             common::utilities::Visualizer::diff(target_, best_image);
-
         } else {
-            LOG_WARN("No suitable viewpoint found");
+            LOG_WARN("No suitable viewpoint found after {} restarts", max_restarts);
         }
 
     } catch (const std::exception &e) {
