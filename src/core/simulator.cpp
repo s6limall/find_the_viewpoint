@@ -131,6 +131,7 @@ namespace core {
         }
     }
 
+
     std::shared_ptr<pcl::visualization::PCLVisualizer> Simulator::getViewer() { return viewer_; }
 
 } // namespace core

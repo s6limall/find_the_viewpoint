@@ -1,4 +1,4 @@
-// File: interface/pose_publisher.hpp
+// File: api/pose_publisher.hpp
 
 #ifndef POSE_PUBLISHER_HPP
 #define POSE_PUBLISHER_HPP
@@ -6,10 +6,11 @@
 #include <memory>
 
 #include "common/logging/logger.hpp"
-#include "interface/pose_callback.hpp"
+#include "api/pose_callback.hpp"
+#include "interface/publisher.hpp"
 #include "types/viewpoint.hpp"
 
-class PosePublisher {
+class PosePublisher : public Publisher {
 public:
     explicit PosePublisher(std::shared_ptr<PoseCallback> callback) : callback_(std::move(callback)) {
         if (!callback_) {
@@ -17,7 +18,7 @@ public:
         }
     }
 
-    void publishPose(const ViewPoint<> &viewpoint) const {
+    void publish(const ViewPoint<> &viewpoint) const override {
         callback_->invoke(viewpoint);
         LOG_INFO("Published pose: {}", viewpoint.toString());
     }

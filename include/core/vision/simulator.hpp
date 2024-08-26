@@ -35,6 +35,8 @@ namespace core {
         [[nodiscard]]
         cv::Mat render(const Eigen::Matrix4d &extrinsics, std::string_view save_path) override;
 
+        std::shared_ptr<Camera> getCamera() override { return camera_; }
+
         [[nodiscard]] std::shared_ptr<pcl::visualization::PCLVisualizer> getViewer();
 
     private:

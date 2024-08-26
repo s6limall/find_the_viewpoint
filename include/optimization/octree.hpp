@@ -73,7 +73,7 @@ namespace viewpoint {
             T best_score = initial_best.getScore();
             stagnant_iterations_ = 0;
             recent_scores_.clear();
-            size_t max_points = config::get("optimization.max_points", 50);
+            // size_t max_points = config::get("optimization.max_points", 50);
 
             // Configure acquisition function
             typename optimization::Acquisition<T>::Config acquisition_config(

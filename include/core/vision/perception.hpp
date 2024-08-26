@@ -18,7 +18,7 @@ namespace core {
         [[nodiscard]] virtual cv::Mat render(const Eigen::Matrix4d &extrinsics, std::string_view save_path) = 0;
 
         // Provide camera to be used in views
-        [[nodiscard]] std::shared_ptr<Camera> getCamera() { return camera_; }
+        [[nodiscard]] virtual std::shared_ptr<Camera> getCamera() = 0;
 
     protected:
         std::shared_ptr<Camera> camera_;
