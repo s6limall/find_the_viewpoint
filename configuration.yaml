@@ -1,7 +1,7 @@
 # File: configuration.yaml
 
 object:
-    name: "obj_000021"
+    name: "obj_000020"
 
 target_images:
     generate: false
@@ -10,10 +10,10 @@ target_images:
 
 paths:
     log_directory: "logs"
-    mesh: "./3d_models/obj_000021.ply"
-    target_image: "./target_images/obj_000021/target_1.png"
+    mesh: "./3d_models/obj_000020.ply"
+    target_image: "./target_images/obj_000020/target_1.png"
     models_directory: "./3d_models"
-    object_name: "obj_000021"
+    object_name: "obj_000020"
 
 logging:
     level: "debug" # error, critical, warn, info, debug, trace

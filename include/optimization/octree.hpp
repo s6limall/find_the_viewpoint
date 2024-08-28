@@ -13,7 +13,7 @@
 #include "acquisition.hpp"
 #include "cache/viewpoint_cache.hpp"
 #include "common/logging/logger.hpp"
-#include "optimization/optimizer/gpr.hpp"
+#include "optimization/gaussian/gpr.hpp"
 #include "optimization/optimizer/levenberg_marquardt.hpp"
 #include "optimization/radius_refiner.hpp"
 #include "optimizer/lbfgs.hpp"

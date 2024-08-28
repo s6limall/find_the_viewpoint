@@ -5,9 +5,9 @@
 #include "api/pose_callback.hpp"
 #include "api/pose_publisher.hpp"
 #include "misc/target_generator.hpp"
-#include "optimization/kernel/matern_52.hpp"
+#include "optimization/gaussian/kernel/matern_52.hpp"
 #include "optimization/octree.hpp"
-#include "optimization/optimizer/gpr.hpp"
+#include "optimization/gaussian/gpr.hpp"
 #include "processing/image/comparison/composite_comparator.hpp"
 #include "processing/image/feature/extractor/orb_extractor.hpp"
 #include "processing/image/feature/extractor/sift_extractor.hpp"
@@ -180,7 +180,7 @@ void Executor::execute() {
 
             // Reset GPR and other components for each restart
             optimization::kernel::Matern52<> kernel(initial_length_scale, initial_variance, initial_noise_variance);
-            optimization::GaussianProcessRegression gpr(kernel);
+            optimization::GaussianProcessRegression<> gpr(kernel);
 
             FibonacciLatticeSampler<> sampler({0, 0, 0}, {1, 1, 1}, radius_);
             const int initial_sample_count = config::get("sampling.count", 20);
