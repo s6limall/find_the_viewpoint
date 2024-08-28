@@ -1,4 +1,4 @@
-// File: optimization/radius_refiner.hpp
+// File: optimization/radius_optimizer.hpp
 
 #ifndef RADIUS_REFINER_HPP
 #define RADIUS_REFINER_HPP
@@ -12,24 +12,24 @@
 #include "types/viewpoint.hpp"
 
 template<typename T>
-class RadiusRefiner {
+class RadiusOptimizer {
 public:
     using RenderFunction = std::function<Image<>(const ViewPoint<T> &)>;
 
-    struct RefineResult {
+    struct RadiusOptimizerResult {
         ViewPoint<T> best_viewpoint;
         int iterations;
     };
 
-    explicit RadiusRefiner(T area_tolerance = 1e-6, T radius_tolerance = 1e-5, const int max_iterations = 50,
+    explicit RadiusOptimizer(T area_tolerance = 1e-6, T radius_tolerance = 1e-5, const int max_iterations = 50,
                            const int max_pyramid_level = 3) :
         area_tolerance_(area_tolerance), radius_tolerance_(radius_tolerance), max_iterations_(max_iterations),
         max_pyramid_level_(max_pyramid_level) {}
 
-    [[nodiscard]] RefineResult refine(const ViewPoint<T> &initial_viewpoint, const Image<> &target,
+    [[nodiscard]] RadiusOptimizerResult optimize(const ViewPoint<T> &initial_viewpoint, const Image<> &target,
                                       const RenderFunction &render) const {
         auto [radius, polar, azimuthal] = initial_viewpoint.toSpherical();
-        RefineResult result{initial_viewpoint, 0};
+        RadiusOptimizerResult result{initial_viewpoint, 0};
 
         for (int level = max_pyramid_level_; level >= 0; --level) {
             T step_size = initial_step_size_ / (1 << level); // Decrease step size at finer levels
@@ -102,10 +102,10 @@ private:
 
 template<typename T>
 [[nodiscard]] ViewPoint<T> refineRadius(const ViewPoint<T> &best_viewpoint, const Image<> &target,
-                                        const typename RadiusRefiner<T>::RenderFunction &render) {
+                                        const typename RadiusOptimizer<T>::RenderFunction &render) {
     LOG_INFO("Starting radius refinement for viewpoint: {}", best_viewpoint.toString());
-    const RadiusRefiner<T> refiner;
-    const auto result = refiner.refine(best_viewpoint, target, render);
+    const RadiusOptimizer<T> refiner;
+    const auto result = refiner.optimize(best_viewpoint, target, render);
     LOG_INFO("Radius refinement complete. New best viewpoint: {}", result.best_viewpoint.toString());
     return result.best_viewpoint;
 }

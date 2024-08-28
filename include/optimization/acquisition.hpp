@@ -17,16 +17,16 @@ namespace optimization {
     class Acquisition {
     public:
         using VectorXt = Eigen::Matrix<T, Eigen::Dynamic, 1>;
-        using AcquisitionFunc = std::function<T(const VectorXt &, T, T)>;
+        using AcquisitionFunction = std::function<T(const VectorXt &, T, T)>;
 
         enum class Strategy { UCB, EI, PI, ADAPTIVE, ADAPTIVE_UCB, ADAPTIVE_EI, ADAPTIVE_PI, UCB_ALT };
 
         struct Config {
             Strategy strategy;
-            T beta;
+            T beta; // exploration-exploitation trade-off
             T exploration_weight;
             T exploitation_weight;
-            T momentum;
+            T momentum; // momentum factor for adaptive acquisition
             int iteration_count;
 
             explicit Config(const Strategy strategy = Strategy::ADAPTIVE, T beta = 2.0, T exploration_weight = 1.0,
@@ -84,13 +84,13 @@ namespace optimization {
 
     private:
         Config config_;
-        AcquisitionFunc acquisition_func_;
+        AcquisitionFunction acquisition_func_;
         VectorXt best_point_;
         std::mt19937 rng_;
         std::optional<T> best_known_value_ = std::nullopt;
 
         void updateAcquisitionFunction() {
-            static const std::unordered_map<Strategy, AcquisitionFunc> strategy_map = {
+            static const std::unordered_map<Strategy, AcquisitionFunction> strategy_map = {
                     {Strategy::UCB, [this](const VectorXt &, T mean, T std_dev) { return computeUCB(mean, std_dev); }},
                     {Strategy::EI, [this](const VectorXt &, T mean, T std_dev) { return computeEI(mean, std_dev); }},
                     {Strategy::PI, [this](const VectorXt &, T mean, T std_dev) { return computePI(mean, std_dev); }},

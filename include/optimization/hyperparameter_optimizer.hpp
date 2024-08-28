@@ -25,6 +25,15 @@ namespace optimization {
                                          const double param_upper_bound = 1e3) :
             max_iterations_(max_iterations), convergence_tol_(convergence_tol), n_restarts_(n_restarts),
             param_lower_bound_(param_lower_bound), param_upper_bound_(param_upper_bound), rng_(std::random_device{}()) {
+            max_iterations_ =
+                    config::get("optimization.gp.kernel.hyperparameters.optimization.max_iterations", max_iterations_);
+            convergence_tol_ = config::get("optimization.gp.kernel.hyperparameters.optimization.convergence_tolerance",
+                                           convergence_tol_);
+            n_restarts_ = config::get("optimization.gp.kernel.hyperparameters.optimization.restarts", n_restarts_);
+            param_lower_bound_ = config::get("optimization.gp.kernel.hyperparameters.optimization.param_lower_bound",
+                                             param_lower_bound_);
+            param_upper_bound_ = config::get("optimization.gp.kernel.hyperparameters.optimization.param_upper_bound",
+                                             param_upper_bound_);
         }
 
         VectorXd optimize(const MatrixXd &X, const VectorXd &y, Kernel &kernel) {

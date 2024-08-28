@@ -57,24 +57,41 @@ optimization:
     max_restarts: 10 # Maximum number of restarts (0 = no restarts)
     max_points: 20 # Maximum number of points to optimize (0 = no limit) TODO: Implement
     patience: 50 # Number of allowed stagnant iterations before stopping the optimization
-    improvement_threshold: 1e-9 # DEFAULT: 1e-4; improvement less than this will be considered stagnant
+    improvement_threshold: 1e-4 # DEFAULT: 1e-4; improvement less than this will be considered stagnant
     gp:
         kernel:
             matern52:
                 initial_length_scale_multiplier: 0.5
                 initial_variance: 1.0
                 initial_noise_variance: 1e-6
+            hyperparameters:
+                length_scale: 0.5
+                variance: 1.0
+                noise_variance: 1e-6
+                optimization:
+                    frequency: 5
+                    max_iterations: 100
+                    convergence_tolerance: 1e-5
+                    restarts: 5
+                    param_lower_bound: 1e-6
+                    param_upper_bound: 1e3
         acquisition:
             # ADAPTIVE =  adaptive exploration-exploitation + EI + PI + UCB
             # ADAPTIVE_{strategy} = adaptive exploration-exploitation + {strategy} - other strategies are set to 0
             strategy: UCB_ALT              # DEFAULT: ADAPTIVE; EI, PI, UCB, UCB_ALT, ADAPTIVE, ADAPTIVE_EI, ADAPTIVE_PI, ADAPTIVE_UCB
-            distance_penalty: false         # DEFAULT: false; Penalize large distances in the acquisition function
+            distance_penalty: true         # DEFAULT: false; Penalize large distances in the acquisition function
             beta: 2.0                       # DEFAULT: 2.0; Exploration-exploitation trade-off parameter
             exploration_weight: 5.0         # DEFAULT: 1.0; Exploration weight for the acquisition function
             exploitation_weight: 1.0        # DEFAULT: 1.0; Exploitation weight for the acquisition function
             momentum: 0.9                   # DEFAULT: 0.1; Momentum for the acquisition function
-            iterations: 1                   # Number of iterations for the acquisition function
             distance_weight: 1.0            # DEFAULT: 0.5; Weight for the distance term in the acquisition function
+
+    local_search:
+        frequency: 5 # Frequency of local search (every n steps)
+        max_iterations: 20 # Maximum number of iterations for local search
+        learning_rate: 0.01 # Learning rate for local search
+        epsilon: 1e-5
+
 
 estimation:
     distance:

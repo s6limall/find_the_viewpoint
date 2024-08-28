@@ -8,11 +8,10 @@
 #include <limits>
 #include "common/logging/logger.hpp"
 #include "optimization/hyperparameter_optimizer.hpp"
-#include "optimization/gaussian/kernel/kernel.hpp"
 
 namespace optimization {
 
-template<typename Kernel>
+template<typename Kernel = kernel::Matern52<>>
 class GaussianProcess {
 public:
     using MatrixXd = Eigen::MatrixXd;
@@ -20,7 +19,7 @@ public:
 
     explicit GaussianProcess(const Kernel& kernel, const double noise_variance = 1e-6)
         : kernel_(kernel), noise_variance_(std::max(noise_variance, std::numeric_limits<double>::epsilon())), optimizer_() {
-        noise_variance_ = config::get("optimization.gp.noise_variance", noise_variance_);
+        noise_variance_ = config::get("optimization.gp.kernel.hyperparameters.noise_variance", noise_variance_);
         LOG_INFO("Initialized Gaussian Process with noise variance: {}", noise_variance_);
     }
 

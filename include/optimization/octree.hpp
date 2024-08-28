@@ -15,8 +15,7 @@
 #include "common/logging/logger.hpp"
 #include "optimization/gaussian/gpr.hpp"
 #include "optimization/optimizer/levenberg_marquardt.hpp"
-#include "optimization/radius_refiner.hpp"
-#include "optimizer/lbfgs.hpp"
+#include "optimization/radius_optimizer.hpp"
 #include "processing/image/comparator.hpp"
 #include "types/concepts.hpp"
 #include "types/viewpoint.hpp"
@@ -35,7 +34,7 @@ namespace viewpoint {
             std::vector<ViewPoint<T>> points;
             std::array<std::unique_ptr<Node>, 8> children;
             bool explored = false;
-            T max_ucb = std::numeric_limits<T>::lowest();
+            T max_acquisition = std::numeric_limits<T>::lowest();
 
             Node(const Eigen::Vector3<T> &center, T size) : center(center), size(size) {}
             [[nodiscard]] bool isLeaf() const noexcept { return children[0] == nullptr; } // node without children
@@ -80,10 +79,15 @@ namespace viewpoint {
                     optimization::Acquisition<T>::Strategy::ADAPTIVE, // Strategy
                     config::get("optimization.gp.acquisition.beta", 2.0), // Beta
                     config::get("optimization.gp.acquisition.exploration_weight", 1.0), // Exploration weight
-                    config::get("optimization.gp.acquisition.exploitation_weight", 0.5), // Exploitation weight
-                    config::get("optimization.gp.acquisition.momentum", 0.1), // Momentum
-                    config::get("optimization.gp.acquisition.iterations", 1) // iteration_count is omitted, so it will default to 0
+                    config::get("optimization.gp.acquisition.exploitation_weight", 1.0), // Exploitation weight
+                    config::get("optimization.gp.acquisition.momentum", 0.1) // Momentum
+                    // config::get("optimization.gp.acquisition.iterations", 1) // iteration_count is omitted, so it
+                    // will default to 0
             );
+
+            const auto local_search_frequency = config::get("optimization.local_search_frequency", 10);
+            const auto hyperparameter_optimization_frequency =
+                    config::get("optimization.gp.kernel.hyperparameters.optimization_frequency", 10);
 
             // Update the acquisition function with the new configuration
             acquisition_.updateConfig(acquisition_config);
@@ -109,7 +113,7 @@ namespace viewpoint {
                 }
 
                 // Perform local refinement more frequently
-                if (i % 5 == 0) {
+                if (i % local_search_frequency == 0) {
                     localRefinement(target, comparator);
                 }
 
@@ -119,7 +123,7 @@ namespace viewpoint {
                     break;
                 }
 
-                if (i % 10 == 0) {
+                if (i % hyperparameter_optimization_frequency == 0) {
                     gpr_.optimizeHyperparameters();
                 }
             }
@@ -133,7 +137,7 @@ namespace viewpoint {
                      best_viewpoint_->toString());
 
             // Perform final radius refinement
-            auto refined_result = finalRadiusRefinement(target);
+            auto refined_result = optimizeRadius(target);
 
             if (!refined_result) {
                 LOG_ERROR("Radius refinement failed");
@@ -181,16 +185,16 @@ namespace viewpoint {
         T target_score_;
         cache::ViewpointCache<T> cache_;
         mutable optimization::Acquisition<T> acquisition_;
-        optimization::LBFGSOptimizer<T> lbfgs_optimizer_;
 
         void localRefinement(const Image<> &target,
                              const std::shared_ptr<processing::image::ImageComparator> &comparator) {
             if (!best_viewpoint_)
                 return;
 
-            const int max_iterations = 20;
-            const T learning_rate = 0.01;
-            const T epsilon = 1e-5;
+            const int max_iterations = config::get("optimization.local_search.max_iterations", 10);
+            ;
+            const T learning_rate = config::get("optimization.local_search.learning_rate", 0.01);
+            const T epsilon = config::get("optimization.local_search.epsilon", 1e-5);
 
             Eigen::Vector3<T> current_position = best_viewpoint_->getPosition();
             T current_score = best_viewpoint_->getScore();
@@ -229,7 +233,7 @@ namespace viewpoint {
 
             std::priority_queue<NodeScore> pq;
             T distance_scale = root_->size / 10.0; // Scale factor for distance penalty
-            pq.emplace(root_->max_ucb, 0.0, root_.get());
+            pq.emplace(root_->max_acquisition, 0.0, root_.get());
 
             int nodes_explored = 0;
             const int min_nodes_to_explore = config::get("octree.min_nodes_to_explore", 5);
@@ -268,7 +272,7 @@ namespace viewpoint {
                         if (child) {
                             T dist_to_best = (child->center - best_viewpoint_->getPosition()).norm();
                             T child_distance_penalty = std::exp(-dist_to_best / distance_scale);
-                            pq.emplace(child->max_ucb, child_distance_penalty, child.get());
+                            pq.emplace(child->max_acquisition, child_distance_penalty, child.get());
                         }
                     }
                 }
@@ -286,12 +290,12 @@ namespace viewpoint {
                 }
             }
 
-            node.max_ucb = std::numeric_limits<T>::lowest();
+            node.max_acquisition = std::numeric_limits<T>::lowest();
             for (auto &point: node.points) {
                 evaluatePoint(point, target, comparator);
                 auto [mean, std_dev] = gpr_.predict(point.getPosition());
                 T acquisition_value = computeAcquisition(point.getPosition(), mean, std_dev);
-                node.max_ucb = std::max(node.max_ucb, acquisition_value);
+                node.max_acquisition = std::max(node.max_acquisition, acquisition_value);
             }
 
             if (shouldSplit(node)) {
@@ -317,8 +321,7 @@ namespace viewpoint {
         }
 
         void evaluatePoint(ViewPoint<T> &point, const Image<> &target,
-                           const std::shared_ptr<processing::image::ImageComparator> &comparator
-                           ) {
+                           const std::shared_ptr<processing::image::ImageComparator> &comparator) {
             if (!point.hasScore()) {
                 auto cached_score = cache_.query(point.getPosition());
                 if (cached_score) {
@@ -342,7 +345,7 @@ namespace viewpoint {
 
         void evaluatePoints(Node &node, const Image<> &target,
                             const std::shared_ptr<processing::image::ImageComparator> &comparator) {
-            node.max_ucb = std::numeric_limits<T>::lowest();
+            node.max_acquisition = std::numeric_limits<T>::lowest();
 
             for (auto &point: node.points) {
                 if (!point.hasScore()) {
@@ -376,7 +379,7 @@ namespace viewpoint {
                 // Compute acquisition value using the new acquisition function
                 T acquisition_value = acquisition_.compute(point.getPosition(), mean, std_dev);
 
-                node.max_ucb = std::max(node.max_ucb, acquisition_value);
+                node.max_acquisition = std::max(node.max_acquisition, acquisition_value);
 
                 LOG_DEBUG("Point evaluation: position={}, mean={}, std_dev={}, acquisition_value={}",
                           point.getPosition(), mean, std_dev, acquisition_value);
@@ -534,23 +537,6 @@ namespace viewpoint {
             }
         }
 
-        /*Eigen::Vector3<T> projectToShell(const Eigen::Vector3<T> &point) const {
-            if (!radius_ || !tolerance_)
-                return point;
-
-            Eigen::Vector3<T> direction = point - root_->center;
-            T distance = direction.norm();
-            T min_radius = *radius_ * (1 - *tolerance_);
-            T max_radius = *radius_ * (1 + *tolerance_);
-
-            if (distance < min_radius) {
-                return root_->center + direction.normalized() * min_radius;
-            } else if (distance > max_radius) {
-                return root_->center + direction.normalized() * max_radius;
-            }
-            return point;
-        }*/
-
         Eigen::Vector3<T> projectToShell(const Eigen::Vector3<T> &point) const {
             const Eigen::Vector3<T> best_viewpoint = best_viewpoint_->getPosition();
             T best_score = best_viewpoint_->getScore();
@@ -588,7 +574,8 @@ namespace viewpoint {
                 }
             }
 
-            max_angular_distance = std::max(max_angular_distance, config::get("octree.min_vicinity", T(M_PI_2 / 6))); // Minimum search area
+            max_angular_distance = std::max(max_angular_distance,
+                                            config::get("octree.min_vicinity", T(M_PI_2 / 6))); // Minimum search area
 
             // Restrict theta and phi to be within max_angular_distance of the best viewpoint
             T delta_theta = std::abs(theta - best_theta);
@@ -674,56 +661,17 @@ namespace viewpoint {
             return false;
         }
 
-        void levenbergMarquardtRefinement(const Image<> &target,
-                                          const std::shared_ptr<processing::image::ImageComparator> &comparator,
-                                          optimization::LevenbergMarquardt<T, 3> &lm_optimizer) {
-            auto error_func = [&](const Eigen::Vector3<T> &position) {
-                auto cached_score = cache_.query(position);
-                if (cached_score) {
-                    LOG_DEBUG("Using cached score {} for position {}", *cached_score, position);
-                    return static_cast<T>(1.0) - *cached_score;
-                }
-                ViewPoint<T> viewpoint(position);
-                Image<> rendered_image = Image<>::fromViewPoint(viewpoint);
-                T score = comparator->compare(target, rendered_image);
-                cache_.update(ViewPoint<T>(position, score));
-                LOG_DEBUG("Computed new score {} for position {}", score, position);
-                return static_cast<T>(1.0) - score;
-            };
-
-            auto jacobian_func = [&](const Eigen::Vector3<T> &position) {
-                const T h = static_cast<T>(1e-5);
-                Eigen::Matrix<T, 1, 3> J;
-
-                for (int i = 0; i < 3; ++i) {
-                    Eigen::Vector3<T> perturbed_position = position;
-                    perturbed_position[i] += h;
-                    J(0, i) = (error_func(perturbed_position) - error_func(position)) / h;
-                }
-
-                return J;
-            };
-
-            auto result = lm_optimizer.optimize(best_viewpoint_->getPosition(), error_func, jacobian_func);
-
-            if (result) {
-                ViewPoint<T> new_viewpoint(result->position, static_cast<T>(1.0) - result->final_error);
-                updateBestViewpoint(new_viewpoint);
-                gpr_.update(result->position, new_viewpoint.getScore());
-            }
-        }
-
-        [[nodiscard]] std::optional<typename RadiusRefiner<T>::RefineResult>
-        finalRadiusRefinement(const Image<> &target) const {
+        [[nodiscard]] std::optional<typename RadiusOptimizer<T>::RadiusOptimizerResult>
+        optimizeRadius(const Image<> &target) const {
             if (!best_viewpoint_) {
                 LOG_WARN("No best viewpoint found for final radius refinement");
                 return std::nullopt;
             }
 
-            auto renderFunction = [](const ViewPoint<T> &vp) { return Image<>::fromViewPoint(vp); };
+            auto renderFunction = [](const ViewPoint<T> &vp) { return Image<T>::fromViewPoint(vp); };
 
-            auto refiner = RadiusRefiner<T>();
-            auto result = refiner.refine(*best_viewpoint_, target, renderFunction);
+            auto radius_optimizer = RadiusOptimizer<T>();
+            auto result = radius_optimizer.optimize(*best_viewpoint_, target, renderFunction);
 
             LOG_INFO("Final radius refinement complete.");
 
