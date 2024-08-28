@@ -1,19 +1,20 @@
 #include "executor.hpp"
 
-#include "common/utilities/camera.hpp"
-#include "common/utilities/visualizer.hpp"
 #include "api/pose_callback.hpp"
 #include "api/pose_publisher.hpp"
+#include "common/utilities/camera.hpp"
+#include "common/utilities/visualizer.hpp"
 #include "misc/target_generator.hpp"
-#include "optimization/gaussian/kernel/matern_52.hpp"
-#include "optimization/octree.hpp"
 #include "optimization/gaussian/gpr.hpp"
+#include "optimization/gaussian/kernel/matern_52.hpp"
+#include "optimization/viewpoint_optimizer.hpp"
 #include "processing/image/comparison/composite_comparator.hpp"
 #include "processing/image/feature/extractor/orb_extractor.hpp"
 #include "processing/image/feature/extractor/sift_extractor.hpp"
 #include "processing/image/feature/matcher/flann_matcher.hpp"
 #include "processing/vision/estimation/distance_estimator.hpp"
 #include "sampling/sampler/fibonacci.hpp"
+#include "spatial/octree.hpp"
 
 using KernelType = optimization::kernel::Matern52<>;
 
@@ -217,20 +218,27 @@ void Executor::execute() {
             const auto min_size = config::get("octree.min_size_multiplier", 0.01) * size;
             const auto max_iterations = config::get("octree.max_iterations", 5);
             const auto tolerance = config::get("octree.tolerance", 0.1);
-            viewpoint::Octree<> octree(Eigen::Vector3d::Zero(), size, min_size, max_iterations, gpr, radius_,
-                                       tolerance);
 
-            std::optional<ViewPoint<>> best_viewpoint = best_initial_viewpoint;
-            octree.optimize(target_, comparator_, best_viewpoint.value(), target_score_);
-            best_viewpoint = octree.getBestViewpoint();
+            // Create ViewpointOptimizer with new components
+            optimization::ViewpointOptimizer<> optimizer(
+                Eigen::Vector3d::Zero(), size, min_size, max_iterations, gpr, radius_, tolerance);
 
-            LOG_INFO("Restart {}: Best viewpoint: {} - Score: {}", restart_count,
-                     best_viewpoint->toString(), best_viewpoint->getScore());
+            // Use the new optimize method
+            optimizer.optimize(target_, comparator_, best_initial_viewpoint, target_score_);
 
-            // Update global best viewpoint if necessary
-            if (best_viewpoint && best_viewpoint->getScore() > global_best_score) {
-                global_best_viewpoint = best_viewpoint;
-                global_best_score = best_viewpoint->getScore();
+            auto best_viewpoint = optimizer.getBestViewpoint();
+
+            if (best_viewpoint) {
+                LOG_INFO("Restart {}: Best viewpoint: {} - Score: {}", restart_count,
+                         best_viewpoint->toString(), best_viewpoint->getScore());
+
+                // Update global best viewpoint if necessary
+                if (best_viewpoint->getScore() > global_best_score) {
+                    global_best_viewpoint = best_viewpoint;
+                    global_best_score = best_viewpoint->getScore();
+                }
+            } else {
+                LOG_WARN("No viewpoint found in restart {}", restart_count);
             }
 
         } while (restart_count < max_restarts &&

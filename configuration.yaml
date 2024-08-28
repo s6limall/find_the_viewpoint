@@ -69,7 +69,7 @@ optimization:
                 variance: 1.0
                 noise_variance: 1e-6
                 optimization:
-                    frequency: 5
+                    frequency: 10
                     max_iterations: 100
                     convergence_tolerance: 1e-5
                     restarts: 5
@@ -80,8 +80,8 @@ optimization:
             # ADAPTIVE_{strategy} = adaptive exploration-exploitation + {strategy} - other strategies are set to 0
             strategy: UCB_ALT              # DEFAULT: ADAPTIVE; EI, PI, UCB, UCB_ALT, ADAPTIVE, ADAPTIVE_EI, ADAPTIVE_PI, ADAPTIVE_UCB
             distance_penalty: true         # DEFAULT: false; Penalize large distances in the acquisition function
-            beta: 2.0                       # DEFAULT: 2.0; Exploration-exploitation trade-off parameter
-            exploration_weight: 5.0         # DEFAULT: 1.0; Exploration weight for the acquisition function
+            beta: 1.5                       # DEFAULT: 2.0; Exploration-exploitation trade-off parameter
+            exploration_weight: 1.0         # DEFAULT: 1.0; Exploration weight for the acquisition function
             exploitation_weight: 1.0        # DEFAULT: 1.0; Exploitation weight for the acquisition function
             momentum: 0.9                   # DEFAULT: 0.1; Momentum for the acquisition function
             distance_weight: 1.0            # DEFAULT: 0.5; Weight for the distance term in the acquisition function
