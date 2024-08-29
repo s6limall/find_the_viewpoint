@@ -27,9 +27,10 @@
 #include <Eigen/Geometry>
 #include <opencv2/core/eigen.hpp>
 
-#include "../include/lightglue.hpp"
+#include "../include/ApplyLightGlueWrapper.hpp"
 #include "../include/config.hpp"
 #include "../include/image.hpp"
+#include "../include/sift.hpp"
 
 typedef unsigned long long pop_t;
 

@@ -1,4 +1,6 @@
-distance to target: 0.331936
-number of views: 36
-traversed distance: 65.1515
-compute time:15248.3
+distance to target: 0.0639445
+number of views: 12
+traversed distance: 35.6441
+compute time:37850.3
+structural similarity (SSIM):0.970357
+peak signal to noise ratio (PSNR):27.1174

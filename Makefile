@@ -133,6 +133,30 @@ find_the_viewpoint/fast:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/find_the_viewpoint.dir/build.make CMakeFiles/find_the_viewpoint.dir/build
 .PHONY : find_the_viewpoint/fast
 
+src/ApplyLightGlueWrapper.o: src/ApplyLightGlueWrapper.cpp.o
+.PHONY : src/ApplyLightGlueWrapper.o
+
+# target to build an object file
+src/ApplyLightGlueWrapper.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/find_the_viewpoint.dir/build.make CMakeFiles/find_the_viewpoint.dir/src/ApplyLightGlueWrapper.cpp.o
+.PHONY : src/ApplyLightGlueWrapper.cpp.o
+
+src/ApplyLightGlueWrapper.i: src/ApplyLightGlueWrapper.cpp.i
+.PHONY : src/ApplyLightGlueWrapper.i
+
+# target to preprocess a source file
+src/ApplyLightGlueWrapper.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/find_the_viewpoint.dir/build.make CMakeFiles/find_the_viewpoint.dir/src/ApplyLightGlueWrapper.cpp.i
+.PHONY : src/ApplyLightGlueWrapper.cpp.i
+
+src/ApplyLightGlueWrapper.s: src/ApplyLightGlueWrapper.cpp.s
+.PHONY : src/ApplyLightGlueWrapper.s
+
+# target to generate assembly for a file
+src/ApplyLightGlueWrapper.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/find_the_viewpoint.dir/build.make CMakeFiles/find_the_viewpoint.dir/src/ApplyLightGlueWrapper.cpp.s
+.PHONY : src/ApplyLightGlueWrapper.cpp.s
+
 src/config/config.o: src/config/config.cpp.o
 .PHONY : src/config/config.o
 
@@ -180,30 +204,6 @@ src/image.s: src/image.cpp.s
 src/image.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/find_the_viewpoint.dir/build.make CMakeFiles/find_the_viewpoint.dir/src/image.cpp.s
 .PHONY : src/image.cpp.s
-
-src/lightglue.o: src/lightglue.cpp.o
-.PHONY : src/lightglue.o
-
-# target to build an object file
-src/lightglue.cpp.o:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/find_the_viewpoint.dir/build.make CMakeFiles/find_the_viewpoint.dir/src/lightglue.cpp.o
-.PHONY : src/lightglue.cpp.o
-
-src/lightglue.i: src/lightglue.cpp.i
-.PHONY : src/lightglue.i
-
-# target to preprocess a source file
-src/lightglue.cpp.i:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/find_the_viewpoint.dir/build.make CMakeFiles/find_the_viewpoint.dir/src/lightglue.cpp.i
-.PHONY : src/lightglue.cpp.i
-
-src/lightglue.s: src/lightglue.cpp.s
-.PHONY : src/lightglue.s
-
-# target to generate assembly for a file
-src/lightglue.cpp.s:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/find_the_viewpoint.dir/build.make CMakeFiles/find_the_viewpoint.dir/src/lightglue.cpp.s
-.PHONY : src/lightglue.cpp.s
 
 src/main.o: src/main.cpp.o
 .PHONY : src/main.o
@@ -277,6 +277,30 @@ src/processing/dfs.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/find_the_viewpoint.dir/build.make CMakeFiles/find_the_viewpoint.dir/src/processing/dfs.cpp.s
 .PHONY : src/processing/dfs.cpp.s
 
+src/sift.o: src/sift.cpp.o
+.PHONY : src/sift.o
+
+# target to build an object file
+src/sift.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/find_the_viewpoint.dir/build.make CMakeFiles/find_the_viewpoint.dir/src/sift.cpp.o
+.PHONY : src/sift.cpp.o
+
+src/sift.i: src/sift.cpp.i
+.PHONY : src/sift.i
+
+# target to preprocess a source file
+src/sift.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/find_the_viewpoint.dir/build.make CMakeFiles/find_the_viewpoint.dir/src/sift.cpp.i
+.PHONY : src/sift.cpp.i
+
+src/sift.s: src/sift.cpp.s
+.PHONY : src/sift.s
+
+# target to generate assembly for a file
+src/sift.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/find_the_viewpoint.dir/build.make CMakeFiles/find_the_viewpoint.dir/src/sift.cpp.s
+.PHONY : src/sift.cpp.s
+
 src/task1.o: src/task1.cpp.o
 .PHONY : src/task1.o
 
@@ -334,15 +358,15 @@ help:
 	@echo "... edit_cache"
 	@echo "... rebuild_cache"
 	@echo "... find_the_viewpoint"
+	@echo "... src/ApplyLightGlueWrapper.o"
+	@echo "... src/ApplyLightGlueWrapper.i"
+	@echo "... src/ApplyLightGlueWrapper.s"
 	@echo "... src/config/config.o"
 	@echo "... src/config/config.i"
 	@echo "... src/config/config.s"
 	@echo "... src/image.o"
 	@echo "... src/image.i"
 	@echo "... src/image.s"
-	@echo "... src/lightglue.o"
-	@echo "... src/lightglue.i"
-	@echo "... src/lightglue.s"
 	@echo "... src/main.o"
 	@echo "... src/main.i"
 	@echo "... src/main.s"
@@ -352,6 +376,9 @@ help:
 	@echo "... src/processing/dfs.o"
 	@echo "... src/processing/dfs.i"
 	@echo "... src/processing/dfs.s"
+	@echo "... src/sift.o"
+	@echo "... src/sift.i"
+	@echo "... src/sift.s"
 	@echo "... src/task1.o"
 	@echo "... src/task1.i"
 	@echo "... src/task1.s"

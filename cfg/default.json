@@ -1,6 +1,6 @@
 {
   "main":{
-    "test_num": 3,
+    "test_num": 10,
     "enable_dfs": 1,
     "enable_generate_imgs": 1,
     "enable_meta": 1,
@@ -10,14 +10,14 @@
     "num_corners": 4
   },
   "compute_score":{
-    "feature_type": "sift", // "light_glue",
+    "feature_type":   "sift", // "light_glue", // "orb", //
     "enable_HSV": 1 
   },
   "fine_registration": {
-    "max_iterations": 10,
+    "max_iterations": 20,
     "learning_rate": 0.2,
-    "max_stagnation": 2,
-    "learning_decay": 0.7,
+    "max_stagnation": 20,
+    "learning_decay": 0.9,
     "convergence_threshold": 1e-4
   },
   "feature_matching": {

@@ -51,3 +51,7 @@ build/
 **/score/**.png
 3d_models/**
 */selected_views/**
+
+**/task2/dfs_meta/**
+**/test/**
+**/python/output/**

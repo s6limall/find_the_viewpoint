@@ -28,9 +28,10 @@
 #include <opencv2/core/eigen.hpp>
 
 #include "../include/config.hpp"
-#include "../include/lightglue.hpp"
+#include "../include/ApplyLightGlueWrapper.hpp"
 #include "../include/image.hpp"
 #include "../include/path_and_vis.hpp"
+#include "../include/sift.hpp"
 
 
 typedef unsigned long long pop_t;
@@ -208,11 +209,12 @@ class View_Planning_Simulator {
 public:
 	Perception* perception_simulator; // perception simulator
 	cv::Mat dst_img; // target image
+	View test_dst_view;
 	vector<View> selected_views; // selected views
 	View output_view;
 	vector<cv::Mat> rendered_images; // rendered images
 	std::unordered_map<std::string, double> ratio_map;
-	//LightGlueWrapper lightglue;
+	ApplyLightGlueWrapper lightGlue;
 
 	Json::Value cfg;
 
@@ -220,19 +222,23 @@ public:
 	View_Planning_Simulator(Perception* _perception_simulator, View _target_view) {
 		perception_simulator = _perception_simulator;
 		dst_img = render_view_image(_target_view);
-
+		test_dst_view = _target_view;
 		Config config = Config(); 
 		cfg = config.get_config();
 
 		string feature_type = cfg["compute_score"]["feature_type"].as<string>();
 
 		if (feature_type == "light_glue") {
-			//lightglue.initialize();
+			lightGlue.initialize();
 		}
 	}
 
 	// Destructor
 	~View_Planning_Simulator() {
+		string feature_type = cfg["compute_score"]["feature_type"].as<string>();
+		if (feature_type == "light_glue") {
+			lightGlue.finalize();
+		}
 		cout << "View_Planning_Simulator destruct successfully!" << endl;
 	}
 
@@ -247,17 +253,15 @@ public:
 
 	// check if the view is target
 	bool is_target(View src_view) {
-		Eigen::Vector3d dst_view = Eigen::Vector3d(-0.879024, 0.427971, 0.210138).normalized() * 3.0;
-		double dis = (dst_view - src_view.pose_6d.block<3, 1>(0, 3)).norm();
+		double dis = (test_dst_view.pose_6d.block<3, 1>(0, 3) - src_view.pose_6d.block<3, 1>(0, 3)).norm();
 		spdlog::info("distance to target {}", dis);
 		return 0;
 	}
 
 
 	bool test_view(View src_view, double max_score) {
-		Eigen::Vector3d dst_view = Eigen::Vector3d(-0.879024, 0.427971, 0.210138).normalized() * 3.0;
-		double dis = (dst_view - src_view.pose_6d.block<3, 1>(0, 3)).norm();
-		// spdlog::info("distance to target {}", dis);
+		double dis = (test_dst_view.pose_6d.block<3, 1>(0, 3) - src_view.pose_6d.block<3, 1>(0, 3)).norm();
+		spdlog::info("distance to target {}", dis);
 		perception_simulator->render(src_view, "./task2/score/s_" + std::to_string(max_score) + "_dst_" + std::to_string(dis) + ".png");
 
 		return 0;
@@ -321,6 +325,11 @@ public:
 	
 	// Function to calculate sum of absolute differences (SAD) between two images in HSV color space
 	double calculateLoss(const cv::Mat& src_img, const cv::Mat& dst_img) {
+		// cv::Mat Map;
+		// cv::Scalar scalar = cv::quality::QualitySSIM::compute(src_img, dst_img, Map);
+		// double mean = (scalar[0] + scalar[1] + scalar[2] + scalar[3]) / 4.0;
+		// return 1-mean;
+		
 		cv::Mat diff;
 		absdiff(src_img, dst_img, diff);
 		
@@ -334,6 +343,8 @@ public:
 			total_loss += sum(channel)[0];
 		}
 		
+		
+
 		return total_loss;
 	}
 
@@ -351,10 +362,10 @@ public:
 							0, 1,         0,
 				-sin(alpha), 0, cos(alpha);
 		
-		new_view.pose_6d.block<3, 3>(0, 0) = R_theta * R_alpha * src_view.pose_6d.block<3, 3>(0, 0);;
+		//new_view.pose_6d.block<3, 3>(0, 0) = R_theta * R_alpha * src_view.pose_6d.block<3, 3>(0, 0);;
 
-		new_view.pose_6d.block<3, 1>(0, 3) = R_theta * R_alpha * src_view.pose_6d.block<3, 1>(0, 3);;
-
+		Eigen::Vector3d new_pos = R_theta * R_alpha * src_view.pose_6d.block<3, 1>(0, 3);;
+		new_view.compute_pose_from_positon_and_object_center(new_pos,Eigen::Vector3d(1e-100, 1e-100, 1e-100) );
 		return new_view;
 	}
 
@@ -405,13 +416,14 @@ public:
 				}
 			}
 
+			spdlog::info("loss: {}, lr: {} and stagnation {}", bst_loss, learning_rate, stagnation_counter);
+
 			if (!improvement_found) {
-				learning_rate *= learning_decay;
+				learning_rate *= std::pow(learning_decay, stagnation_counter+1);
 			} else {
 				stagnation_counter = 0;
 			}
 
-			spdlog::info("loss: {}, lr: {}", bst_loss, learning_rate);
 			is_target(bst_view);
 
 			if (learning_rate < convergence_threshold || abs(prev_loss - bst_loss) < convergence_threshold) {
@@ -445,11 +457,12 @@ public:
 		double learning_rate 			= cfg["fine_registration"]["learning_rate"].as<double>();
 		const int max_stagnation 		= cfg["fine_registration"]["max_stagnation"].as<int>();
 		const double learning_decay 	= cfg["fine_registration"]["learning_decay"].as<double>();
-
+		SIFT sift;
 
 		bst_view = src_view;
 		bst_img = render_view_image(bst_view);
-		max_loss = calculateLoss(bst_img, dst_img);
+		can_img = bst_img;
+		max_loss = 1.0 - sift.compute(bst_img, dst_img, 0.8f);
 		bst_loss = max_loss;
 		double prev_loss = max_loss;
 		
@@ -458,20 +471,24 @@ public:
 		int stagnation_counter = 0;
 		while (iterations < max_iterations) {
 			iterations++;
-			bool improvement_found = false;
+			bool improvement_found = true;
+			SIFT sift;
+			std::pair<double, double> result = sift.homography(can_img, dst_img);
+			double dir_x = result.first;
+			double dir_y = result.second;
 
-
-			can_view = shift_view(bst_view, learning_rate, learning_rate);
+			spdlog::info("dir_x: {}, dir_y: {}", dir_x, dir_y);
+			can_view = shift_view(bst_view, dir_y*learning_rate, dir_x*learning_rate);
 			can_img = render_view_image(can_view);
-			can_loss = calculateLoss(can_img, dst_img);
+			can_loss = 1.0 - sift.compute(can_img, dst_img, 0.8f);
 
-			if (can_loss < bst_loss) {
-				bst_loss = can_loss;
-				bst_view = can_view;
-				improvement_found = true;
+			if (can_loss > bst_loss) {
+				improvement_found = false;
 			}
+			bst_loss = can_loss;
+			bst_view = can_view;
 			
-
+			
 			if (!improvement_found) {
 				learning_rate *= learning_decay;
 			} else {
@@ -492,6 +509,7 @@ public:
 			prev_loss = bst_loss;
 			max_loss = bst_loss;
 		}
+		spdlog::info("registration was aborded due to taking too long");
 
 		return bst_view;
 	}
@@ -514,18 +532,21 @@ public:
 		cv::Mat src_img = render_view_image(src_view);
 
 		string feature_type = cfg["compute_score"]["feature_type"].as<string>();
-		bool enable_HSV = cfg["compute_score"]["use_HSV"].as<bool>();
+		bool enable_HSV = cfg["compute_score"]["enable_HSV"].as<bool>();
 
 		double ratio;
 
-		spdlog::info("Selected {}",  feature_type);
+		spdlog::info("Selected {} and HSV is {}",  feature_type, enable_HSV);
 
 		if (feature_type == "sift") {
-			ratio = compute_match_ratio_SIFT(src_img, dst_img, 0.8f, enable_HSV);
-		} else if (feature_type == "light_glue") {
+			SIFT sift;
+			ratio = sift.compute(src_img, dst_img, 0.8f);
+		//} else if (feature_type == "orb") {
+			//ratio = compute_match_ratio_ORB(src_img, dst_img, 0.8f, enable_HSV);
+		}else if (feature_type == "light_glue") {
 			cv::imwrite("./LightGlue/assets/img_01.jpg", src_img);
 			cv::imwrite("./LightGlue/assets/img_02.jpg", dst_img);
-			//ratio = lightglue.compute_match_ratio_LIGHTGLUE();
+			ratio = lightGlue.apply("./LightGlue/assets/img_01.jpg", "./LightGlue/assets/img_02.jpg");
 		}
 
 		spdlog::info("ratio {}",  ratio);
@@ -547,22 +568,24 @@ public:
 		
 		bst_view = D = calculate_new_center(A,B,C);
 		View views[] = { A, B, C, D };
-    
+		double total_score = 0;
 		for (const View & can_view : views) {
 			can_score = compute_score(can_view);
-			is_target(can_view);
-			if(can_score>bst_score)
+			if(can_score>bst_score){
 				bst_score = can_score;
+				total_score += can_score;
 				bst_view = can_view;
+			}
 		}
-		
-		//spdlog::info("bst_score {} vs {} max_score",  bst_score, max_score);
+		bst_score = total_score / 4;
+		double dis = (test_dst_view.pose_6d.block<3, 1>(0, 3) - bst_view.pose_6d.block<3, 1>(0, 3)).norm();
+		spdlog::info("bst_score {} vs {} max_score: dis: {}",  bst_score, max_score, dis);
 
 		if (max_score >= bst_score)
 			return bst_view;
 		max_view = bst_view;
 		max_score = bst_score;
-		// spdlog::info("going deeper");
+		spdlog::info("going deeper");
 		test_view(max_view, max_score);
 
 		//check for final perfect match if done return early
@@ -625,7 +648,8 @@ public:
 			can_score = 0;
 			can_view = dfs_next_view(search_views[i], search_views[next_index], search_views[view_num], can_score);
 
-			//spdlog::info("Best score for iteration {} is {}", i, can_score);
+			spdlog::info("Best score for iteration {} is {}", i, can_score);
+			is_target(can_view);
 			if (can_score > max_score){
 				max_view = can_view;
 				max_score = can_score;
@@ -909,7 +933,7 @@ double randomDouble(double min, double max) {
 
 
 void main(string object_name) {
-	spdlog::info("Version {}", 8);
+	spdlog::info("Version {}", 12);
 
 	View target_view;
 	string object_path = "./3d_models/" + object_name + ".ply";
@@ -935,8 +959,8 @@ void main(string object_name) {
 		} catch (const std::filesystem::filesystem_error& e) {
 			std::cout << "Error creating directory: " << e.what() << '\n';
 		}
-		target_view.compute_pose_from_positon_and_object_center(Eigen::Vector3d(-0.879024, 0.427971, 0.210138).normalized() * 3.0, Eigen::Vector3d(1e-100, 1e-100, 1e-100));
-		//target_view.compute_pose_from_positon_and_object_center(Eigen::Vector3d(randomDouble(-1.0, 1.0), randomDouble(-1.0, 1.0), randomDouble(0.0, 1.0)).normalized() * 3.0, Eigen::Vector3d(1e-100, 1e-100, 1e-100));
+		//target_view.compute_pose_from_positon_and_object_center(Eigen::Vector3d(-0.879024, 0.427971, 0.210138).normalized() * 3.0, Eigen::Vector3d(1e-100, 1e-100, 1e-100));
+		target_view.compute_pose_from_positon_and_object_center(Eigen::Vector3d(randomDouble(-1.0, 1.0), randomDouble(-1.0, 1.0), randomDouble(0.0, 1.0)).normalized() * 3.0, Eigen::Vector3d(1e-100, 1e-100, 1e-100));
 
 		View_Planning_Simulator view_planning_simulator(perception_simulator, target_view);
 		if (enable_dfs){
@@ -985,14 +1009,99 @@ void main(string object_name) {
 }
 
 
+void main_test(string object_name) {
+	spdlog::info("Version {}", 12);
+
+	View target_view;
+	string object_path = "./3d_models/" + object_name + ".ply";
+	
+	Config config = Config(); 
+	Json::Value cfg = config.get_config();
+
+	int test_num =cfg["main"]["test_num"].as<int>();
+	bool enable_dfs =cfg["main"]["enable_dfs"].as<bool>();
+	bool enable_generate_imgs =cfg["main"]["enable_generate_imgs"].as<bool>();
+	bool enable_meta =cfg["main"]["enable_meta"].as<bool>();
+	bool enable_visulize =cfg["main"]["enable_vis"].as<bool>();
+	
+
+	Perception* perception_simulator = new Perception(object_path);
+
+	for (int test_id = 0; test_id < test_num; test_id++) {
+		string pose_file_path = "./task2/selected_views/" + object_name + "/" + to_string(test_id) + "_views.txt";
+		string meta_file_path = "./task2/dfs_meta/" + object_name + "/" + to_string(test_id) + "_meta.txt";
+		string rgb_file_path = "./task2/selected_views/" + object_name + "/" + to_string(test_id);
+		try {
+			std::filesystem::create_directories(rgb_file_path);
+		} catch (const std::filesystem::filesystem_error& e) {
+			std::cout << "Error creating directory: " << e.what() << '\n';
+		}
+		//target_view.compute_pose_from_positon_and_object_center(Eigen::Vector3d(-0.879024, 0.427971, 0.210138).normalized() * 3.0, Eigen::Vector3d(1e-100, 1e-100, 1e-100));
+		
+		target_view.compute_pose_from_positon_and_object_center(Eigen::Vector3d(1, 1, 0).normalized() * 3.0, Eigen::Vector3d(1e-100, 1e-100, 1e-100));
+
+		Eigen::Vector3d vec = Eigen::Vector3d(1, 1, 0).normalized() * 3.0;
+		Eigen::Vector3d axis(0, 0, 1); // Using z-axis for simplicity
+		double min_angle = -15.0; // Minimum angle in degrees
+		double max_angle = 15.0;  // Maximum angle in degrees
+		double step = 1.0;        // Step in degrees
+		std::vector<View> rotated_vectors;
+		
+		
+		View_Planning_Simulator view_planning_simulator(perception_simulator, target_view);
+		cv::Mat img = view_planning_simulator.render_view_image(target_view);
+		SIFT sift;
+		double hsv_value = sift.compute(img, img, 0.8f);
+		spdlog::info("ratio {} for exact same",hsv_value);
+
+		for (double angle = min_angle; angle <= max_angle; angle += step) {
+			// Convert angle to radians
+			double angle_radians = angle * M_PI / 180.0;
+
+			// Create the rotation matrix using AngleAxis
+			Eigen::AngleAxisd rotation(angle_radians, axis);
+
+			// Apply the rotation to the vector
+			Eigen::Vector3d rotated_vec = rotation * vec;
+			View src_view;
+			src_view.compute_pose_from_positon_and_object_center(rotated_vec, Eigen::Vector3d(1e-100, 1e-100, 1e-100));
+			
+			string path = "./test/" + std::to_string(angle)+ ".png";
+			perception_simulator->render(src_view, path);
+			
+			cv::Mat src_img = view_planning_simulator.render_view_image(src_view);
+			cv::Mat dst_img = view_planning_simulator.render_view_image(target_view);
+			double ratio = sift.compute(src_img, dst_img, 0.8f);
+			double dis = (target_view.pose_6d.block<3, 1>(0, 3) - src_view.pose_6d.block<3, 1>(0, 3)).norm();
+			spdlog::info("ratio {}, angle {}, dis {}", ratio, angle, dis);
+			//ratio = compute_match_ratio_ORB(src_img, dst_img, 0.8f, true);
+			//dis = (target_view.pose_6d.block<3, 1>(0, 3) - src_view.pose_6d.block<3, 1>(0, 3)).norm();
+			//spdlog::info("ratio {}, angle {}, dis {}", ratio, angle, dis);
+
+		}
+	}
+	// Delete the perception simulator
+	delete perception_simulator;
+}
+
 
 
 
 int run_level_3()
 {
 	std::vector<string> objects;
-	objects.push_back("obj_000019");
-	objects.push_back("obj_000020");
+	//objects.push_back("obj_000003");
+	//objects.push_back("obj_000004");
+	//objects.push_back("obj_000019");
+	//objects.push_back("obj_000020");
+	//objects.push_back("obj_000022");
+	objects.push_back("obj_000023");
+	//objects.push_back("obj_000028");
+	//objects.push_back("obj_000029");
+	//objects.push_back("obj_000030");
+	//objects.push_back("obj_000032");
+
+	//main_test("obj_000020");
 
 	// Task 1
 	for (auto& object : objects) {
@@ -1003,6 +1112,7 @@ int run_level_3()
 		}
 		main(object);
 	}
+	
 
 	return 0;
 }

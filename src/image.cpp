@@ -88,7 +88,7 @@ double compute_match_ratio_SIFT(const cv::Mat &src_img, const cv::Mat &dst_img, 
     std::vector<cv::KeyPoint> src_kp, dst_kp;
     std::vector<cv::Mat> src_des(3), dst_des(3);
 
-    size_t src_des_total = 0;
+    size_t dst_des_total = 0;
     if (use_HSV) {
         cv::Mat src_hsv = convertToHSV(src_img);
         cv::Mat dst_hsv = convertToHSV(dst_img);
@@ -102,7 +102,8 @@ double compute_match_ratio_SIFT(const cv::Mat &src_img, const cv::Mat &dst_img, 
         for (int i = 0; i < 3; ++i) {
             detectAndComputeSIFT(src_channels[i], src_kp, src_des[i]);
             detectAndComputeSIFT(dst_channels[i], dst_kp, dst_des[i]);
-            src_des_total += src_des[i].total();
+            dst_des_total += dst_des[i].total();
+            //spdlog::info("dst_des_total: {}, channel {}/{} with {}", dst_des_total, i ,3, dst_des[i].total());
         }
     } else {
         cv::Mat src_gray = convertToGrayscale(src_img);
@@ -110,7 +111,7 @@ double compute_match_ratio_SIFT(const cv::Mat &src_img, const cv::Mat &dst_img, 
 
         detectAndComputeSIFT(src_gray, src_kp, src_des[0]); // Use only the first element for grayscale
         detectAndComputeSIFT(dst_gray, dst_kp, dst_des[0]);
-        src_des_total += src_des[0].total();
+        dst_des_total += src_des[0].total();
     }
 
     size_t matched_des_total = 0; // total matches in all channels
@@ -123,9 +124,9 @@ double compute_match_ratio_SIFT(const cv::Mat &src_img, const cv::Mat &dst_img, 
         good_matchs = applyRatioTest(knn_Matches, rt);
         matched_des_total += good_matchs.size();
     }
-    mr = src_des_total == 0 ? 0.0 : static_cast<double>(matched_des_total) / src_des_total;
+    mr = dst_des_total == 0 ? 0.0 : static_cast<double>(matched_des_total) / dst_des_total;
     
-    spdlog::info("Ratio: {}, {}/{} with {}", mr, matched_des_total ,src_des_total, rt);
+    spdlog::info("Ratio: {}, {}/{} with {}", mr, matched_des_total ,dst_des_total, rt);
     return mr;
 }
 
@@ -209,14 +210,14 @@ std::string generateRandomID() {
     return std::to_string(dis(gen));
 }
 
-double calculateTransformation(const cv::Mat &src_img, const cv::Mat &dst_img, float rt, bool use_HSV) {
-    if (src_img.empty()) { spdlog::error("Source image is empty."); return std::numeric_limits<double>::infinity(); }
-    if (dst_img.empty()) { spdlog::error("Destination image is empty."); return std::numeric_limits<double>::infinity(); }
+std::pair<double, double>  calculateTransformation(const cv::Mat &src_img, const cv::Mat &dst_img, float rt, bool use_HSV) {
+    if (src_img.empty()) { spdlog::error("Source image is empty."); return std::make_pair(0.0, 0.0); }
+    if (dst_img.empty()) { spdlog::error("Destination image is empty."); return std::make_pair(0.0, 0.0); }
 
     std::vector<cv::KeyPoint> src_kp, dst_kp;
     std::vector<cv::Mat> src_des(3), dst_des(3);
 
-    size_t src_des_total = 0;
+    size_t dst_des_total = 0;
     if (use_HSV) {
         cv::Mat src_hsv = convertToHSV(src_img);
         cv::Mat dst_hsv = convertToHSV(dst_img);
@@ -230,7 +231,7 @@ double calculateTransformation(const cv::Mat &src_img, const cv::Mat &dst_img, f
         for (int i = 0; i < 3; ++i) {
             detectAndComputeSIFT(src_channels[i], src_kp, src_des[i]);
             detectAndComputeSIFT(dst_channels[i], dst_kp, dst_des[i]);
-            src_des_total += src_des[i].total();
+            dst_des_total += src_des[i].total();
         }
     } else {
         cv::Mat src_gray = convertToGrayscale(src_img);
@@ -238,10 +239,10 @@ double calculateTransformation(const cv::Mat &src_img, const cv::Mat &dst_img, f
 
         detectAndComputeSIFT(src_gray, src_kp, src_des[0]); // Use only the first element for grayscale
         detectAndComputeSIFT(dst_gray, dst_kp, dst_des[0]);
-        src_des_total += src_des[0].total();
+        dst_des_total += src_des[0].total();
     }
 
-    if (src_des_total == 0) { spdlog::error("No descriptors found in source image."); return std::numeric_limits<double>::infinity(); }
+    if (dst_des_total == 0) { spdlog::error("No descriptors found in source image."); return std::make_pair(0.0, 0.0); }
 
     std::vector<cv::DMatch> good_matches;
     for (int i = 0; i < 3; ++i) {
@@ -250,7 +251,7 @@ double calculateTransformation(const cv::Mat &src_img, const cv::Mat &dst_img, f
         good_matches.insert(good_matches.end(), good_matches_tmp.begin(), good_matches_tmp.end());
     }
 
-    if (good_matches.size() < 10) { spdlog::error("Not enough good matches found. Returning infinity."); return std::numeric_limits<double>::infinity(); }
+    if (good_matches.size() < 10) { spdlog::error("Not enough good matches found. Returning infinity."); return std::make_pair(0.0, 0.0); }
 
     // Extract the matched keypoints
     std::vector<cv::Point2f> src_pts, dst_pts;
@@ -267,11 +268,11 @@ double calculateTransformation(const cv::Mat &src_img, const cv::Mat &dst_img, f
     translation.x /= good_matches.size();
     translation.y /= good_matches.size();
 
-    // Construct translation matrix
-    cv::Mat H = cv::Mat::eye(3, 3, CV_64F);
-    H.at<double>(0, 2) = translation.x;
-    H.at<double>(1, 2) = translation.y;
+    float magnitude = std::sqrt(translation.x * translation.x + translation.y * translation.y);
+    
+    translation.x = translation.x / magnitude;
+    translation.y = translation.y / magnitude;
+    
 
-    double magnitude = std::sqrt(translation.x * translation.x + translation.y * translation.y);
-    return magnitude;
+    return std::make_pair(translation.x, translation.y);
 }

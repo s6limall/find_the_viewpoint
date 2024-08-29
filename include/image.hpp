@@ -17,9 +17,10 @@ std::vector<cv::DMatch> applyRatioTest(const std::vector<std::vector<cv::DMatch>
 size_t computeSIFTMatches(const cv::Mat &src_img, const cv::Mat &dst_img, float rt = RATIO_THRESH);
 bool compareImages(const cv::Mat &src_img, const cv::Mat &dst_img);
 double compute_match_ratio_SIFT(const cv::Mat &src_img, const cv::Mat &dst_img, float rt, bool use_HSV);
+double compute_match_ratio_ORB(const cv::Mat &src_img, const cv::Mat &dst_img, float rt, bool use_HSV);
 double compute_match_ratio_LIGHTGLUE();
 bool compareImages(const cv::Mat &src_img, const cv::Mat &dst_img);
-double calculateTransformation(const cv::Mat &src_img, const cv::Mat &dst_img, float rt = RATIO_THRESH, bool use_HSV = true);
+std::pair<double, double> calculateTransformation(const cv::Mat &src_img, const cv::Mat &dst_img, float rt = RATIO_THRESH, bool use_HSV = true);
 cv::Mat alignImages(const cv::Mat& src_img, cv::Mat dst_img, int max_iterations = 100, double convergence_threshold = 1e-4);
 
 #endif // IMAGE_PROCESSING_HPP
