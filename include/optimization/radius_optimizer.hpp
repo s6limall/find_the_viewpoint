@@ -22,12 +22,12 @@ public:
     };
 
     explicit RadiusOptimizer(T area_tolerance = 1e-6, T radius_tolerance = 1e-5, const int max_iterations = 50,
-                           const int max_pyramid_level = 3) :
+                             const int max_pyramid_level = 3) :
         area_tolerance_(area_tolerance), radius_tolerance_(radius_tolerance), max_iterations_(max_iterations),
         max_pyramid_level_(max_pyramid_level) {}
 
     [[nodiscard]] RadiusOptimizerResult optimize(const ViewPoint<T> &initial_viewpoint, const Image<> &target,
-                                      const RenderFunction &render) const {
+                                                 const RenderFunction &render) const {
         auto [radius, polar, azimuthal] = initial_viewpoint.toSpherical();
         RadiusOptimizerResult result{initial_viewpoint, 0};
 
@@ -39,6 +39,14 @@ public:
             radius = adjustRadius(downsampled_target, downsampled_current, radius, step_size);
             result.best_viewpoint = ViewPoint<T>::fromSpherical(radius, polar, azimuthal);
             ++result.iterations;
+
+            // Collect metrics after each radius adjustment
+            metrics::recordMetrics(result.best_viewpoint, {{"level", level},
+                                                           {"radius", radius},
+                                                           {"polar", polar},
+                                                           {"azimuthal", azimuthal},
+                                                           {"step_size", step_size},
+                                                           {"iterations", result.iterations}});
         }
 
         LOG_INFO("Refinement complete. Best radius: {:.6f}, Iterations: {}",

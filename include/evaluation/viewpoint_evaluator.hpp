@@ -4,6 +4,7 @@
 #define VIEWPOINT_EVALUATOR_HPP
 #include "cache/viewpoint_cache.hpp"
 #include "common/logging/logger.hpp"
+#include "common/metrics/metrics_collector.hpp"
 #include "optimization/acquisition.hpp"
 #include "optimization/gaussian/gpr.hpp"
 #include "optimization/gaussian/kernel/matern_52.hpp"
@@ -13,11 +14,10 @@ template<FloatingPoint T = double>
 class ViewpointEvaluator {
 public:
     ViewpointEvaluator(optimization::GaussianProcessRegression<optimization::kernel::Matern52<T>> &gpr,
-                       cache::ViewpointCache<T> &cache,
-                       optimization::Acquisition<T> &acquisition, const int patience,
-                       T improvement_threshold)
-        : gpr_(gpr), cache_(cache), acquisition_(acquisition),
-          patience_(patience), improvement_threshold_(improvement_threshold) {}
+                       cache::ViewpointCache<T> &cache, optimization::Acquisition<T> &acquisition, const int patience,
+                       T improvement_threshold) :
+        gpr_(gpr), cache_(cache), acquisition_(acquisition), patience_(patience),
+        improvement_threshold_(improvement_threshold), current_iteration_(0) {}
 
     void evaluatePoint(ViewPoint<T> &point, const Image<> &target,
                        const std::shared_ptr<processing::image::ImageComparator> &comparator) {
@@ -39,6 +39,8 @@ public:
             // Update the cache with the existing point
             cache_.update(point);
         }
+        recordMetrics(point);
+        current_iteration_++;
     }
 
     T computeAcquisition(const Eigen::Vector3<T> &x, T mean, T std_dev) const {
@@ -47,7 +49,7 @@ public:
     }
 
     bool hasConverged(T current_score, T best_score, T target_score, int current_iteration,
-                      std::deque<T> &recent_scores, int &stagnant_iterations, const ViewPoint<T>& best_viewpoint) {
+                      std::deque<T> &recent_scores, int &stagnant_iterations, const ViewPoint<T> &best_viewpoint) {
         // Check if we've reached or exceeded the target score
         if (current_score >= target_score) {
             LOG_INFO("Target score reached at iteration {}", current_iteration);
@@ -109,6 +111,17 @@ private:
     int patience_;
     T improvement_threshold_;
     static constexpr int window_size_ = 5;
+    int current_iteration_;
+
+    void recordMetrics(const ViewPoint<T> &point) {
+        auto position = point.getPosition();
+
+        metrics::recordMetrics(point, {{"iteration", current_iteration_},
+                                       {"position_x", position.x()},
+                                       {"position_y", position.y()},
+                                       {"position_z", position.z()},
+                                       {"score", point.getScore()}});
+    }
 };
 
-#endif //VIEWPOINT_EVALUATOR_HPP
+#endif // VIEWPOINT_EVALUATOR_HPP

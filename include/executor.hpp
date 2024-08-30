@@ -22,8 +22,6 @@
 class Executor {
 public:
     static void execute();
-    static void loadExtractor();
-    static void loadComparator();
 
     // Rule of five
     Executor(const Executor &) = delete;
@@ -32,6 +30,9 @@ public:
     Executor &operator=(Executor &&) = delete;
     ~Executor() = default;
 
+    // Delete the default constructor (no need to instantiate this class)
+    Executor() = delete;
+
 private:
     static std::once_flag init_flag_;
     static double radius_, target_score_;
@@ -39,10 +40,8 @@ private:
     static std::shared_ptr<processing::image::ImageComparator> comparator_;
     static std::shared_ptr<processing::image::FeatureExtractor> extractor_;
     static std::shared_ptr<processing::image::FeatureMatcher> matcher_;
-
     static std::shared_ptr<core::Simulator> simulator_;
 
-    Executor() = default;
     static void initialize();
 };
 

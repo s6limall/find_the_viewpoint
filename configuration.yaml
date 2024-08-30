@@ -45,13 +45,13 @@ image:
         cross_check: false          # Cross-check for matching
 
   comparator:
-    type: "FEATURE"                   # Selected image comparison method (FEATURE, SSIM, COMPOSITE)
+    type: "SSIM"                   # Selected image comparison method (FEATURE, SSIM, COMPOSITE)
     ssim:
       threshold: 1.0                 # Higher is better
     feature:
-      threshold: 0.95                 # Higher is better
+      threshold: 0.85                 # Higher is better
     composite:
-      threshold: 1.0                  # Higher is better
+      threshold: 0.85                  # Higher is better
 
 optimization:
   max_restarts: 10 # Maximum number of restarts (0 = no restarts)
@@ -84,7 +84,7 @@ optimization:
       exploration_weight: 1.0         # DEFAULT: 1.0; Exploration weight for the acquisition function
       exploitation_weight: 1.0        # DEFAULT: 1.0; Exploitation weight for the acquisition function
       momentum: 0.9                   # DEFAULT: 0.1; Momentum for the acquisition function
-      distance_weight: 1.0            # DEFAULT: 0.5; Weight for the distance term in the acquisition function
+      distance_weight: 0.75            # DEFAULT: 0.5; Weight for the distance term in the acquisition function
 
   local_search:
     frequency: 5 # Frequency of local search (every n steps)
@@ -104,7 +104,7 @@ rendering:
   duration: 0 # Duration of the rendering in ms
 
 sampling:
-  count: 1
+  count: 6
 
 octree:
   min_nodes_to_explore: 8

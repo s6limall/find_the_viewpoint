@@ -51,4 +51,11 @@ concept Same = std::same_as<T, U>;
 template<typename Base, typename Derived>
 concept DerivedFrom = std::derived_from<Derived, Base>;
 
+/*
+ * Other Concepts
+ */
+
+template<typename T>
+struct always_false : std::false_type {};
+
 #endif // CONCEPTS_HPP

@@ -10,6 +10,7 @@
 #include <random>
 #include <string_view>
 #include "common/logging/logger.hpp"
+#include "common/metrics/metrics_collector.hpp"
 
 namespace optimization {
 
@@ -62,6 +63,10 @@ namespace optimization {
 
             T result = acquisition_func_(x, mean, std_dev);
             LOG_TRACE("Acquisition function result: {}", result);
+
+            // Record metrics for each computed point
+            metrics::recordMetrics(x, {{"mean", mean}, {"std_dev", std_dev}, {"acquisition_value", result}});
+
             return result;
         }
 

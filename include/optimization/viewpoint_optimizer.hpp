@@ -179,6 +179,13 @@ namespace optimization {
                     T perturbed_score = comparator->compare(target, perturbed_image);
 
                     gradient[j] = (perturbed_score - current_score) / epsilon;
+
+                    // Store metrics for perturbed points during local refinement
+                    metrics::recordMetrics(perturbed_viewpoint, {{"position_x", perturbed_position.x()},
+                                                                 {"position_y", perturbed_position.y()},
+                                                                 {"position_z", perturbed_position.z()},
+                                                                 {"score", perturbed_score},
+                                                                 {"refinement_iteration", i}});
                 }
 
                 Eigen::Vector3<T> new_position = current_position + learning_rate * gradient;
@@ -264,6 +271,14 @@ namespace optimization {
                 auto [mean, std_dev] = gpr_.predict(point.getPosition());
                 T acquisition_value = evaluator_.computeAcquisition(point.getPosition(), mean, std_dev);
                 node.max_acquisition = std::max(node.max_acquisition, acquisition_value);
+
+                metrics::recordMetrics(point, {{"position_x", point.getPosition().x()},
+                                               {"position_y", point.getPosition().y()},
+                                               {"position_z", point.getPosition().z()},
+                                               {"score", point.getScore()},
+                                               {"acquisition_value", acquisition_value}});
+
+
                 updateBestViewpoint(point);
             }
 

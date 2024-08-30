@@ -2,10 +2,6 @@
 
 #include "executor.hpp"
 
-#include "processing/image/comparison/composite_comparator.hpp"
-#include "processing/image/comparison/feature_comparator.hpp"
-#include "processing/image/comparison/ssim_comparator.hpp"
-
 using KernelType = optimization::kernel::Matern52<>;
 
 std::once_flag Executor::init_flag_;
@@ -14,9 +10,7 @@ Image<> Executor::target_;
 std::shared_ptr<processing::image::FeatureExtractor> Executor::extractor_;
 std::shared_ptr<processing::image::FeatureMatcher> Executor::matcher_;
 std::shared_ptr<processing::image::ImageComparator> Executor::comparator_;
-
 std::shared_ptr<core::Simulator> Executor::simulator_ = std::make_shared<core::Simulator>();
-
 
 void Executor::initialize() {
     LOG_INFO("Initializing executor.");
