@@ -19,12 +19,8 @@ namespace processing::image {
         // Extract features from an image and return the keypoints and descriptors.
         [[nodiscard]] virtual std::pair<KeyPoints, Descriptors> extract(const cv::Mat &image) const = 0;
 
-        // Static factory method to create an extractor object.
-        template<typename T>
-        static std::shared_ptr<FeatureExtractor> create() {
-            static_assert(std::is_base_of_v<FeatureExtractor, T>, "T must derive from FeatureMatcher");
-            return std::make_shared<T>();
-        }
+        // Static factory method to create an extractor object
+        static std::shared_ptr<FeatureExtractor> create(std::string_view type = {});
     };
 } // namespace processing::image
 

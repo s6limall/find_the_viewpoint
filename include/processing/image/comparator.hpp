@@ -19,6 +19,11 @@ namespace processing::image {
         [[nodiscard]] virtual double compare(const cv::Mat &image1, const cv::Mat &image2) const = 0;
         [[nodiscard]] virtual double compare(const Image<> &image1, const Image<> &image2) const = 0;
 
+        // Returns comparator and target score
+        static std::pair<std::shared_ptr<ImageComparator>, double>
+        create(const std::shared_ptr<FeatureExtractor> &extractor, const std::shared_ptr<FeatureMatcher> &matcher);
+
+
     protected:
         // Default maximum value to indicate errors.
         static constexpr double error_score_ = std::numeric_limits<double>::max();

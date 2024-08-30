@@ -4,117 +4,125 @@
 #define TARGET_GENERATOR_HPP
 
 #include <filesystem>
-#include <memory>
-#include <string>
-#include <stdexcept>
+#include <random>
 #include "core/vision/simulator.hpp"
-#include "config/configuration.hpp"
-#include "common/io/image.hpp"
-#include "sampling/sampler/fibonacci.hpp"
+#include "processing/vision/estimation/distance_estimator.hpp"
 
 class TargetImageGenerator {
 public:
-    TargetImageGenerator():simulator_(std::make_shared<core::Simulator>(std::make_optional(getModelPath().string()))) {
-        loadConfiguration();
-    }
-
-    [[nodiscard]] std::optional<std::string> getOrGenerateTargetImage() const {
-        const auto target_path = getOutputDirectory() / config_.target_filename;
-
-        if (std::filesystem::exists(target_path)) {
-            LOG_INFO("Target image found: {}", target_path.string());
-            return target_path.string();
-        }
-
-        if (!config_.generate_images) {
-            LOG_WARN("Target image not found and generation is disabled: {}", target_path.string());
-            return std::nullopt;
-        }
-
-        LOG_INFO("Generating target image: {}", target_path.string());
-        generateTargetImages();
-
-        if (!std::filesystem::exists(target_path)) {
-            throw std::runtime_error("Failed to generate target image: " + target_path.string());
-        }
-
-        return target_path.string();
-    }
-
-private:
-    struct Config {
-        std::filesystem::path models_directory{"./3d_models"};
-        std::string object_name;
-        std::filesystem::path output_directory{"target_images"};
-        std::string target_filename{"target_1.png"};
-        int num_images{1};
-        double min_distance{1.0};
-        double max_distance{3.0};
-        bool generate_images{true};
-    };
-
-    void loadConfiguration() {
-        config_.models_directory = config::get("paths.models_directory", config_.models_directory.string());
-        config_.object_name = config::get("paths.object_name", config_.object_name);
-        config_.output_directory = config::get("target_images.output_directory", config_.output_directory.string());
-        config_.target_filename = config::get("target_images.filename", config_.target_filename);
-        config_.num_images = std::stoi(config_.target_filename.substr(7, config_.target_filename.find('.') - 7));
-        config_.min_distance = config::get("target_images.min_distance", config_.min_distance);
-        config_.max_distance = config::get("target_images.max_distance", config_.max_distance);
-        config_.generate_images = config::get("target_images.generate", config_.generate_images);
+    explicit TargetImageGenerator(std::shared_ptr<core::Simulator> simulator) :
+        simulator_(std::move(simulator)), radius_(0) {
+        object_name_ = config::get("object.name", "obj_000001");
+        output_directory_ = config::get("paths.output_directory", "target_images");
+        models_directory_ = config::get("paths.models_directory", "3d_models");
+        const auto image_path = config::get("paths.target_image", "./target.png");
+        const cv::Mat target_image = common::io::image::readImage(image_path);
+        radius_ = config::get("estimation.distance.skip", true)
+                          ? config::get("estimation.distance.initial_guess", 1.5)
+                          : processing::vision::DistanceEstimator().estimate(target_image);
     }
 
     void generateTargetImages() const {
-        std::filesystem::create_directories(getOutputDirectory());
-        // simulator_->loadMesh(getModelPath().string());
+        const bool generate_images = config::get("target_images.generate", false);
+        if (!generate_images) {
+            LOG_INFO("Target image generation skipped as per configuration.");
+            return;
+        }
 
-        FibonacciLatticeSampler sampler({0, 0, 0}, {1, 1, 1}, 1.0);
-        const auto viewpoints = sampler.generate(config_.num_images);
+        const std::filesystem::path model_path = models_directory_ / (object_name_ + ".ply");
+        const std::filesystem::path output_dir = output_directory_ / object_name_;
+        std::filesystem::create_directories(output_dir);
 
-        for (int i = 0; i < config_.num_images; ++i) {
-            const auto image_path = getOutputDirectory() / ("target_" + std::to_string(i + 1) + ".png");
+        simulator_->loadMesh(model_path.string());
 
-            if (std::filesystem::exists(image_path)) {
-                LOG_INFO("Image exists, skipping: {}", image_path.string());
-                continue;
+        const int num_images = config::get("target_images.num_images", 5);
+
+        for (int i = 0; i < num_images; ++i) {
+            const Eigen::Matrix4d extrinsics = generateRandomExtrinsics();
+            const std::string image_path = (output_dir / ("target_" + std::to_string(i + 1) + ".png")).string();
+
+            cv::Mat rendered_image = simulator_->render(extrinsics, image_path);
+
+            if (!rendered_image.empty()) {
+                LOG_INFO("Generated target image: {}", image_path);
+            } else {
+                LOG_ERROR("Failed to generate target image: {}", image_path);
             }
-
-            const auto extrinsics = generateExtrinsics(viewpoints.col(i), i);
-            const auto rendered_image = simulator_->render(extrinsics, image_path.string());
-
-            if (rendered_image.empty()) {
-                LOG_ERROR("Failed to generate image: {}", image_path.string());
-                continue;
-            }
-
-            LOG_INFO("Generated image: {}", image_path.string());
-
-            if (image_path.filename() == config_.target_filename) break;
         }
     }
 
-    [[nodiscard]] std::filesystem::path getModelPath() const {
-        return config_.models_directory / (config_.object_name + ".ply");
+    std::string getRandomTargetImagePath() const {
+        const std::filesystem::path output_dir = output_directory_ / object_name_;
+        std::vector<std::string> image_paths;
+
+        for (const auto &entry: std::filesystem::directory_iterator(output_dir)) {
+            if (entry.path().extension() == ".png") {
+                image_paths.push_back(entry.path().string());
+            }
+        }
+
+        if (!image_paths.empty()) {
+            std::random_device rd;
+            std::mt19937 gen(rd());
+            std::uniform_int_distribution<> dis(0, image_paths.size() - 1);
+            return image_paths[dis(gen)];
+        }
+
+        // If no generated images found, return a default path
+        return (output_directory_ / object_name_ / "target_1.png").string();
     }
 
-    [[nodiscard]] std::filesystem::path getOutputDirectory() const {
-        return config_.output_directory / config_.object_name;
-    }
+private:
+    std::shared_ptr<core::Simulator> simulator_;
+    std::string object_name_;
+    std::filesystem::path output_directory_;
+    std::filesystem::path models_directory_;
+    double radius_;
 
-    [[nodiscard]] Eigen::Matrix4d generateExtrinsics(const Eigen::Vector3d& viewpoint, int index) const {
-        const double t = static_cast<double>(index) / (config_.num_images - 1);
-        const double distance = std::lerp(config_.min_distance, config_.max_distance, t);
-        const Eigen::Vector3d position = viewpoint.normalized() * distance;
+    Eigen::Matrix4d generateRandomExtrinsics() const {
+        std::random_device rd;
+        std::mt19937 gen(rd());
+        std::uniform_real_distribution<> dis(-1.0, 1.0);
+        const auto tolerance = config::get("octree.tolerance", 0.1);
+        std::uniform_real_distribution<> dis_radius(radius_ - tolerance, radius_ + tolerance);
 
+        Eigen::Vector3d position;
+
+        // Generate a random point on the unit sphere in the upper hemisphere
+        do {
+            position = Eigen::Vector3d(dis(gen), dis(gen), dis(gen));
+        } while (position.squaredNorm() > 1.0 || position.z() < 0.0);
+
+        position.normalize();
+
+        // Scale to a random radius within [radius_ - tolerance, radius_ + tolerance]
+        const double final_radius = dis_radius(gen);
+        position *= final_radius;
+
+        // Create the extrinsics matrix with the computed position
         Eigen::Matrix4d extrinsics = Eigen::Matrix4d::Identity();
         extrinsics.block<3, 1>(0, 3) = position;
-        extrinsics.block<3, 3>(0, 0) = Eigen::Quaterniond::FromTwoVectors(Eigen::Vector3d::UnitZ(), -position).toRotationMatrix();
+
+        // Manually compute a simple rotation matrix to align the camera's view
+        const Eigen::Vector3d z_axis = -position.normalized();
+        Eigen::Vector3d y_axis(0, 1, 0); // Arbitrary up direction
+
+        if (std::abs(z_axis.dot(y_axis)) > 0.999) {
+            y_axis = Eigen::Vector3d(1, 0, 0); // Change up direction if z is close to y
+        }
+
+        const Eigen::Vector3d x_axis = y_axis.cross(z_axis).normalized();
+        y_axis = z_axis.cross(x_axis).normalized();
+
+        Eigen::Matrix3d rotation;
+        rotation.col(0) = x_axis;
+        rotation.col(1) = y_axis;
+        rotation.col(2) = z_axis;
+
+        extrinsics.block<3, 3>(0, 0) = rotation;
 
         return extrinsics;
     }
-
-    std::shared_ptr<core::Simulator> simulator_;
-    Config config_;
 };
 
-#endif //TARGET_GENERATOR_HPP
+#endif // TARGET_GENERATOR_HPP

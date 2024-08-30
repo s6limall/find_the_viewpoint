@@ -1,125 +1,125 @@
 # File: configuration.yaml
 
 object:
-    name: "obj_000020"
+  name: "obj_000020"
 
 target_images:
-    generate: false
-    output_directory: "target_images"
-    num_images: 8
+  generate: false
+  output_directory: "target_images"
+  num_images: 8
 
 paths:
-    log_directory: "logs"
-    mesh: "./3d_models/obj_000020.ply"
-    target_image: "./target_images/obj_000020/target_1.png"
-    models_directory: "./3d_models"
-    object_name: "obj_000020"
+  log_directory: "logs"
+  mesh: "./3d_models/obj_000020.ply"
+  target_image: "./target_images/obj_000020/target_1.png"
+  models_directory: "./3d_models"
+  object_name: "obj_000020"
 
 logging:
-    level: "debug" # error, critical, warn, info, debug, trace
-    pattern: "[%Y-%m-%d %H:%M:%S.%e] [%^%l%$] [%n] [%t] [%s:%#] [%!] %v"
+  level: "debug" # error, critical, warn, info, debug, trace
+  pattern: "[%Y-%m-%d %H:%M:%S.%e] [%^%l%$] [%n] [%t] [%s:%#] [%!] %v"
 
 camera:
-    width: 640              # Image width in pixels
-    height: 480             # Image height in pixels
-    fov_x: 0.95             # Field of view in degrees along x-axis
-    fov_y: 0.75             # Field of view in degrees along y-axis
-    focal_length:
-        x: 1000.0           # Focal length along x-axis in pixels
-        y: 1000.0           # Focal length along y-axis in pixels
-    principal_point:
-        x: 0.5              # Principal point x-coordinate (normalized)
-        y: 0.5              # Principal point y-coordinate (normalized)
+  width: 640              # Image width in pixels
+  height: 480             # Image height in pixels
+  fov_x: 0.95             # Field of view in degrees along x-axis
+  fov_y: 0.75             # Field of view in degrees along y-axis
+  focal_length:
+    x: 1000.0           # Focal length along x-axis in pixels
+    y: 1000.0           # Focal length along y-axis in pixels
+  principal_point:
+    x: 0.5              # Principal point x-coordinate (normalized)
+    y: 0.5              # Principal point y-coordinate (normalized)
 
 image:
-    feature:
-        extractor:
-            type: "AKAZE"                    # Feature extractor type (AKAZE, ORB, SIFT)
-        matcher:
-            type: "FLANN"                   # Feature matcher type (FLANN, BF)
-            flann:
-                ratio_thresh: 0.8           # Ratio threshold for Lowe’s ratio test
-                min_good_matches: 5         # Minimum number of good matches required
-            bf:
-                norm_type: 4                # Norm type (NORM_L2 = 4, NORM_HAMMING = 6)
-                cross_check: false          # Cross-check for matching
+  feature:
+    extractor:
+      type: "AKAZE"                    # Feature extractor type (AKAZE, ORB, SIFT)
+    matcher:
+      type: "FLANN"                   # Feature matcher type (FLANN, BF)
+      flann:
+        ratio_thresh: 0.8           # Ratio threshold for Lowe’s ratio test
+        min_good_matches: 5         # Minimum number of good matches required
+      bf:
+        norm_type: 4                # Norm type (NORM_L2 = 4, NORM_HAMMING = 6)
+        cross_check: false          # Cross-check for matching
 
-    comparator:
-        type: "COMPOSITE"                   # Selected image comparison method (FEATURE, SSIM, COMPOSITE)
-        ssim:
-            threshold: 0.95                 # Higher is better
-        feature:
-            threshold: 0.95                 # Higher is better
-        composite:
-            threshold: 1.0                  # Higher is better
+  comparator:
+    type: "FEATURE"                   # Selected image comparison method (FEATURE, SSIM, COMPOSITE)
+    ssim:
+      threshold: 1.0                 # Higher is better
+    feature:
+      threshold: 0.95                 # Higher is better
+    composite:
+      threshold: 1.0                  # Higher is better
 
 optimization:
-    max_restarts: 10 # Maximum number of restarts (0 = no restarts)
-    max_points: 20 # Maximum number of points to optimize (0 = no limit) TODO: Implement
-    patience: 50 # Number of allowed stagnant iterations before stopping the optimization
-    improvement_threshold: 1e-4 # DEFAULT: 1e-4; improvement less than this will be considered stagnant
-    gp:
-        kernel:
-            matern52:
-                initial_length_scale_multiplier: 0.5
-                initial_variance: 1.0
-                initial_noise_variance: 1e-6
-            hyperparameters:
-                length_scale: 0.5
-                variance: 1.0
-                noise_variance: 1e-6
-                optimization:
-                    frequency: 10
-                    max_iterations: 100
-                    convergence_tolerance: 1e-5
-                    restarts: 5
-                    param_lower_bound: 1e-6
-                    param_upper_bound: 1e3
-        acquisition:
-            # ADAPTIVE =  adaptive exploration-exploitation + EI + PI + UCB
-            # ADAPTIVE_{strategy} = adaptive exploration-exploitation + {strategy} - other strategies are set to 0
-            strategy: UCB_ALT              # DEFAULT: ADAPTIVE; EI, PI, UCB, UCB_ALT, ADAPTIVE, ADAPTIVE_EI, ADAPTIVE_PI, ADAPTIVE_UCB
-            distance_penalty: true         # DEFAULT: false; Penalize large distances in the acquisition function
-            beta: 1.5                       # DEFAULT: 2.0; Exploration-exploitation trade-off parameter
-            exploration_weight: 1.0         # DEFAULT: 1.0; Exploration weight for the acquisition function
-            exploitation_weight: 1.0        # DEFAULT: 1.0; Exploitation weight for the acquisition function
-            momentum: 0.9                   # DEFAULT: 0.1; Momentum for the acquisition function
-            distance_weight: 1.0            # DEFAULT: 0.5; Weight for the distance term in the acquisition function
+  max_restarts: 10 # Maximum number of restarts (0 = no restarts)
+  max_points: 20 # Maximum number of points to optimize (0 = no limit) TODO: Implement
+  patience: 50 # Number of allowed stagnant iterations before stopping the optimization
+  improvement_threshold: 1e-4 # DEFAULT: 1e-4; improvement less than this will be considered stagnant
+  gp:
+    kernel:
+      matern:
+        initial_length_scale_multiplier: 0.5
+        initial_variance: 1.0
+        initial_noise_variance: 1e-6
+      hyperparameters:
+        length_scale: 0.5
+        variance: 1.0
+        noise_variance: 1e-6
+        optimization:
+          frequency: 10
+          max_iterations: 100
+          convergence_tolerance: 1e-5
+          restarts: 5
+          param_lower_bound: 1e-6
+          param_upper_bound: 1e3
+    acquisition:
+      # ADAPTIVE =  adaptive exploration-exploitation + EI + PI + UCB
+      # ADAPTIVE_{strategy} = adaptive exploration-exploitation + {strategy} - other strategies are set to 0
+      strategy: UCB_ALT              # DEFAULT: ADAPTIVE; EI, PI, UCB, UCB_ALT, ADAPTIVE, ADAPTIVE_EI, ADAPTIVE_PI, ADAPTIVE_UCB
+      distance_penalty: true         # DEFAULT: false; Penalize large distances in the acquisition function
+      beta: 1.5                       # DEFAULT: 2.0; Exploration-exploitation trade-off parameter
+      exploration_weight: 1.0         # DEFAULT: 1.0; Exploration weight for the acquisition function
+      exploitation_weight: 1.0        # DEFAULT: 1.0; Exploitation weight for the acquisition function
+      momentum: 0.9                   # DEFAULT: 0.1; Momentum for the acquisition function
+      distance_weight: 1.0            # DEFAULT: 0.5; Weight for the distance term in the acquisition function
 
-    local_search:
-        frequency: 5 # Frequency of local search (every n steps)
-        max_iterations: 20 # Maximum number of iterations for local search
-        learning_rate: 0.01 # Learning rate for local search
-        epsilon: 1e-5
+  local_search:
+    frequency: 5 # Frequency of local search (every n steps)
+    max_iterations: 500 # Maximum number of iterations for local search
+    learning_rate: 0.01 # Learning rate for local search
+    epsilon: 1e-4
 
 
 estimation:
-    distance:
-        skip: true
-        max_iterations: 2
-        initial_guess: 2.0
-        threshold: 0.05
+  distance:
+    skip: true
+    max_iterations: 2
+    initial_guess: 2.0
+    threshold: 0.05
 
 rendering:
-    duration: 0 # Duration of the rendering in ms
+  duration: 0 # Duration of the rendering in ms
 
 sampling:
-    count: 1
+  count: 1
 
 octree:
-    min_nodes_to_explore: 8
-    min_size_multiplier: 0.01 # CRITICAL - DO NOT CHANGE (0.01)
-    max_iterations: 20
-    tolerance: 0.01
-    restrict_vicinity: false # Restricts search space to the vicinity of the current best point
-    vicinity_multiplier: 0.9 # Multiplier/Importance for the vicinity radius
-    min_vicinity: 0.5 # Minimum vicinity radius
+  min_nodes_to_explore: 8
+  min_size_multiplier: 0.01 # CRITICAL - DO NOT CHANGE (0.01)
+  max_iterations: 20
+  tolerance: 0.01
+  restrict_vicinity: false # Restricts search space to the vicinity of the current best point
+  vicinity_multiplier: 0.9 # Multiplier/Importance for the vicinity radius
+  min_vicinity: 0.5 # Minimum vicinity radius
 
 cache:
-    evict: true
-    max_size: 500
-    base_radius: 0.1 # Base radius for the cache (radius within which the cache will return pre-computed results)
-    score_threshold: 0.4 # pre-computed results returned with a score below this threshold (if available)
+  evict: true
+  max_size: 500
+  base_radius: 0.1 # Base radius for the cache (radius within which the cache will return pre-computed results)
+  score_threshold: 0.4 # pre-computed results returned with a score below this threshold (if available)
 
 perception:
-    type: simulator
+  type: simulator

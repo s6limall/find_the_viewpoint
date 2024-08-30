@@ -9,7 +9,7 @@
 
 class ImagePreprocessor {
 public:
-    explicit ImagePreprocessor(const std::string& model_path = "./u2net.onnx") {
+    explicit ImagePreprocessor(const std::string &model_path = "./u2net.onnx") {
         // Load the pre-trained ONNX model
         net = cv::dnn::readNetFromONNX(model_path);
         if (net.empty()) {
@@ -17,19 +17,39 @@ public:
         }
     }
 
-    cv::Mat process(const cv::Mat& input_image) {
-        // cv::Mat no_bg_image = removeBackground(input_image);
-        cv::Mat enhanced_image = enhanceFeatures(input_image);
-        cv::Mat sharpened_image = sharpenImage(enhanced_image);
-        return sharpened_image;
+     cv::Mat process(const cv::Mat& input_image) {
+        cv::Mat processed_image = input_image.clone();
+
+        // Check if background removal is necessary
+        if (hasSignificantBackground(input_image)) {
+            processed_image = removeBackground(input_image);
+        } else {
+            processed_image = input_image.clone();
+        }
+        cv::Mat enhanced_image = enhanceFeatures(processed_image);
+
+        return normalizeImage(enhanced_image);
     }
 
 private:
     cv::dnn::Net net;
 
-    cv::Mat removeBackground(const cv::Mat& image) {
-        cv::Mat blob = cv::dnn::blobFromImage(image, 1.0 / 255.0, cv::Size(320, 320),
-                                              cv::Scalar(0, 0, 0), true, false);
+    static bool hasSignificantBackground(const cv::Mat& image) {
+        // Convert image to grayscale
+        cv::Mat gray_image;
+        cv::cvtColor(image, gray_image, cv::COLOR_BGR2GRAY);
+
+        // Calculate the standard deviation of pixel values
+        cv::Scalar mean, stddev;
+        cv::meanStdDev(gray_image, mean, stddev);
+
+        // If the standard deviation is low, it's likely a uniform background
+        constexpr double background_threshold = 20.0; // You can adjust this threshold
+        return stddev[0] > background_threshold;
+    }
+
+     cv::Mat removeBackground(const cv::Mat &image) {
+        cv::Mat blob = cv::dnn::blobFromImage(image, 1.0 / 255.0, cv::Size(320, 320), cv::Scalar(0, 0, 0), true, false);
 
         net.setInput(blob);
         cv::Mat output = net.forward();
@@ -57,7 +77,7 @@ private:
         return result;
     }
 
-    cv::Mat enhanceFeatures(const cv::Mat& image) {
+    static cv::Mat enhanceFeatures(const cv::Mat &image) {
         cv::Mat lab_image, enhanced;
 
         // Convert to LAB color space for better contrast manipulation
@@ -68,7 +88,7 @@ private:
         cv::split(lab_image, lab_planes);
 
         // Apply CLAHE to the L-channel for contrast enhancement
-        cv::Ptr<cv::CLAHE> clahe = cv::createCLAHE(2.0, cv::Size(8, 8));
+        cv::Ptr<cv::CLAHE> clahe = cv::createCLAHE(3.0, cv::Size(8, 8));
         clahe->apply(lab_planes[0], lab_planes[0]);
 
         // Merge the LAB channels back
@@ -80,23 +100,12 @@ private:
         return enhanced;
     }
 
-    cv::Mat sharpenImage(const cv::Mat& image) {
-        cv::Mat sharpened;
-
-        // Create a kernel for sharpening
-        cv::Mat kernel = (cv::Mat_<float>(3, 3) <<
-                         -1, -1, -1,
-                         -1,  9, -1,
-                         -1, -1, -1);
-
-        // Apply the kernel to the image
-        cv::filter2D(image, sharpened, CV_32F, kernel);
-
-        // Convert back to 8-bit
-        sharpened.convertTo(sharpened, CV_8UC3);
-
-        return sharpened;
+    static cv::Mat normalizeImage(const cv::Mat& image) {
+        cv::Mat normalized;
+        cv::normalize(image, normalized, 0, 255, cv::NORM_MINMAX, CV_8UC3);
+        return normalized;
     }
+
 };
 
 #endif // IMAGE_PROCESSOR_HPP

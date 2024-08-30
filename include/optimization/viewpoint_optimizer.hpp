@@ -5,6 +5,7 @@
 #include "acquisition.hpp"
 #include "cache/viewpoint_cache.hpp"
 #include "evaluation/viewpoint_evaluator.hpp"
+#include "local_optimizer.hpp"
 #include "radius_optimizer.hpp"
 #include "sampling/viewpoint_sampler.hpp"
 #include "spatial/octree.hpp"
@@ -33,6 +34,8 @@ namespace optimization {
             T best_score = initial_best.getScore();
             stagnant_iterations_ = 0;
             recent_scores_.clear();
+
+            local_optimizer_ = std::make_unique<LocalOptimizer<T>>(comparator);
 
             typename optimization::Acquisition<T>::Config acquisition_config(
                     optimization::Acquisition<T>::Strategy::ADAPTIVE,
@@ -69,6 +72,14 @@ namespace optimization {
 
                 if (i % local_search_frequency == 0) {
                     localRefinement(target, comparator);
+                    /*LOG_INFO("Initiating local search at iteration [{} / {}]", i, max_iterations_);
+                    best_viewpoint_ = local_optimizer_->optimize(best_viewpoint_.value(), target);
+                    current_best_score = best_viewpoint_->getScore();
+                    if (current_best_score > best_score) {
+                        best_score = current_best_score;
+                        stagnant_iterations_ = 0;
+                        LOG_INFO("Local optimization improved score to {}", best_score);
+                    }*/
                 }
 
                 if (evaluator_.hasConverged(current_best_score, best_score, target_score, i, recent_scores_,
@@ -76,7 +87,7 @@ namespace optimization {
                     stagnant_iterations_ >= max_stagnant_iterations) {
                     LOG_INFO("Optimization converged or stagnated at iteration {}", i);
                     break;
-                    }
+                }
 
                 if (i % hyperparameter_optimization_frequency == 0) {
                     gpr_.optimizeHyperparameters();
@@ -88,8 +99,13 @@ namespace optimization {
                 return;
             }
 
-            LOG_INFO("Main optimization complete. Best viewpoint before radius refinement: {}",
+            LOG_INFO("Main optimization complete. Best viewpoint before final refinement: {}",
                      best_viewpoint_->toString());
+
+            // Perform final local optimization
+            /*best_viewpoint_ = local_optimizer_->optimize(*best_viewpoint_, target);*/
+
+            LOG_INFO("Best viewpoint after final local optimization: {}", best_viewpoint_->toString());
 
             auto refined_result = optimizeRadius(target);
 
@@ -138,6 +154,7 @@ namespace optimization {
         cache::ViewpointCache<T> cache_;
         mutable optimization::Acquisition<T> acquisition_;
         ViewpointEvaluator<T> evaluator_;
+        std::unique_ptr<LocalOptimizer<T>> local_optimizer_;
 
         void localRefinement(const Image<> &target,
                              const std::shared_ptr<processing::image::ImageComparator> &comparator) {
@@ -202,11 +219,12 @@ namespace optimization {
                 nodes_explored++;
 
                 T current_best_score = best_viewpoint_->getScore();
-                if (evaluator_.hasConverged(current_best_score, best_score_this_refinement, target_score_, current_iteration,
-                                            recent_scores_, stagnant_iterations_, *best_viewpoint_)) {
+                if (evaluator_.hasConverged(current_best_score, best_score_this_refinement, target_score_,
+                                            current_iteration, recent_scores_, stagnant_iterations_,
+                                            *best_viewpoint_)) {
                     LOG_INFO("Convergence detected during refinement at iteration {}", current_iteration);
                     return true;
-                                            }
+                }
 
 
                 if (current_best_score > best_score_this_refinement) {
@@ -232,7 +250,7 @@ namespace optimization {
         }
 
         void exploreNode(typename spatial::Octree<T>::Node &node, const Image<> &target,
-                     const std::shared_ptr<processing::image::ImageComparator> &comparator) {
+                         const std::shared_ptr<processing::image::ImageComparator> &comparator) {
             if (node.points.empty()) {
                 node.points = sampler_.samplePoints(node);
                 if (octree_.isWithinNode(node, best_viewpoint_->getPosition())) {
@@ -241,7 +259,7 @@ namespace optimization {
             }
 
             node.max_acquisition = std::numeric_limits<T>::lowest();
-            for (auto &point : node.points) {
+            for (auto &point: node.points) {
                 evaluator_.evaluatePoint(point, target, comparator);
                 auto [mean, std_dev] = gpr_.predict(point.getPosition());
                 T acquisition_value = evaluator_.computeAcquisition(point.getPosition(), mean, std_dev);
