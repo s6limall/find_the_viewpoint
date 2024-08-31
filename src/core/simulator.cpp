@@ -1,45 +1,66 @@
-// File: core/simulator.cpp
+// File: core/vision/simulator.cpp
 
 #include "core/vision/simulator.hpp"
 
 namespace core {
 
-    Simulator::Simulator(const std::optional<std::string_view> &mesh_path) {
-        configureCamera();
-        loadMesh(mesh_path.value_or(config::get("paths.mesh", Defaults::mesh_path.data())));
-        setupViewer();
-        normalizeMesh();
+    std::shared_ptr<Simulator> Simulator::create(const std::string_view mesh_path) {
+        return std::shared_ptr<Simulator>(new Simulator(mesh_path));
     }
 
-    void Simulator::configureCamera() {
+    Simulator::Simulator(const std::string_view mesh_path) {
+        const int width = config::get("camera.width", 640);
+        const int height = config::get("camera.height", 480);
+        const auto fov_x = config::get("camera.fov_x", 0.95);
+        const auto fov_y = config::get("camera.fov_y", 0.75);
+
         camera_ = std::make_shared<Camera>();
-        const int width = config::get("camera.width", Defaults::width);
-        const int height = config::get("camera.height", Defaults::height);
-        const auto fov_x = config::get("camera.fov_x", Defaults::fov_x);
-        const auto fov_y = config::get("camera.fov_y", Defaults::fov_y);
-
-        LOG_INFO("Configuring camera with width={}, height={}, fov_x={}, fov_y={}", width, height, fov_x, fov_y);
         camera_->setIntrinsics(width, height, fov_x, fov_y);
-    }
+        LOG_INFO("Camera configured: width={}, height={}, fov_x={}, fov_y={}", width, height, fov_x, fov_y);
 
-    void Simulator::loadMesh(std::string_view object_path) {
-        mesh_ = std::make_shared<pcl::PolygonMesh>();
-        if (!pcl::io::loadPolygonFilePLY(object_path.data(), *mesh_)) {
-            throw std::runtime_error("Failed to load mesh from: " + std::string(object_path));
+        setupViewer();
+
+        if (!mesh_path.empty()) {
+            loadMesh(mesh_path);
         }
-        LOG_DEBUG("Loaded mesh from: {}", object_path);
     }
 
     void Simulator::setupViewer() {
-        viewer_ = std::make_shared<pcl::visualization::PCLVisualizer>("Viewer");
+        viewer_ = std::make_shared<pcl::visualization::PCLVisualizer>("Simulator Viewer");
         viewer_->setBackgroundColor(255, 255, 255);
-        viewer_->addPolygonMesh(*mesh_, "mesh");
         viewer_->initCameraParameters();
         viewer_->setSize(camera_->getIntrinsics().width, camera_->getIntrinsics().height);
     }
 
+    void Simulator::loadMesh(std::string_view object_path) {
+        std::lock_guard<std::mutex> lock(mutex_);
+
+        mesh_ = std::make_shared<pcl::PolygonMesh>();
+        if (pcl::io::loadPolygonFilePLY(object_path.data(), *mesh_)) {
+            LOG_INFO("Mesh loaded from: {}", object_path);
+            updateViewer();
+            normalizeMesh();
+        } else {
+            mesh_.reset();
+            throw std::runtime_error(fmt::format("Failed to load mesh from: {}", object_path));
+        }
+    }
+
+    void Simulator::updateViewer() const {
+        viewer_->removeAllPointClouds();
+        viewer_->removeAllShapes();
+        if (mesh_) {
+            viewer_->addPolygonMesh(*mesh_, "mesh");
+        }
+    }
+
     void Simulator::normalizeMesh(const NormalizationMethod method) const {
-        const pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZ>());
+        if (!mesh_) {
+            LOG_WARN("No mesh loaded. Skipping normalization.");
+            return;
+        }
+
+        const pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(new pcl::PointCloud<pcl::PointXYZ>);
         pcl::fromPCLPointCloud2(mesh_->cloud, *cloud);
 
         if (cloud->empty()) {
@@ -98,40 +119,26 @@ namespace core {
     }
 
     cv::Mat Simulator::render(const Eigen::Matrix4d &extrinsics, std::string_view save_path) {
+        std::lock_guard<std::mutex> lock(mutex_);
+
+        if (!mesh_) {
+            throw std::runtime_error("No mesh loaded. Cannot render.");
+        }
 
         const auto duration = config::get("rendering.duration", 10);
 
-        LOG_TRACE("Rendering image...");
+        viewer_->setSize(camera_->getIntrinsics().width, camera_->getIntrinsics().height);
+        viewer_->setCameraParameters(camera_->getIntrinsics().getMatrix().cast<float>(), extrinsics.cast<float>());
+        viewer_->spinOnce(duration);
+        viewer_->saveScreenshot(std::string(save_path));
 
-        try {
-            viewer_->setSize(camera_->getIntrinsics().width, camera_->getIntrinsics().height);
-            viewer_->setCameraParameters(camera_->getIntrinsics().getMatrix().cast<float>(), extrinsics.cast<float>());
-            viewer_->spinOnce(duration);
-            viewer_->saveScreenshot(std::string(save_path));
-
-            LOG_TRACE("Rendered image saved at: {}", save_path);
-
-            cv::Mat rendered_image;
-            try {
-                rendered_image = common::io::image::readImage(save_path);
-                if (rendered_image.empty()) {
-                    LOG_ERROR("Rendered image is empty.");
-                    throw std::runtime_error("Rendered image is empty.");
-                }
-            } catch (const std::exception &e) {
-                LOG_ERROR("Failed to read the rendered image from {}: {}", save_path, e.what());
-                throw;
-            }
-
-            LOG_TRACE("Rendered image captured.");
-            return rendered_image;
-        } catch (const std::exception &e) {
-            LOG_ERROR("Rendering task failed: {}", e.what());
-            return {}; // Return an empty image in case of failure
+        cv::Mat rendered_image = common::io::image::readImage(save_path);
+        if (rendered_image.empty()) {
+            throw std::runtime_error(fmt::format("Failed to read rendered image from: {}", save_path));
         }
+
+        LOG_TRACE("Image rendered and saved at: {}", save_path);
+        return rendered_image;
     }
-
-
-    std::shared_ptr<pcl::visualization::PCLVisualizer> Simulator::getViewer() { return viewer_; }
 
 } // namespace core

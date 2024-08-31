@@ -1,19 +1,19 @@
 # File: configuration.yaml
 
 object:
-  name: "obj_000020"
+  name: "obj_000001"
 
 target_images:
-  generate: false
+  generate: true
   output_directory: "target_images"
   num_images: 8
 
 paths:
   log_directory: "logs"
-  mesh: "./3d_models/obj_000020.ply"
-  target_image: "./target_images/obj_000020/target_1.png"
+  mesh: "./3d_models/obj_000001.ply"
+  target_image: "./target_images/obj_000001/target_1.png"
   models_directory: "./3d_models"
-  object_name: "obj_000020"
+  object_name: "obj_000001"
 
 logging:
   level: "debug" # error, critical, warn, info, debug, trace
@@ -34,7 +34,7 @@ camera:
 image:
   feature:
     extractor:
-      type: "AKAZE"                    # Feature extractor type (AKAZE, ORB, SIFT)
+      type: "SIFT"                    # Feature extractor type (AKAZE, ORB, SIFT)
     matcher:
       type: "FLANN"                   # Feature matcher type (FLANN, BF)
       flann:
@@ -70,7 +70,7 @@ optimization:
         noise_variance: 1e-6
         optimization:
           frequency: 10
-          max_iterations: 100
+          max_iterations: 10
           convergence_tolerance: 1e-5
           restarts: 5
           param_lower_bound: 1e-6
@@ -79,12 +79,12 @@ optimization:
       # ADAPTIVE =  adaptive exploration-exploitation + EI + PI + UCB
       # ADAPTIVE_{strategy} = adaptive exploration-exploitation + {strategy} - other strategies are set to 0
       strategy: UCB_ALT              # DEFAULT: ADAPTIVE; EI, PI, UCB, UCB_ALT, ADAPTIVE, ADAPTIVE_EI, ADAPTIVE_PI, ADAPTIVE_UCB
-      distance_penalty: true         # DEFAULT: false; Penalize large distances in the acquisition function
-      beta: 1.5                       # DEFAULT: 2.0; Exploration-exploitation trade-off parameter
-      exploration_weight: 1.0         # DEFAULT: 1.0; Exploration weight for the acquisition function
+      distance_penalty: false         # DEFAULT: false; Penalize large distances in the acquisition function
+      beta: 2.0                       # DEFAULT: 2.0; Exploration-exploitation trade-off parameter
+      exploration_weight: 5.0         # DEFAULT: 1.0; Exploration weight for the acquisition function
       exploitation_weight: 1.0        # DEFAULT: 1.0; Exploitation weight for the acquisition function
       momentum: 0.9                   # DEFAULT: 0.1; Momentum for the acquisition function
-      distance_weight: 0.75            # DEFAULT: 0.5; Weight for the distance term in the acquisition function
+      distance_weight: 1.0            # DEFAULT: 0.5; Weight for the distance term in the acquisition function
 
   local_search:
     frequency: 5 # Frequency of local search (every n steps)
@@ -104,7 +104,7 @@ rendering:
   duration: 0 # Duration of the rendering in ms
 
 sampling:
-  count: 6
+  count: 1
 
 octree:
   min_nodes_to_explore: 8

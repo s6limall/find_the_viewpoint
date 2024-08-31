@@ -3,72 +3,62 @@
 #ifndef SIMULATOR_HPP
 #define SIMULATOR_HPP
 
-#include <future>
 #include <memory>
+#include <mutex>
 #include <string>
-
-#include <pcl/PolygonMesh.h>
-#include <pcl/common/common.h>
-#include <pcl/common/transforms.h>
-#include <pcl/io/ply_io.h>
-#include <pcl/io/vtk_lib_io.h>
-#include <pcl/visualization/pcl_visualizer.h>
 
 #include <Eigen/Core>
 #include <opencv2/opencv.hpp>
+#include <pcl/PolygonMesh.h>
+#include <pcl/common/transforms.h>
+#include <pcl/io/vtk_lib_io.h>
+#include <pcl/visualization/pcl_visualizer.h>
 
-#include "common/logging/logger.hpp"
-#include "config/configuration.hpp"
+#include "core/camera.hpp"
 #include "core/vision/perception.hpp"
 
 #include "common/io/image.hpp"
-#include "core/camera.hpp"
+#include "common/logging/logger.hpp"
+#include "config/configuration.hpp"
+
 
 namespace core {
+
     class Simulator final : public Perception {
     public:
         enum class NormalizationMethod { UnitCube, UnitSphere };
 
-        explicit Simulator(const std::optional<std::string_view> &mesh_path = std::nullopt);
+        static std::shared_ptr<Simulator> create(std::string_view mesh_path = {});
+
+        Simulator(const Simulator &) = delete;
+        Simulator &operator=(const Simulator &) = delete;
+        Simulator(Simulator &&) = delete;
+        Simulator &operator=(Simulator &&) = delete;
+        ~Simulator() override = default;
+
         void loadMesh(std::string_view object_path);
 
-        [[nodiscard]]
-        cv::Mat render(const Eigen::Matrix4d &extrinsics, std::string_view save_path) override;
+        [[nodiscard]] cv::Mat render(const Eigen::Matrix4d &extrinsics, std::string_view save_path) override;
 
-        std::shared_ptr<Camera> getCamera() override { return camera_; }
-
-        [[nodiscard]] std::shared_ptr<pcl::visualization::PCLVisualizer> getViewer();
+        [[nodiscard]] std::shared_ptr<Camera> getCamera() const noexcept override { return camera_; }
+        [[nodiscard]] auto getViewer() const noexcept { return viewer_; }
 
     private:
-        std::shared_ptr<pcl::visualization::PCLVisualizer> viewer_; // Visualizer for rendering the mesh
-        std::shared_ptr<pcl::PolygonMesh> mesh_; // Polygon mesh loaded from a file
-
-        void configureCamera();
+        explicit Simulator(std::string_view mesh_path);
 
         void setupViewer();
-
-        // Normalize the mesh to fit within a unit cube at the origin.
+        void updateViewer() const;
         void normalizeMesh(NormalizationMethod method = NormalizationMethod::UnitCube) const;
-
-        // Center the point cloud at the origin.
         static void centerPointCloud(const pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud, const Eigen::Vector4d &centroid);
-
-        // Scale the point cloud to fit within a unit cube/sphere.
         static void scalePointCloud(const pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud, double scale);
-
         static double calculateScaleForUnitCube(const pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud);
-
         static double calculateScaleForUnitSphere(const pcl::PointCloud<pcl::PointXYZ>::Ptr &cloud);
 
-
-        struct Defaults {
-            static constexpr double fov_x = 0.95;
-            static constexpr double fov_y = 0.75;
-            static constexpr int width = 640;
-            static constexpr int height = 480;
-            static constexpr std::string_view mesh_path = "./3d_models/obj_000020.ply";
-        };
+        std::shared_ptr<pcl::visualization::PCLVisualizer> viewer_;
+        std::shared_ptr<pcl::PolygonMesh> mesh_;
+        mutable std::mutex mutex_;
     };
+
 } // namespace core
 
 #endif // SIMULATOR_HPP

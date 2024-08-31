@@ -5,14 +5,15 @@
 
 #include <Eigen/Core>
 #include <memory>
+#include <mutex>
 #include <opencv2/opencv.hpp>
 #include <string>
-#include <mutex>
+#include "api/interface/publisher.hpp"
 #include "common/logging/logger.hpp"
+#include "common/state/state.hpp"
 #include "config/configuration.hpp"
 #include "core/vision/perception.hpp"
 #include "core/vision/simulator.hpp"
-#include "api/interface/publisher.hpp"
 
 namespace core {
 
@@ -32,7 +33,10 @@ namespace core {
         static void initialize() {
             std::string perception_type = config::get("perception.type", "simulator");
             if (perception_type == "simulator") {
-                perception_ = std::make_unique<Simulator>();
+                const auto mesh_path =
+                        state::get("paths.mesh", config::get("paths.mesh", "./3d_models/obj_000020.ply"));
+                perception_ = core::Simulator::create(mesh_path);
+                // perception_ = Simulator::create();
             } else if (perception_type == "robot") {
                 // perception_ = std::make_unique<Robot>();
                 LOG_ERROR("Robot perception not yet implemented.");
@@ -89,4 +93,3 @@ namespace core {
 } // namespace core
 
 #endif // EYE_HPP
-

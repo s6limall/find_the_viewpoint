@@ -3,9 +3,9 @@
 #ifndef IO_HPP
 #define IO_HPP
 
+#include <filesystem>
 #include <fstream>
 #include <string>
-#include <filesystem>
 #include "common/logging/logger.hpp"
 
 namespace common::io {
@@ -112,9 +112,8 @@ namespace common::io {
      * @throws std::runtime_error if the file could not be copied.
      */
     inline void copyFile(std::string_view source_path, std::string_view destination_path, bool overwrite = false) {
-        const std::filesystem::copy_options options = overwrite
-                                                          ? std::filesystem::copy_options::overwrite_existing
-                                                          : std::filesystem::copy_options::none;
+        const std::filesystem::copy_options options =
+                overwrite ? std::filesystem::copy_options::overwrite_existing : std::filesystem::copy_options::none;
 
         try {
             std::filesystem::copy(source_path, destination_path, options);
@@ -141,6 +140,66 @@ namespace common::io {
             throw std::runtime_error(fmt::format("Could not move file: {}", e.what()));
         }
     }
-}
+
+    /**
+     * @brief Lists full paths of files in a directory with a specific extension.
+     *
+     * @param dir_path Path to the directory as a string or string_view.
+     * @param extension File extension to filter by (including the dot, e.g., ".ply").
+     * @return std::vector<std::filesystem::path> List of full file paths in the directory with the specified extension.
+     * @throws std::runtime_error if the directory could not be read.
+     */
+    inline std::vector<std::filesystem::path> filesByExtension(std::string_view dir_path, std::string_view extension) {
+        const std::filesystem::path path(dir_path);
+        if (!std::filesystem::exists(path) || !std::filesystem::is_directory(path)) {
+            LOG_ERROR("Directory does not exist or is not a directory: {}", dir_path);
+            throw std::runtime_error(fmt::format("Directory does not exist or is not a directory: {}", dir_path));
+        }
+
+        LOG_DEBUG("Listing files with extension {} in directory: {}", extension, dir_path);
+        std::vector<std::filesystem::path> matching_files;
+
+        for (const auto &entry: std::filesystem::directory_iterator(path)) {
+            if (entry.is_regular_file() && entry.path().extension() == extension) {
+                matching_files.push_back(entry.path());
+            }
+        }
+
+        std::ranges::sort(matching_files);
+
+        LOG_DEBUG("Found {} files with extension {} in directory: {}", matching_files.size(), extension, dir_path);
+        return matching_files;
+    }
+
+    /**
+     * @brief Lists filenames of files in a directory with a specific extension.
+     *
+     * @param dir_path Path to the directory as a string or string_view.
+     * @param extension File extension to filter by (including the dot, e.g., ".ply").
+     * @return std::vector<std::string> List of filenames in the directory with the specified extension.
+     * @throws std::runtime_error if the directory could not be read.
+     */
+    inline std::vector<std::string> filenamesByExtension(std::string_view dir_path, std::string_view extension) {
+        const std::filesystem::path path(dir_path);
+        if (!std::filesystem::exists(path) || !std::filesystem::is_directory(path)) {
+            LOG_ERROR("Directory does not exist or is not a directory: {}", dir_path);
+            throw std::runtime_error(fmt::format("Directory does not exist or is not a directory: {}", dir_path));
+        }
+
+        LOG_DEBUG("Listing filenames with extension {} in directory: {}", extension, dir_path);
+        std::vector<std::string> matching_filenames;
+
+        for (const auto &entry: std::filesystem::directory_iterator(path)) {
+            if (entry.is_regular_file() && entry.path().extension() == extension) {
+                matching_filenames.push_back(entry.path().filename().string());
+            }
+        }
+
+        std::ranges::sort(matching_filenames);
+
+        LOG_DEBUG("Found {} files with extension {} in directory: {}", matching_filenames.size(), extension, dir_path);
+        return matching_filenames;
+    }
+} // namespace common::io
 
 #endif // IO_HPP

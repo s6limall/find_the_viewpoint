@@ -4,16 +4,17 @@
 
 using KernelType = optimization::kernel::Matern52<>;
 
+Image<> Executor::target_;
 std::once_flag Executor::init_flag_;
 double Executor::radius_, Executor::target_score_;
-Image<> Executor::target_;
-std::shared_ptr<processing::image::FeatureExtractor> Executor::extractor_;
 std::shared_ptr<processing::image::FeatureMatcher> Executor::matcher_;
+std::shared_ptr<processing::image::FeatureExtractor> Executor::extractor_;
 std::shared_ptr<processing::image::ImageComparator> Executor::comparator_;
-std::shared_ptr<core::Simulator> Executor::simulator_ = std::make_shared<core::Simulator>();
+std::shared_ptr<core::Simulator> Executor::simulator_;
 
 void Executor::initialize() {
     LOG_INFO("Initializing executor.");
+    simulator_ = core::Simulator::create();
     extractor_ = processing::image::FeatureExtractor::create();
     matcher_ = processing::image::FeatureMatcher::create<processing::image::FLANNMatcher>();
     std::tie(comparator_, target_score_) = processing::image::ImageComparator::create(extractor_, matcher_);
@@ -22,6 +23,7 @@ void Executor::initialize() {
         return Image<>(common::io::image::readImage(path), extractor_);
     };
 
+    simulator_->loadMesh(config::get("paths.mesh", ""));
     target_ = config::get("target_images.generate", false)
                       ? loadImage(TargetImageGenerator(simulator_).getRandomTargetImagePath())
                       : loadImage(config::get("paths.target_image", "./target.png"));
@@ -36,6 +38,11 @@ void Executor::execute() {
 
     try {
         LOG_INFO("Starting viewpoint optimization.");
+
+        const auto mesh_path = state::get("paths.mesh", config::get("paths.mesh", "./3d_models/obj_000020.ply"));
+        LOG_INFO("Loading mesh: {}", mesh_path);
+        simulator_->loadMesh(mesh_path);
+        LOG_INFO("Mesh loaded successfully.");
 
         const double size = 2 * radius_;
         const auto length_scale = config::get("optimization.gp.kernel.hyperparameters.length_scale", 0.5) * size;
@@ -119,8 +126,12 @@ void Executor::execute() {
             LOG_INFO("Optimization completed. Best viewpoint: {} - Score: {}", global_best_viewpoint->toString(),
                      global_best_viewpoint->getScore());
 
+            const auto object_name = config::get("object.name", "NA");
+            const auto comparator_type = config::get("image.comparator.type", "NA");
+            const auto output_path = fmt::format("{}_{}_diff.png", object_name, comparator_type);
+
             Image<> best_image = Image<>::fromViewPoint(*global_best_viewpoint, extractor_);
-            common::utilities::Visualizer::diff(target_, best_image);
+            common::utilities::Visualizer::diff(target_, best_image, output_path);
         } else {
             LOG_WARN("No suitable viewpoint found after {} restarts", max_restarts);
         }

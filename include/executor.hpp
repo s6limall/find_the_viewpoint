@@ -8,6 +8,7 @@
 
 #include "api/pose_callback.hpp"
 #include "api/pose_publisher.hpp"
+#include "common/state/state.hpp"
 #include "common/utilities/visualizer.hpp"
 #include "misc/target_generator.hpp"
 #include "optimization/gaussian/gpr.hpp"
@@ -18,6 +19,7 @@
 #include "processing/vision/estimation/distance_estimator.hpp"
 #include "sampling/sampler/fibonacci.hpp"
 #include "types/image.hpp"
+
 
 class Executor {
 public:

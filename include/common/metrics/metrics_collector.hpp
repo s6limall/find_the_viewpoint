@@ -174,7 +174,8 @@ namespace metrics {
 
         void saveMetrics() const {
             std::lock_guard lock(mutex_);
-            const auto filename = output_directory_ / fmt::format("metrics_{}.csv", current_object_);
+            const auto comparator = config::get("image.comparator.type", "NA");
+            const auto filename = output_directory_ / fmt::format("metrics_{}_{}.csv", current_object_, comparator);
 
             std::filesystem::create_directories(output_directory_);
 
@@ -193,32 +194,48 @@ namespace metrics {
             }
 
             // Write CSV header with all metric names
-            file << "index,timestamp,point_id";
+            file << "timestamp,point_id";
             for (const auto &metric_name: all_metric_names) {
                 file << "," << metric_name;
             }
             file << '\n';
 
-            // Write data for all points
-            size_t index = 0;
-            for (const auto &[key, entries]: data_) {
-                std::unordered_map<std::string, std::string> row_data;
-                int64_t earliest_timestamp = std::numeric_limits<int64_t>::max();
+            // Collect all data points
+            struct RowData {
+                int64_t timestamp;
+                std::string point_id;
+                std::unordered_map<std::string, std::string> metrics;
+            };
+            std::vector<RowData> all_rows;
 
-                // Merge all metrics for this point_id
+            for (const auto &[key, entries]: data_) {
                 for (const auto &entry: entries) {
                     for (const auto &value: entry.values) {
-                        earliest_timestamp = std::min(earliest_timestamp, value.timestamp);
-                        row_data[entry.name] = formatValue(value.value); // overwrite if there are duplicates
+                        auto it = std::find_if(all_rows.begin(), all_rows.end(), [&](const RowData &row) {
+                            return row.timestamp == value.timestamp && row.point_id == key;
+                        });
+
+                        if (it == all_rows.end()) {
+                            all_rows.push_back({value.timestamp, key, {}});
+                            it = std::prev(all_rows.end());
+                        }
+
+                        it->metrics[entry.name] = formatValue(value.value);
                     }
                 }
+            }
 
-                // Write the row
-                file << index++ << "," << earliest_timestamp << "," << key;
+            // Sort rows by timestamp
+            std::ranges::sort(all_rows, [](const RowData &a, const RowData &b) { return a.timestamp < b.timestamp; });
+
+            // Write sorted data
+            for (const auto &row: all_rows) {
+                file << row.timestamp << "," << row.point_id;
                 for (const auto &metric_name: all_metric_names) {
                     file << ",";
-                    if (row_data.find(metric_name) != row_data.end()) {
-                        file << row_data[metric_name];
+                    auto it = row.metrics.find(metric_name);
+                    if (it != row.metrics.end()) {
+                        file << it->second;
                     }
                 }
                 file << '\n';

@@ -15,6 +15,8 @@ public:
         object_name_ = config::get("object.name", "obj_000001");
         output_directory_ = config::get("paths.output_directory", "target_images");
         models_directory_ = config::get("paths.models_directory", "3d_models");
+        generateTargetImages();
+
         const auto image_path = config::get("paths.target_image", "./target.png");
         const cv::Mat target_image = common::io::image::readImage(image_path);
         radius_ = config::get("estimation.distance.skip", true)
@@ -51,7 +53,7 @@ public:
         }
     }
 
-    std::string getRandomTargetImagePath() const {
+    [[nodiscard]] std::string getRandomTargetImagePath() const {
         const std::filesystem::path output_dir = output_directory_ / object_name_;
         std::vector<std::string> image_paths;
 
@@ -79,25 +81,24 @@ private:
     std::filesystem::path models_directory_;
     double radius_;
 
-    Eigen::Matrix4d generateRandomExtrinsics() const {
+    [[nodiscard]] static Eigen::Matrix4d generateRandomExtrinsics(const double radius = 2.0) {
         std::random_device rd;
         std::mt19937 gen(rd());
-        std::uniform_real_distribution<> dis(-1.0, 1.0);
-        const auto tolerance = config::get("octree.tolerance", 0.1);
-        std::uniform_real_distribution<> dis_radius(radius_ - tolerance, radius_ + tolerance);
+        std::uniform_real_distribution<> dis_azimuth(0.0, 2.0 * M_PI);
+        std::uniform_real_distribution<> dis_elevation(0.0, M_PI / 2.0); // Upper hemisphere only
 
+        // Generate spherical coordinates
+        const double azimuth = dis_azimuth(gen);
+        const double elevation = dis_elevation(gen);
+
+        // Convert spherical coordinates to Cartesian coordinates
         Eigen::Vector3d position;
+        position.x() = std::sin(elevation) * std::cos(azimuth);
+        position.y() = std::sin(elevation) * std::sin(azimuth);
+        position.z() = std::cos(elevation);
 
-        // Generate a random point on the unit sphere in the upper hemisphere
-        do {
-            position = Eigen::Vector3d(dis(gen), dis(gen), dis(gen));
-        } while (position.squaredNorm() > 1.0 || position.z() < 0.0);
-
-        position.normalize();
-
-        // Scale to a random radius within [radius_ - tolerance, radius_ + tolerance]
-        const double final_radius = dis_radius(gen);
-        position *= final_radius;
+        // Scale by the given radius
+        position *= radius;
 
         // Create the extrinsics matrix with the computed position
         Eigen::Matrix4d extrinsics = Eigen::Matrix4d::Identity();
