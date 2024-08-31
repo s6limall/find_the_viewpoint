@@ -28,6 +28,8 @@ void Executor::initialize() {
                       ? loadImage(TargetImageGenerator(simulator_).getRandomTargetImagePath())
                       : loadImage(config::get("paths.target_image", "./target.png"));
 
+    common::io::image::writeImage("target.png", target_.getImage());
+
     radius_ = config::get("estimation.distance.skip", true)
                       ? config::get("estimation.distance.initial_guess", 1.5)
                       : processing::vision::DistanceEstimator().estimate(target_.getImage());

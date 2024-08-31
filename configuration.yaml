@@ -1,7 +1,7 @@
 # File: configuration.yaml
 
 object:
-  name: "obj_000001"
+  name: "obj_000020"
 
 target_images:
   generate: true
@@ -10,10 +10,10 @@ target_images:
 
 paths:
   log_directory: "logs"
-  mesh: "./3d_models/obj_000001.ply"
-  target_image: "./target_images/obj_000001/target_1.png"
+  mesh: "./3d_models/obj_000020.ply"
+  target_image: "./target_images/obj_000020/target_1.png"
   models_directory: "./3d_models"
-  object_name: "obj_000001"
+  object_name: "obj_000020"
 
 logging:
   level: "debug" # error, critical, warn, info, debug, trace
@@ -38,20 +38,20 @@ image:
     matcher:
       type: "FLANN"                   # Feature matcher type (FLANN, BF)
       flann:
-        ratio_thresh: 0.8           # Ratio threshold for Lowe’s ratio test
-        min_good_matches: 5         # Minimum number of good matches required
+        ratio_thresh: 0.8             # Ratio threshold for Lowe’s ratio test
+        min_good_matches: 5           # Minimum number of good matches required
       bf:
-        norm_type: 4                # Norm type (NORM_L2 = 4, NORM_HAMMING = 6)
-        cross_check: false          # Cross-check for matching
+        norm_type: 4                  # Norm type (NORM_L2 = 4, NORM_HAMMING = 6)
+        cross_check: false            # Cross-check for matching
 
   comparator:
-    type: "SSIM"                   # Selected image comparison method (FEATURE, SSIM, COMPOSITE)
+    type: "COMPOSITE"                   # Selected image comparison method (FEATURE, SSIM, COMPOSITE)
     ssim:
-      threshold: 1.0                 # Higher is better
+      threshold: 1.0                    # Higher is better
     feature:
-      threshold: 0.85                 # Higher is better
+      threshold: 0.70                   # Higher is better
     composite:
-      threshold: 0.85                  # Higher is better
+      threshold: 0.85                   # Higher is better
 
 optimization:
   max_restarts: 10 # Maximum number of restarts (0 = no restarts)
