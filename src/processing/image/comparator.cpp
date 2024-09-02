@@ -3,6 +3,7 @@
 #include "processing/image/comparator.hpp"
 #include "processing/image/comparison/composite_comparator.hpp"
 #include "processing/image/comparison/feature_comparator.hpp"
+#include "processing/image/comparison/peak_snr_comparator.hpp"
 #include "processing/image/comparison/ssim_comparator.hpp"
 
 namespace processing::image {
@@ -16,11 +17,9 @@ namespace processing::image {
                             const std::shared_ptr<FeatureMatcher> &matcher) {
 
         static const std::unordered_map<std::string_view, FactoryFunction> map{
-                {"ssim", [](auto &, auto &) { return std::make_shared<processing::image::SSIMComparator>(); }},
-                {"feature",
-                 [](auto &e, auto &m) { return std::make_shared<processing::image::FeatureComparator>(e, m); }},
-                {"composite",
-                 [](auto &e, auto &m) { return std::make_shared<processing::image::CompositeComparator>(e, m); }}};
+                {"ssim", [](auto &, auto &) { return std::make_shared<SSIMComparator>(); }},
+                {"feature", [](auto &e, auto &m) { return std::make_shared<FeatureComparator>(e, m); }},
+                {"composite", [](auto &e, auto &m) { return std::make_shared<CompositeComparator>(e, m); }}};
 
 
         auto comparator = config::get<std::string>("image.comparator.type", "ssim");

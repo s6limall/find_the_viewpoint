@@ -10,8 +10,7 @@
 
 class TargetImageGenerator {
 public:
-    explicit TargetImageGenerator(std::shared_ptr<core::Simulator> simulator) :
-        simulator_(std::move(simulator)), radius_(0) {
+    explicit TargetImageGenerator() : radius_(0) {
         object_name_ = config::get("object.name", "obj_000001");
         output_directory_ = config::get("paths.output_directory", "target_images");
         models_directory_ = config::get("paths.models_directory", "3d_models");
@@ -35,7 +34,7 @@ public:
         const std::filesystem::path output_dir = output_directory_ / object_name_;
         std::filesystem::create_directories(output_dir);
 
-        simulator_->loadMesh(model_path.string());
+        // simulator_->loadMesh(model_path.string());
 
         const int num_images = config::get("target_images.num_images", 5);
 
@@ -43,7 +42,7 @@ public:
             const Eigen::Matrix4d extrinsics = generateRandomExtrinsics();
             const std::string image_path = (output_dir / ("target_" + std::to_string(i + 1) + ".png")).string();
 
-            cv::Mat rendered_image = simulator_->render(extrinsics, image_path);
+            cv::Mat rendered_image = core::Eye::render(extrinsics, image_path);
 
             if (!rendered_image.empty()) {
                 LOG_INFO("Generated target image: {}", image_path);
@@ -75,7 +74,7 @@ public:
     }
 
 private:
-    std::shared_ptr<core::Simulator> simulator_;
+    // std::shared_ptr<core::Simulator> simulator_;
     std::string object_name_;
     std::filesystem::path output_directory_;
     std::filesystem::path models_directory_;

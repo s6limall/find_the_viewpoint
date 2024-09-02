@@ -36,11 +36,8 @@ namespace core {
                 const auto mesh_path =
                         state::get("paths.mesh", config::get("paths.mesh", "./3d_models/obj_000020.ply"));
                 perception_ = core::Simulator::create(mesh_path);
-                // perception_ = Simulator::create();
             } else if (perception_type == "robot") {
-                // perception_ = std::make_unique<Robot>();
-                LOG_ERROR("Robot perception not yet implemented.");
-                throw std::runtime_error("Robot perception not implemented");
+                LOG_WARN("Robot perception not set.");
             } else {
                 LOG_ERROR("Invalid perception type in configuration: {}", perception_type);
                 throw std::runtime_error("Invalid perception type in configuration");
@@ -82,6 +79,11 @@ namespace core {
         static void setPerception(std::shared_ptr<Perception> perception) {
             std::call_once(init_flag_, &Eye::initialize);
             perception_ = std::move(perception);
+        }
+
+        static std::shared_ptr<Perception> getPerception() {
+            std::call_once(init_flag_, &Eye::initialize);
+            return perception_;
         }
 
     private:

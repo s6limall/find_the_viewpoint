@@ -42,7 +42,7 @@ private:
     static std::shared_ptr<processing::image::ImageComparator> comparator_;
     static std::shared_ptr<processing::image::FeatureExtractor> extractor_;
     static std::shared_ptr<processing::image::FeatureMatcher> matcher_;
-    static std::shared_ptr<core::Simulator> simulator_;
+    // static std::shared_ptr<core::Simulator> simulator_;
 
     static void initialize();
 };

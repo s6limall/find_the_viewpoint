@@ -2,6 +2,10 @@
 
 #include "executor.hpp"
 
+#include "processing/image/comparison/composite_comparator.hpp"
+#include "processing/image/comparison/feature_comparator.hpp"
+#include "processing/image/comparison/ssim_comparator.hpp"
+
 using KernelType = optimization::kernel::Matern52<>;
 
 Image<> Executor::target_;
@@ -10,11 +14,11 @@ double Executor::radius_, Executor::target_score_;
 std::shared_ptr<processing::image::FeatureMatcher> Executor::matcher_;
 std::shared_ptr<processing::image::FeatureExtractor> Executor::extractor_;
 std::shared_ptr<processing::image::ImageComparator> Executor::comparator_;
-std::shared_ptr<core::Simulator> Executor::simulator_;
+// std::shared_ptr<core::Simulator> Executor::simulator_;
 
 void Executor::initialize() {
     LOG_INFO("Initializing executor.");
-    simulator_ = core::Simulator::create();
+    // simulator_ = core::Simulator::create();
     extractor_ = processing::image::FeatureExtractor::create();
     matcher_ = processing::image::FeatureMatcher::create<processing::image::FLANNMatcher>();
     std::tie(comparator_, target_score_) = processing::image::ImageComparator::create(extractor_, matcher_);
@@ -23,10 +27,12 @@ void Executor::initialize() {
         return Image<>(common::io::image::readImage(path), extractor_);
     };
 
-    simulator_->loadMesh(config::get("paths.mesh", ""));
+    // simulator_->loadMesh(config::get("paths.mesh", ""));
     target_ = config::get("target_images.generate", false)
-                      ? loadImage(TargetImageGenerator(simulator_).getRandomTargetImagePath())
+                      ? loadImage(TargetImageGenerator().getRandomTargetImagePath())
                       : loadImage(config::get("paths.target_image", "./target.png"));
+
+    state::set("target_image", target_.getImage());
 
     common::io::image::writeImage("target.png", target_.getImage());
 
@@ -41,10 +47,10 @@ void Executor::execute() {
     try {
         LOG_INFO("Starting viewpoint optimization.");
 
-        const auto mesh_path = state::get("paths.mesh", config::get("paths.mesh", "./3d_models/obj_000020.ply"));
+        /*const auto mesh_path = state::get("paths.mesh", config::get("paths.mesh", "./3d_models/obj_000020.ply"));
         LOG_INFO("Loading mesh: {}", mesh_path);
         simulator_->loadMesh(mesh_path);
-        LOG_INFO("Mesh loaded successfully.");
+        LOG_INFO("Mesh loaded successfully.");*/
 
         const double size = 2 * radius_;
         const auto length_scale = config::get("optimization.gp.kernel.hyperparameters.length_scale", 0.5) * size;
@@ -134,6 +140,25 @@ void Executor::execute() {
 
             Image<> best_image = Image<>::fromViewPoint(*global_best_viewpoint, extractor_);
             common::utilities::Visualizer::diff(target_, best_image, output_path);
+
+            // Final scoring
+            const auto psnr = processing::image::PeakSNRComparator::compare(target_.getImage(), best_image.getImage());
+            const auto ssim = processing::image::SSIMComparator().compare(target_.getImage(), best_image.getImage());
+            const auto feature_score =
+                    processing::image::FeatureComparator(extractor_, matcher_).compare(target_, best_image);
+            const auto composite_score =
+                    processing::image::CompositeComparator(extractor_, matcher_).compare(target_, best_image);
+
+            LOG_INFO("Final scores - PSNR: {}, SSIM: {}, Feature: {}, Composite: {}", psnr, ssim, feature_score,
+                     composite_score);
+
+            metrics::recordMetrics(best_image.getViewPoint().value(), {
+                                                                              {"psnr", psnr},
+                                                                              {"ssim", ssim},
+                                                                              {"feature", feature_score},
+                                                                              {"composite", composite_score},
+                                                                      });
+
         } else {
             LOG_WARN("No suitable viewpoint found after {} restarts", max_restarts);
         }

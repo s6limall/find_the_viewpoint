@@ -19,16 +19,15 @@ template<FloatingPoint T = double>
 class ViewPoint {
 public:
     // Constructors
-    constexpr ViewPoint() noexcept :
-        position_(Eigen::Matrix<T, 3, 1>::Zero()), score_(T(0)), uncertainty_(T(1)), cluster_id_(-1) {}
+    constexpr ViewPoint() noexcept : position_(Eigen::Matrix<T, 3, 1>::Zero()), score_(T(0)), uncertainty_(T(1)) {}
 
     constexpr ViewPoint(T x, T y, T z, T score = T(0), T uncertainty = T(1)) noexcept :
-        position_(x, y, z), score_(score), uncertainty_(uncertainty), cluster_id_(-1) {
+        position_(x, y, z), score_(score), uncertainty_(uncertainty) {
         validatePosition();
     }
 
     explicit constexpr ViewPoint(const Eigen::Matrix<T, 3, 1> &position, T score = T(0), T uncertainty = T(1)) noexcept
-        : position_(position), score_(score), uncertainty_(uncertainty), cluster_id_(-1) {
+        : position_(position), score_(score), uncertainty_(uncertainty) {
         validatePosition();
     }
 
@@ -41,7 +40,6 @@ public:
 
     // Getters
     [[nodiscard]] constexpr const Eigen::Matrix<T, 3, 1> &getPosition() const noexcept { return position_; }
-    [[nodiscard]] constexpr int getClusterId() const noexcept { return cluster_id_; }
     [[nodiscard]] constexpr T getScore() const noexcept { return score_; }
     [[nodiscard]] constexpr T getUncertainty() const noexcept { return uncertainty_; }
 
@@ -53,14 +51,12 @@ public:
     }
 
     // Setters
-    constexpr void setClusterId(int cluster_id) noexcept { cluster_id_ = cluster_id; }
     constexpr void setScore(T score) noexcept { score_ = score; }
     constexpr void setUncertainty(T uncertainty) noexcept { uncertainty_ = uncertainty; }
 
     // Check if optional values are set
     [[nodiscard]] constexpr bool hasScore() const noexcept { return score_ != T(0); }
     [[nodiscard]] constexpr bool hasUncertainty() const noexcept { return uncertainty_ != T(1); }
-    [[nodiscard]] constexpr bool hasClusterId() const noexcept { return cluster_id_ != -1; }
 
     // Distance calculation
     template<typename Derived>
@@ -146,8 +142,8 @@ public:
 
     // Serialization to string
     [[nodiscard]] std::string toString() const {
-        return fmt::format("ViewPoint(x: {}, y: {}, z: {}, score: {}, uncertainty: {}, cluster_id: {})", position_.x(),
-                           position_.y(), position_.z(), score_, uncertainty_, cluster_id_);
+        return fmt::format("ViewPoint(x: {}, y: {}, z: {}, score: {}, uncertainty: {})", position_.x(), position_.y(),
+                           position_.z(), score_, uncertainty_);
     }
 
     // Comparison operators
@@ -171,7 +167,6 @@ private:
     mutable std::optional<std::tuple<T, T, T>> spherical_coordinates_; // {radius, polar angle, azimuthal angle}
     T score_;
     T uncertainty_;
-    int cluster_id_; // -1 = unset, -2 = noise, >= 0 = cluster_id
 
     // Validation
     constexpr void validatePosition() const {

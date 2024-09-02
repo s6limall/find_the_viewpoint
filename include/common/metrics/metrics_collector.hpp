@@ -13,6 +13,7 @@
 #include <memory>
 #include <mutex>
 #include <optional>
+#include <span>
 #include <string_view>
 #include <unordered_map>
 #include <variant>
@@ -211,7 +212,7 @@ namespace metrics {
             for (const auto &[key, entries]: data_) {
                 for (const auto &entry: entries) {
                     for (const auto &value: entry.values) {
-                        auto it = std::find_if(all_rows.begin(), all_rows.end(), [&](const RowData &row) {
+                        auto it = std::ranges::find_if(all_rows, [&](const RowData &row) {
                             return row.timestamp == value.timestamp && row.point_id == key;
                         });
 

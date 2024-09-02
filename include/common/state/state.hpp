@@ -3,6 +3,7 @@
 #ifndef STATE_HPP
 #define STATE_HPP
 
+#include <any>
 #include <functional>
 #include <mutex>
 #include <optional>
@@ -10,16 +11,14 @@
 #include <stdexcept>
 #include <string>
 #include <string_view>
-#include <type_traits>
 #include <unordered_map>
-#include <variant>
 #include <vector>
 
 namespace state {
 
     class State {
     public:
-        using StateValue = std::variant<int, double, std::string, bool>;
+        using StateValue = std::any;
         using StateCallback = std::function<void(std::string_view, const StateValue &)>;
 
         static State &instance() noexcept {
@@ -28,26 +27,23 @@ namespace state {
         }
 
         template<typename T>
-        State &set(const std::string_view key, T &&value) {
-            if constexpr (std::is_convertible_v<T, std::string_view>) {
-                std::unique_lock lock(mutex_);
-                state_[std::string(key)] = std::string(value);
-            } else {
-                static_assert(is_state_value_type_v<std::decay_t<T>>, "Unsupported type for StateValue");
-                std::unique_lock lock(mutex_);
-                state_[std::string(key)] = std::forward<T>(value);
+        State &set(std::string_view key, T &&value) {
+            {
+                std::unique_lock state_lock(state_mutex_);
+                state_.emplace(std::piecewise_construct, std::forward_as_tuple(key),
+                               std::forward_as_tuple(std::forward<T>(value)))
+                        .first->second = std::forward<T>(value);
             }
-            notifyObservers(key, state_.at(std::string(key)));
+            notifyObservers(key);
             return *this;
         }
 
-
         template<typename T>
         [[nodiscard]] T get(const std::string_view key, const T &default_value = T{}) const {
-            static_assert(is_state_value_type_v<T>, "Unsupported type for StateValue");
-            std::shared_lock lock(mutex_);
-            if (const auto it = state_.find(std::string(key)); it != state_.end()) {
-                if (const auto *value = std::get_if<T>(&it->second)) {
+            std::shared_lock state_lock(state_mutex_);
+            const auto it = state_.find(std::string(key));
+            if (it != state_.end()) {
+                if (const auto *value = std::any_cast<T>(&it->second)) {
                     return *value;
                 }
                 throw std::runtime_error("State type mismatch for key: " + std::string(key));
@@ -57,10 +53,10 @@ namespace state {
 
         template<typename T>
         [[nodiscard]] std::optional<T> getOptional(const std::string_view key) const noexcept {
-            static_assert(is_state_value_type_v<T>, "Unsupported type for StateValue");
-            std::shared_lock lock(mutex_);
-            if (const auto it = state_.find(std::string(key)); it != state_.end()) {
-                if (const auto *value = std::get_if<T>(&it->second)) {
+            std::shared_lock state_lock(state_mutex_);
+            const auto it = state_.find(std::string(key));
+            if (it != state_.end()) {
+                if (const auto *value = std::any_cast<T>(&it->second)) {
                     return *value;
                 }
             }
@@ -68,22 +64,22 @@ namespace state {
         }
 
         [[nodiscard]] bool contains(const std::string_view key) const noexcept {
-            std::shared_lock lock(mutex_);
+            std::shared_lock state_lock(state_mutex_);
             return state_.contains(std::string(key));
         }
 
         State &remove(const std::string_view key) noexcept {
             {
-                std::unique_lock lock(mutex_);
+                std::unique_lock state_lock(state_mutex_);
                 state_.erase(std::string(key));
             }
-            notifyObservers(key, std::nullopt);
+            notifyObservers(key);
             return *this;
         }
 
         void registerCallback(const std::string_view key, StateCallback callback) {
-            std::unique_lock lock(mutex_);
-            observers_[std::string(key)].push_back(std::move(callback));
+            std::unique_lock observers_lock(observers_mutex_);
+            observers_[std::string(key)].emplace_back(std::move(callback));
         }
 
         // Static convenience functions
@@ -112,34 +108,38 @@ namespace state {
             instance().registerCallback(key, std::move(callback));
         }
 
-    private:
-        State() = default;
         State(const State &) = delete;
         State &operator=(const State &) = delete;
         State(State &&) = delete;
         State &operator=(State &&) = delete;
 
-        mutable std::shared_mutex mutex_;
+    private:
+        State() = default;
+
+        mutable std::shared_mutex state_mutex_;
         std::unordered_map<std::string, StateValue> state_;
+
+        mutable std::shared_mutex observers_mutex_;
         std::unordered_map<std::string, std::vector<StateCallback>> observers_;
 
-        void notifyObservers(const std::string_view key, const std::optional<StateValue> &value) const {
-            std::shared_lock lock(mutex_);
-            if (const auto it = observers_.find(std::string(key)); it != observers_.end()) {
-                for (const auto &callback: it->second) {
-                    if (value) {
-                        callback(key, *value);
-                    } else {
-                        callback(key, StateValue{});
-                    }
+        void notifyObservers(const std::string_view key) const noexcept {
+            std::vector<StateCallback> callbacks;
+            {
+                std::shared_lock observers_lock(observers_mutex_);
+                const auto it = observers_.find(std::string(key));
+                if (it != observers_.end()) {
+                    callbacks = it->second;
+                }
+            }
+            for (const auto &callback: callbacks) {
+                if (contains(key)) {
+                    std::shared_lock state_lock(state_mutex_);
+                    callback(key, state_.at(std::string(key)));
+                } else {
+                    callback(key, StateValue{});
                 }
             }
         }
-
-        template<typename T>
-        static constexpr bool is_state_value_type_v =
-                std::is_same_v<std::decay_t<T>, int> || std::is_same_v<std::decay_t<T>, double> ||
-                std::is_same_v<std::decay_t<T>, std::string> || std::is_same_v<std::decay_t<T>, bool>;
     };
 
     // Convenience functions
@@ -151,11 +151,7 @@ namespace state {
 
     template<typename T>
     [[nodiscard]] auto get(const std::string_view key, T &&default_value) {
-        if constexpr (std::is_convertible_v<T, std::string_view>) {
-            return State::instance().get<std::string>(key, std::string(default_value));
-        } else {
-            return State::instance().get<std::decay_t<T>>(key, std::forward<T>(default_value));
-        }
+        return State::instance().get<std::decay_t<T>>(key, std::forward<T>(default_value));
     }
 
     template<typename T>
@@ -170,7 +166,6 @@ namespace state {
     inline void registerCallback(const std::string_view key, State::StateCallback callback) {
         State::instance().registerCallback(key, std::move(callback));
     }
-
 
 } // namespace state
 

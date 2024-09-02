@@ -45,13 +45,16 @@ image:
         cross_check: false            # Cross-check for matching
 
   comparator:
-    type: "COMPOSITE"                   # Selected image comparison method (FEATURE, SSIM, COMPOSITE)
+    type: "COMPOSITE"                      # Selected image comparison method (FEATURE, SSIM, COMPOSITE, PSNR)
+    normalize: false                   # Normalize the images before comparison (using MSE/PSNR which are absolute metrics)
     ssim:
       threshold: 1.0                    # Higher is better
     feature:
       threshold: 0.70                   # Higher is better
+    psnr:
+      threshold: 0.30                   # Higher is better
     composite:
-      threshold: 0.85                   # Higher is better
+      threshold: 0.90                   # Higher is better
 
 optimization:
   max_restarts: 10 # Maximum number of restarts (0 = no restarts)

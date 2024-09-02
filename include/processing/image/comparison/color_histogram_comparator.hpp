@@ -65,7 +65,7 @@ namespace processing::image {
         }
 
         [[nodiscard]] static double compareHistograms(const HistogramType &hist1, const HistogramType &hist2) {
-            std::array<double, 3> similarities;
+            std::array<double, 3> similarities{};
             std::transform(std::execution::par_unseq, hist1.begin(), hist1.end(), hist2.begin(), similarities.begin(),
                            [](const cv::Mat &h1, const cv::Mat &h2) {
                                return cv::compareHist(h1, h2, cv::HISTCMP_BHATTACHARYYA);

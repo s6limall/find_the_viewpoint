@@ -18,7 +18,7 @@ namespace processing::image {
                 LOG_WARN("Images are empty, or their sizes/types do not match.");
                 return error_score_;
             }
-            return computeSSIM(image1, image2);
+            return normalize(image1, image2, computeSSIM(image1, image2));
         }
 
         [[nodiscard]] double compare(const Image<> &img1, const Image<> &img2) const override {

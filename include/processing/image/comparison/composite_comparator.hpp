@@ -72,7 +72,7 @@ namespace processing::image {
             double feature_weight = config_.feature_weight * (1.0 + avg_complexity);
             double color_weight = config_.color_weight;
 
-            double total_weight = ssim_weight + feature_weight + color_weight;
+            const double total_weight = ssim_weight + feature_weight + color_weight;
             ssim_weight /= total_weight;
             feature_weight /= total_weight;
             color_weight /= total_weight;
@@ -98,8 +98,8 @@ namespace processing::image {
             std::vector<cv::Point> samples(config_.complexity_sample_size);
             cv::randu(samples, cv::Scalar(0, 0), cv::Scalar(gray.cols, gray.rows));
 
-            size_t edge_count = std::count_if(std::execution::par_unseq, samples.begin(), samples.end(),
-                                              [&edges](const cv::Point &pt) { return edges.at<uchar>(pt) > 0; });
+            const size_t edge_count = std::count_if(std::execution::par_unseq, samples.begin(), samples.end(),
+                                                    [&edges](const cv::Point &pt) { return edges.at<uchar>(pt) > 0; });
 
             return static_cast<double>(edge_count) / config_.complexity_sample_size;
         }

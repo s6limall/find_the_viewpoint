@@ -92,6 +92,7 @@ namespace core {
         object_center_ = target_center;
         const Eigen::Vector3d forward = (object_center_ - extrinsics_.matrix.block<3, 1>(0, 3)).normalized();
         const Eigen::Vector3d world_up(0, 1, 0); // Global up direction.
+        // const Eigen::Vector3d world_up(0, 0, 1); // Global up direction.
         const Eigen::Vector3d right = world_up.cross(forward).normalized(); // Compute right direction.
         const Eigen::Vector3d up = forward.cross(right).normalized(); // Compute up direction.
 
