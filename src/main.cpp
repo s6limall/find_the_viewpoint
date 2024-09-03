@@ -32,7 +32,7 @@ int main() {
             state::set("object.name", filename);
             state::set("paths.mesh", filepath);
 
-            Executor::execute();
+            // Executor::execute();
 
             iteration_timer.stop();
             LOG_INFO("Finished processing model: {}", filename);
