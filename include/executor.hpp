@@ -6,8 +6,6 @@
 #include <memory>
 #include <mutex>
 
-#include "api/pose_callback.hpp"
-#include "api/pose_publisher.hpp"
 #include "common/state/state.hpp"
 #include "common/utilities/visualizer.hpp"
 #include "misc/target_generator.hpp"

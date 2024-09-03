@@ -14,6 +14,12 @@ int main() {
         /*const auto objects = common::io::filesByExtension("./3d_models", ".ply");
         LOG_INFO("Found {} .ply files to process", objects.size());*/
 
+        if (config::get("perception.type", "simulator") != "simulator") {
+            LOG_WARN("Not using simulator, using: {}; Returning success for deferred processing",
+                     config::get("perception.type", "INVALID"));
+            return EXIT_SUCCESS;
+        }
+
         const auto objects =
                 std::vector<std::filesystem::path>{"./3d_models/" + config::get("object.name", "obj_000020") + ".ply"};
 
@@ -32,7 +38,7 @@ int main() {
             state::set("object.name", filename);
             state::set("paths.mesh", filepath);
 
-            // Executor::execute();
+            Executor::execute();
 
             iteration_timer.stop();
             LOG_INFO("Finished processing model: {}", filename);

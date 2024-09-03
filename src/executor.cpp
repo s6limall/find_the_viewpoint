@@ -14,16 +14,15 @@ double Executor::radius_, Executor::target_score_;
 std::shared_ptr<processing::image::FeatureMatcher> Executor::matcher_;
 std::shared_ptr<processing::image::FeatureExtractor> Executor::extractor_;
 std::shared_ptr<processing::image::ImageComparator> Executor::comparator_;
-// std::shared_ptr<core::Simulator> Executor::simulator_;
 
 void Executor::initialize() {
     LOG_INFO("Initializing executor.");
-    // simulator_ = core::Simulator::create();
     extractor_ = processing::image::FeatureExtractor::create();
     matcher_ = processing::image::FeatureMatcher::create<processing::image::FLANNMatcher>();
     std::tie(comparator_, target_score_) = processing::image::ImageComparator::create(extractor_, matcher_);
 
     const auto loadImage = [](const std::string &path) {
+        LOG_DEBUG("Loaded image from path: {}", path);
         return Image<>(common::io::image::readImage(path), extractor_);
     };
 
@@ -33,8 +32,10 @@ void Executor::initialize() {
                       : loadImage(config::get("paths.target_image", "./target.png"));
 
     state::set("target_image", target_.getImage());
+    LOG_DEBUG("Target image loaded successfully.");
 
     common::io::image::writeImage("target.png", target_.getImage());
+    LOG_DEBUG("Target image saved successfully.");
 
     radius_ = config::get("estimation.distance.skip", true)
                       ? config::get("estimation.distance.initial_guess", 1.5)

@@ -3,12 +3,11 @@
 #ifndef EYE_HPP
 #define EYE_HPP
 
+#include <condition_variable>
 #include <Eigen/Core>
 #include <memory>
 #include <mutex>
-#include <opencv2/opencv.hpp>
 #include <string>
-#include "api/interface/publisher.hpp"
 #include "common/logging/logger.hpp"
 #include "common/state/state.hpp"
 #include "config/configuration.hpp"
@@ -19,6 +18,9 @@ namespace core {
 
     class Eye {
     public:
+        using ExtrinsicsCallback =
+                std::function<void(const Eigen::Matrix4d &extrinsics, std::condition_variable &cv, bool &ready_flag)>;
+
         // Delete constructor to enforce static usage
         Eye() = delete;
 
@@ -49,16 +51,17 @@ namespace core {
                                             const std::string_view image_save_path = "capture.jpg") {
             std::call_once(init_flag_, &Eye::initialize);
 
+            if (callback_.has_value()) {
+                callback_.value()(extrinsics, cv_, ready_flag_);
+                std::unique_lock<std::mutex> cv_lock(mutex_);
+                cv_.wait(cv_lock, [] { return ready_flag_; });
+            }
+
+
             cv::Mat result = perception_->render(extrinsics, image_save_path);
 
             Camera::Extrinsics extrinsics_matrix;
             extrinsics_matrix.setPose(extrinsics);
-
-            // Publish the pose after rendering
-            if (pose_publisher_) {
-                const ViewPoint<> viewpoint(extrinsics_matrix.getTranslation());
-                pose_publisher_->publish(viewpoint);
-            }
 
             return result;
         }
@@ -67,12 +70,6 @@ namespace core {
         [[nodiscard]] static std::shared_ptr<Camera> getCamera() {
             std::call_once(init_flag_, &Eye::initialize);
             return perception_->getCamera();
-        }
-
-        // Static method to set the pose publisher
-        static void setPosePublisher(std::shared_ptr<Publisher> publisher) {
-            std::call_once(init_flag_, &Eye::initialize);
-            pose_publisher_ = std::move(publisher);
         }
 
         // Static method to set the perception system (simulator, robot)
@@ -86,10 +83,16 @@ namespace core {
             return perception_;
         }
 
+        static void setCallback(ExtrinsicsCallback callback) { callback_ = std::move(callback); }
+
+
     private:
         inline static std::shared_ptr<Perception> perception_ = nullptr;
-        inline static std::shared_ptr<Publisher> pose_publisher_ = nullptr;
         inline static std::once_flag init_flag_;
+        inline static std::mutex mutex_;
+        inline static std::condition_variable cv_;
+        inline static bool ready_flag_ = false;
+        inline static std::optional<ExtrinsicsCallback> callback_ = std::nullopt;
     };
 
 } // namespace core

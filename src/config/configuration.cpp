@@ -3,23 +3,33 @@
 #include "config/configuration.hpp"
 
 namespace config {
-
     std::shared_ptr<Configuration> Configuration::instance_;
     std::once_flag Configuration::init_flag_;
 
-    Configuration &Configuration::getInstance(const std::string &filename) {
+    Configuration& Configuration::getInstance(const std::string& filename) {
         std::call_once(init_flag_, [&filename] {
-            instance_ = std::make_shared<Configuration>(filename.empty() ? default_filename_.data() : filename);
+            initialize(filename);
         });
         return *instance_;
     }
 
-    Configuration::Configuration(const std::string &filename) {
-        LOG_INFO("Loading configuration from file: {}", filename);
+    Configuration::Configuration(std::string filename) : filename_(std::move(filename)) {
+        reload();
+    }
+
+    void Configuration::initialize(const std::string& filename) {
+        instance_ = std::make_shared<Configuration>(filename.empty() ? default_filename_.data() : filename);
+    }
+
+
+    void Configuration::reload() {
+        LOG_INFO("Loading configuration from file: {}", filename_);
 
         try {
-            const YAML::Node root = YAML::LoadFile(filename);
-            LOG_INFO("Configuration file '{}' loaded successfully.", filename);
+            const YAML::Node root = YAML::LoadFile(filename_);
+            LOG_INFO("Configuration file '{}' loaded successfully.", filename_);
+            std::unique_lock lock(mutex_);
+            config_map_.clear();
             load(root);
         } catch (const YAML::Exception &e) {
             LOG_CRITICAL("YAML exception while loading configuration: {}", e.what());
@@ -55,6 +65,7 @@ namespace config {
     }
 
     void Configuration::show() const {
+        std::shared_lock lock(mutex_);
         LOG_INFO("Configuration details:");
         for (const auto &entry: config_map_) {
             try {
@@ -64,4 +75,15 @@ namespace config {
             }
         }
     }
-}
+
+    void Configuration::registerChangeCallback(ChangeCallback callback) {
+        std::unique_lock lock(mutex_);
+        change_callbacks_.push_back(std::move(callback));
+    }
+
+    void Configuration::notifyChangeCallbacks(const std::string &key, const YAML::Node &value) const {
+        for (const auto &callback: change_callbacks_) {
+            callback(key, value);
+        }
+    }
+} // namespace config
