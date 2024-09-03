@@ -1,4 +1,4 @@
-// File: core/perception.hpp
+// File: core/vision/perception.hpp
 
 #ifndef PERCEPTION_HPP
 #define PERCEPTION_HPP
