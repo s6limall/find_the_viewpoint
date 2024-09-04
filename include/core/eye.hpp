@@ -3,8 +3,8 @@
 #ifndef EYE_HPP
 #define EYE_HPP
 
-#include <condition_variable>
 #include <Eigen/Core>
+#include <condition_variable>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -59,6 +59,7 @@ namespace core {
 
 
             cv::Mat result = perception_->render(extrinsics, image_save_path);
+            state::set("count", state::get("count", 0) + 1);
 
             Camera::Extrinsics extrinsics_matrix;
             extrinsics_matrix.setPose(extrinsics);

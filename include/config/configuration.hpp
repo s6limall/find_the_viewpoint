@@ -13,12 +13,13 @@
 #include <string>
 #include <string_view>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 #include <yaml-cpp/yaml.h>
-#include <utility>
 
 #include "common/logging/logger.hpp"
 
+/*
 template<>
 struct YAML::convert<std::basic_string_view<char> > {
     static Node encode(const std::basic_string_view<char> &rhs) {
@@ -34,6 +35,7 @@ struct YAML::convert<std::basic_string_view<char> > {
         return true;
     }
 };
+*/
 
 namespace config {
     class Configuration {
@@ -150,9 +152,7 @@ namespace config {
         }
     }
 
-    inline void initialize(const std::string &filename = {}) {
-        Configuration::initialize(filename);
-    }
+    inline void initialize(const std::string &filename = {}) { Configuration::initialize(filename); }
 
     inline bool Configuration::contains(const std::string &key) const {
         std::shared_lock lock(mutex_);
@@ -181,17 +181,11 @@ namespace config {
         return Configuration::getInstance().set<T>(key, value);
     }
 
-    inline bool contains(const std::string &key) {
-        return Configuration::getInstance().contains(key);
-    }
+    inline bool contains(const std::string &key) { return Configuration::getInstance().contains(key); }
 
-    inline void reload() {
-        Configuration::getInstance().reload();
-    }
+    inline void reload() { Configuration::getInstance().reload(); }
 
-    inline void show() {
-        Configuration::getInstance().show();
-    }
+    inline void show() { Configuration::getInstance().show(); }
 
     inline void registerChangeCallback(Configuration::ChangeCallback callback) {
         Configuration::getInstance().registerChangeCallback(std::move(callback));
