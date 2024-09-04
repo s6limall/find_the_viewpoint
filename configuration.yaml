@@ -11,7 +11,7 @@ target_images:
 paths:
   log_directory: "logs"
   mesh: "./3d_models/obj_000020.ply"
-  target_image: "./target_images/obj_000020/target_1.png"
+  target_image: "./target_images/obj_000020/target_2.png"
   models_directory: "./3d_models"
   object_name: "obj_000020"
 
@@ -50,16 +50,16 @@ image:
     ssim:
       threshold: 1.0                    # Higher is better
     feature:
-      threshold: 0.70                   # Higher is better
+      threshold: 0.60                   # Higher is better
     psnr:
-      threshold: 0.30                   # Higher is better
+      threshold: 0.20                   # Higher is better
     composite:
       threshold: 0.90                   # Higher is better
 
 optimization:
-  max_restarts: 10 # Maximum number of restarts (0 = no restarts)
-  max_points: 20 # Maximum number of points to optimize (0 = no limit) TODO: Implement
-  patience: 50 # Number of allowed stagnant iterations before stopping the optimization
+  max_restarts: 2 # Maximum number of restarts (0 = no restarts)
+  max_points: 60 # Maximum number of points to optimize (0 = no limit) TODO: Implement
+  patience: 10 # Number of allowed stagnant iterations before stopping the optimization
   improvement_threshold: 1e-4 # DEFAULT: 1e-4; improvement less than this will be considered stagnant
   gp:
     kernel:
@@ -90,8 +90,8 @@ optimization:
       distance_weight: 1.0            # DEFAULT: 0.5; Weight for the distance term in the acquisition function
 
   local_search:
-    frequency: 5 # Frequency of local search (every n steps)
-    max_iterations: 500 # Maximum number of iterations for local search
+    frequency: 3 # Frequency of local search (every n steps)
+    max_iterations: 50 # Maximum number of iterations for local search
     learning_rate: 0.01 # Learning rate for local search
     epsilon: 1e-4
 
@@ -107,7 +107,7 @@ rendering:
   duration: 0 # Duration of the rendering in ms
 
 sampling:
-  count: 1
+  count: 7
 
 octree:
   min_nodes_to_explore: 8

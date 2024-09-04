@@ -19,9 +19,8 @@
 
 #include "common/logging/logger.hpp"
 
-/*
 template<>
-struct YAML::convert<std::basic_string_view<char> > {
+struct YAML::convert<std::basic_string_view<char>> {
     static Node encode(const std::basic_string_view<char> &rhs) {
         return Node(std::string(rhs)); // Convert string_view to string
     }
@@ -35,7 +34,6 @@ struct YAML::convert<std::basic_string_view<char> > {
         return true;
     }
 };
-*/
 
 namespace config {
     class Configuration {

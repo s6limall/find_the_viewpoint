@@ -24,7 +24,8 @@ namespace optimization {
             tolerance_(tolerance), recent_scores_(), target_score_(),
             cache_(typename cache::ViewpointCache<T>::CacheConfig{}),
             acquisition_(typename optimization::Acquisition<T>::Config{}),
-            evaluator_(gpr, cache_, acquisition_, patience_, improvement_threshold_) {}
+            evaluator_(gpr, cache_, acquisition_, patience_, improvement_threshold_),
+            max_points_(config::get("optimization.max_points", 0)) {}
 
         void optimize(const Image<> &target, const std::shared_ptr<processing::image::ImageComparator> &comparator,
                       const ViewPoint<T> &initial_best, T target_score = T(0.95)) {
@@ -39,18 +40,23 @@ namespace optimization {
 
             typename optimization::Acquisition<T>::Config acquisition_config(
                     optimization::Acquisition<T>::Strategy::ADAPTIVE,
-                    config::get("optimization.gp.acquisition.beta", 2.0),
-                    config::get("optimization.gp.acquisition.exploration_weight", 1.0),
-                    config::get("optimization.gp.acquisition.exploitation_weight", 1.0),
-                    config::get("optimization.gp.acquisition.momentum", 0.1));
+                    config::get("optimization.gp.kernel.acquisition.beta", 2.0),
+                    config::get("optimization.gp.kernel.acquisition.exploration_weight", 1.0),
+                    config::get("optimization.gp.kernel.acquisition.exploitation_weight", 1.0),
+                    config::get("optimization.gp.kernel.acquisition.momentum", 0.1));
 
-            const auto local_search_frequency = config::get("optimization.local_search_frequency", 10);
+            const auto local_search_frequency = config::get("optimization.local_search.frequency", 10);
             const auto hyperparameter_optimization_frequency =
-                    config::get("optimization.gp.kernel.hyperparameters.optimization_frequency", 10);
+                    config::get("optimization.gp.kernel.hyperparameters.optimization.frequency", 10);
 
             acquisition_.updateConfig(acquisition_config);
             const int max_stagnant_iterations = patience_;
             for (int i = 0; i < max_iterations_; ++i) {
+                if (hasReachedMaxPoints()) {
+                    LOG_WARN("Reached maximum number of points. Stopping optimization.");
+                    return;
+                }
+
                 if (refine(target, comparator, i)) {
                     LOG_INFO("Refinement complete at iteration {}", i);
                     break;
@@ -155,11 +161,20 @@ namespace optimization {
         mutable optimization::Acquisition<T> acquisition_;
         ViewpointEvaluator<T> evaluator_;
         std::unique_ptr<LocalOptimizer<T>> local_optimizer_;
+        size_t max_points_;
 
         void localRefinement(const Image<> &target,
                              const std::shared_ptr<processing::image::ImageComparator> &comparator) {
-            if (!best_viewpoint_)
+
+
+            if (hasReachedMaxPoints()) {
+                LOG_WARN("Reached maximum number of points. Stopping optimization.");
                 return;
+            }
+
+            if (!best_viewpoint_) {
+                return;
+            }
 
             const int max_iterations = config::get("optimization.local_search.max_iterations", 10);
             const T learning_rate = config::get("optimization.local_search.learning_rate", 0.01);
@@ -205,6 +220,12 @@ namespace optimization {
 
         bool refine(const Image<> &target, const std::shared_ptr<processing::image::ImageComparator> &comparator,
                     int current_iteration) {
+
+            if (hasReachedMaxPoints()) {
+                LOG_WARN("Reached maximum number of points. Stopping optimization, assuming refined.");
+                return true;
+            }
+
             updateAcquisitionFunction(current_iteration);
 
             std::priority_queue<NodeScore> pq;
@@ -216,6 +237,12 @@ namespace optimization {
             T best_score_this_refinement = best_viewpoint_->getScore();
 
             while (!pq.empty() && (nodes_explored < min_nodes_to_explore || current_iteration < max_iterations_ / 2)) {
+
+                if (hasReachedMaxPoints()) {
+                    LOG_WARN("Reached maximum number of points. Stopping optimization, assuming refined.");
+                    return true;
+                }
+
                 auto [acquisition_value, distance_penalty, node] = pq.top();
                 pq.pop();
 
@@ -349,6 +376,11 @@ namespace optimization {
             LOG_INFO("Final radius refinement complete.");
 
             return result;
+        }
+
+        bool hasReachedMaxPoints() const noexcept {
+            LOG_WARN("STATE - count: {}, max_points: {}", state::get("count", 0), max_points_);
+            return state::get("count", 0) > max_points_ && max_points_ > 0;
         }
 
         struct NodeScore {
