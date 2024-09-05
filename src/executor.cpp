@@ -133,7 +133,8 @@ void Executor::execute() {
             }
 
         } while (restart_count < max_restarts &&
-                 (!global_best_viewpoint || (global_best_viewpoint->getScore() - target_score_) < -0.05));
+                 (!global_best_viewpoint || global_best_viewpoint->getScore() < target_score_ ||
+                  (global_best_viewpoint->getScore() - target_score_) < -0.05));
 
         if (global_best_viewpoint) {
             LOG_INFO("Optimization completed. Best viewpoint: {} - Score: {}", global_best_viewpoint->toString(),

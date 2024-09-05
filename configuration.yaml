@@ -1,7 +1,7 @@
 # File: configuration.yaml
 
 object:
-  name: "obj_000020"
+  name: "obj_000021"
 
 target_images:
   generate: true
@@ -45,8 +45,8 @@ image:
         cross_check: false            # Cross-check for matching
 
   comparator:
-    type: "COMPOSITE"                      # Selected image comparison method (FEATURE, SSIM, COMPOSITE, PSNR)
-    normalize: false                   # Normalize the images before comparison (using MSE/PSNR which are absolute metrics)
+    type: "SSIM"                   # Selected image comparison method (FEATURE, SSIM, COMPOSITE, PSNR)
+    normalize: false                    # Normalize the images before comparison (using MSE/PSNR which are absolute metrics)
     ssim:
       threshold: 1.0                    # Higher is better
     feature:
@@ -57,8 +57,8 @@ image:
       threshold: 0.90                   # Higher is better
 
 optimization:
-  max_restarts: 2 # Maximum number of restarts (0 = no restarts)
-  max_points: 60 # Maximum number of points to optimize (0 = no limit) TODO: Implement
+  max_restarts: 10 # Maximum number of restarts (0 = no restarts)
+  max_points: 100 # Maximum number of points to optimize (0 = no limit) TODO: Implement
   patience: 10 # Number of allowed stagnant iterations before stopping the optimization
   improvement_threshold: 1e-4 # DEFAULT: 1e-4; improvement less than this will be considered stagnant
   gp:
@@ -81,16 +81,16 @@ optimization:
     acquisition:
       # ADAPTIVE =  adaptive exploration-exploitation + EI + PI + UCB
       # ADAPTIVE_{strategy} = adaptive exploration-exploitation + {strategy} - other strategies are set to 0
-      strategy: UCB_ALT              # DEFAULT: ADAPTIVE; EI, PI, UCB, UCB_ALT, ADAPTIVE, ADAPTIVE_EI, ADAPTIVE_PI, ADAPTIVE_UCB
+      strategy: ADAPTIVE              # DEFAULT: ADAPTIVE; EI, PI, UCB, UCB_ALT, ADAPTIVE, ADAPTIVE_EI, ADAPTIVE_PI, ADAPTIVE_UCB
       distance_penalty: false         # DEFAULT: false; Penalize large distances in the acquisition function
       beta: 2.0                       # DEFAULT: 2.0; Exploration-exploitation trade-off parameter
       exploration_weight: 5.0         # DEFAULT: 1.0; Exploration weight for the acquisition function
       exploitation_weight: 1.0        # DEFAULT: 1.0; Exploitation weight for the acquisition function
-      momentum: 0.9                   # DEFAULT: 0.1; Momentum for the acquisition function
-      distance_weight: 1.0            # DEFAULT: 0.5; Weight for the distance term in the acquisition function
+      momentum: 0.95                  # DEFAULT: 0.1; Momentum for the acquisition function
+      distance_weight: 0.85           # DEFAULT: 0.5; Weight for the distance term in the acquisition function
 
   local_search:
-    frequency: 3 # Frequency of local search (every n steps)
+    frequency: 5 # Frequency of local search (every n steps)
     max_iterations: 50 # Maximum number of iterations for local search
     learning_rate: 0.01 # Learning rate for local search
     epsilon: 1e-4
@@ -107,7 +107,7 @@ rendering:
   duration: 0 # Duration of the rendering in ms
 
 sampling:
-  count: 7
+  count: 20
 
 octree:
   min_nodes_to_explore: 8
