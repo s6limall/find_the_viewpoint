@@ -58,6 +58,7 @@ void Executor::execute() {
         const auto variance = config::get("optimization.gp.kernel.hyperparameters.variance", 1.0);
         const auto noise_variance = config::get("optimization.gp.kernel.hyperparameters.noise_variance", 1e-6);
 
+        ViewPoint<> initial_viewpoint;
         std::optional<ViewPoint<>> global_best_viewpoint;
         double global_best_score = -std::numeric_limits<double>::infinity();
 
@@ -85,9 +86,12 @@ void Executor::execute() {
                 Eigen::Vector3d position = samples.col(i);
                 ViewPoint<> viewpoint(position);
                 Image<> viewpoint_image = Image<>::fromViewPoint(viewpoint, extractor_);
-                double score = comparator_->compare(target_, viewpoint_image);
 
+                double score = comparator_->compare(target_, viewpoint_image);
                 viewpoint.setScore(score);
+                if (i == 0) {
+                    initial_viewpoint = viewpoint;
+                }
 
                 X_train.row(i) = position.transpose();
                 y_train(i) = score;
@@ -149,16 +153,17 @@ void Executor::execute() {
                     processing::image::FeatureComparator(extractor_, matcher_).compare(target_, best_image);
             const auto composite_score =
                     processing::image::CompositeComparator(extractor_, matcher_).compare(target_, best_image);
+            const auto distance_from_initial = global_best_viewpoint->distance(initial_viewpoint);
 
             LOG_INFO("Final scores - PSNR: {}, SSIM: {}, Feature: {}, Composite: {}", psnr, ssim, feature_score,
                      composite_score);
+            LOG_INFO("Distance from initial viewpoint: {}", distance_from_initial);
 
-            metrics::recordMetrics(best_image.getViewPoint().value(), {
-                                                                              {"psnr", psnr},
-                                                                              {"ssim", ssim},
-                                                                              {"feature", feature_score},
-                                                                              {"composite", composite_score},
-                                                                      });
+            metrics::recordMetrics(best_image.getViewPoint().value(), {{"psnr", psnr},
+                                                                       {"ssim", ssim},
+                                                                       {"feature", feature_score},
+                                                                       {"composite", composite_score},
+                                                                       {"distance", distance_from_initial}});
 
         } else {
             LOG_WARN("No suitable viewpoint found after {} restarts", max_restarts);

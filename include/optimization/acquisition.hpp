@@ -24,7 +24,7 @@ namespace optimization {
 
         struct Config {
             Strategy strategy;
-            T beta; // exploration-exploitation trade-off
+            T beta; // exploration-exploitation trade-off (higher = more exploration, lower = more exploitation)
             T exploration_weight;
             T exploitation_weight;
             T momentum; // momentum factor for adaptive acquisition
@@ -74,6 +74,15 @@ namespace optimization {
             config_ = new_config;
             updateAcquisitionFunction();
             LOG_INFO("Acquisition function updated with new configuration: {}", strategyToString(config_.strategy));
+        }
+
+        void updateFromConfig() {
+            Config config(stringToStrategy(config::get("optimization.gp.acquisition.strategy", "ADAPTIVE")),
+                          config::get("optimization.gp.acquisition.beta", 2.0),
+                          config::get("optimization.gp.acquisition.exploration_weight", 1.0),
+                          config::get("optimization.gp.acquisition.exploitation_weight", 1.0),
+                          config::get("optimization.gp.acquisition.momentum", 0.1));
+            config_ = config;
         }
 
         void incrementIteration() {

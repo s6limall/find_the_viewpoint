@@ -7,24 +7,26 @@ find_package(spdlog REQUIRED)
 find_package(yaml-cpp REQUIRED)
 find_package(PCL REQUIRED COMPONENTS common io visualization)
 find_package(fmt REQUIRED)
+find_package(nlohmann_json REQUIRED)
+
 
 # Handle JsonCpp separately to avoid conflicts
-if(NOT TARGET JsonCpp::JsonCpp)
+if (NOT TARGET JsonCpp::JsonCpp)
     find_package(jsoncpp CONFIG QUIET)
-    if(NOT jsoncpp_FOUND)
+    if (NOT jsoncpp_FOUND)
         find_package(PkgConfig REQUIRED)
         pkg_check_modules(JSONCPP jsoncpp)
-        if(JSONCPP_FOUND)
+        if (JSONCPP_FOUND)
             add_library(JsonCpp::JsonCpp INTERFACE IMPORTED)
             set_target_properties(JsonCpp::JsonCpp PROPERTIES
                     INTERFACE_INCLUDE_DIRECTORIES "${JSONCPP_INCLUDE_DIRS}"
                     INTERFACE_LINK_LIBRARIES "${JSONCPP_LIBRARIES}"
             )
-        else()
+        else ()
             message(FATAL_ERROR "JsonCpp not found")
-        endif()
-    endif()
-endif()
+        endif ()
+    endif ()
+endif ()
 
 # Aggregate include directories
 set(PROJECT_INCLUDE_DIRS
@@ -34,12 +36,13 @@ set(PROJECT_INCLUDE_DIRS
         ${YAML_CPP_INCLUDE_DIR}
         ${PCL_INCLUDE_DIRS}
         ${fmt_INCLUDE_DIRS}
+        ${nlohmann_json_INCLUDE_DIRS}
 )
 
 # Add JsonCpp include directories if found
-if(JSONCPP_INCLUDE_DIRS)
+if (JSONCPP_INCLUDE_DIRS)
     list(APPEND PROJECT_INCLUDE_DIRS ${JSONCPP_INCLUDE_DIRS})
-endif()
+endif ()
 
 # Aggregate libraries
 set(PROJECT_LIBRARIES
@@ -49,11 +52,12 @@ set(PROJECT_LIBRARIES
         spdlog::spdlog
         yaml-cpp
         fmt::fmt
+        nlohmann_json::nlohmann_json
 )
 
 # Add JsonCpp to libraries
-if(TARGET JsonCpp::JsonCpp)
+if (TARGET JsonCpp::JsonCpp)
     list(APPEND PROJECT_LIBRARIES JsonCpp::JsonCpp)
-elseif(JSONCPP_LIBRARIES)
+elseif (JSONCPP_LIBRARIES)
     list(APPEND PROJECT_LIBRARIES ${JSONCPP_LIBRARIES})
-endif()
+endif ()
