@@ -38,18 +38,12 @@ namespace optimization {
 
             local_optimizer_ = std::make_unique<LocalOptimizer<T>>(comparator);
 
-            typename optimization::Acquisition<T>::Config acquisition_config(
-                    optimization::Acquisition<T>::Strategy::ADAPTIVE,
-                    config::get("optimization.gp.kernel.acquisition.beta", 2.0),
-                    config::get("optimization.gp.kernel.acquisition.exploration_weight", 1.0),
-                    config::get("optimization.gp.kernel.acquisition.exploitation_weight", 1.0),
-                    config::get("optimization.gp.kernel.acquisition.momentum", 0.1));
-
             const auto local_search_frequency = config::get("optimization.local_search.frequency", 10);
             const auto hyperparameter_optimization_frequency =
                     config::get("optimization.gp.kernel.hyperparameters.optimization.frequency", 10);
 
-            acquisition_.updateConfig(acquisition_config);
+            acquisition_.updateFromConfig();
+
             const int max_stagnant_iterations = patience_;
             for (int i = 0; i < max_iterations_; ++i) {
                 if (hasReachedMaxPoints()) {
@@ -60,11 +54,6 @@ namespace optimization {
                 if (refine(target, comparator, i)) {
                     LOG_INFO("Refinement complete at iteration {}", i);
                     break;
-                }
-
-                if (!best_viewpoint_) {
-                    LOG_ERROR("Lost best viewpoint during optimization");
-                    return;
                 }
 
                 T current_best_score = best_viewpoint_->getScore();
@@ -78,14 +67,6 @@ namespace optimization {
 
                 if (i % local_search_frequency == 0) {
                     localRefinement(target, comparator);
-                    /*LOG_INFO("Initiating local search at iteration [{} / {}]", i, max_iterations_);
-                    best_viewpoint_ = local_optimizer_->optimize(best_viewpoint_.value(), target);
-                    current_best_score = best_viewpoint_->getScore();
-                    if (current_best_score > best_score) {
-                        best_score = current_best_score;
-                        stagnant_iterations_ = 0;
-                        LOG_INFO("Local optimization improved score to {}", best_score);
-                    }*/
                 }
 
                 if (evaluator_.hasConverged(current_best_score, best_score, target_score, i, recent_scores_,
@@ -100,19 +81,6 @@ namespace optimization {
                 }
             }
 
-            if (!best_viewpoint_) {
-                LOG_ERROR("No best viewpoint found after main optimization");
-                return;
-            }
-
-            LOG_INFO("Main optimization complete. Best viewpoint before final refinement: {}",
-                     best_viewpoint_->toString());
-
-            // Perform final local optimization
-            /*best_viewpoint_ = local_optimizer_->optimize(*best_viewpoint_, target);*/
-
-            LOG_INFO("Best viewpoint after final local optimization: {}", best_viewpoint_->toString());
-
             auto refined_result = optimizeRadius(target);
 
             if (!refined_result) {
@@ -125,12 +93,12 @@ namespace optimization {
             T refined_score = comparator->compare(target, refined_image);
             refined_result->best_viewpoint.setScore(refined_score);
             refined_image.setScore(refined_score);
-            LOG_INFO("Refined viewpoint: {}, Score: {}", refined_image.getViewPoint()->toString(), refined_score);
+
             LOG_INFO("Optimization complete.");
-            LOG_INFO("Initial best viewpoint: {}", initial_best.toString());
+            LOG_INFO("Initial best viewpoint: {}, Score: {:.6f}", initial_best.toString(), initial_best.getScore());
             LOG_INFO("Best viewpoint after main optimization: {}", best_viewpoint_->toString());
-            LOG_INFO("Final best viewpoint after radius refinement: {}", refined_result->best_viewpoint.toString());
-            LOG_INFO("Initial score: {:.6f}", initial_best.getScore());
+            LOG_INFO("Final best viewpoint after radius refinement: {}, Score: {:.6f}",
+                     refined_result->best_viewpoint.toString(), refined_score);
             LOG_INFO("Total score improvement: {:.6f}", refined_score - initial_best.getScore());
             LOG_INFO("Radius refinement iterations: {}", refined_result->iterations);
 
@@ -163,16 +131,24 @@ namespace optimization {
         std::unique_ptr<LocalOptimizer<T>> local_optimizer_;
         size_t max_points_;
 
+        struct NodeScore {
+            T acquisition_value;
+            T distance_penalty;
+            typename spatial::Octree<T>::Node *node;
+
+            NodeScore(T acquisition, T dist_penalty, typename spatial::Octree<T>::Node *n) :
+                acquisition_value(acquisition), distance_penalty(dist_penalty), node(n) {}
+
+            bool operator<(const NodeScore &other) const {
+                // Higher values have higher priority
+                return (acquisition_value - distance_penalty) < (other.acquisition_value - other.distance_penalty);
+            }
+        };
+
         void localRefinement(const Image<> &target,
                              const std::shared_ptr<processing::image::ImageComparator> &comparator) {
-
-
-            if (hasReachedMaxPoints()) {
-                LOG_WARN("Reached maximum number of points. Stopping optimization.");
-                return;
-            }
-
-            if (!best_viewpoint_) {
+            if (hasReachedMaxPoints() || !best_viewpoint_) {
+                LOG_WARN("Optimization stopped: max points reached or no best viewpoint.");
                 return;
             }
 
@@ -186,12 +162,12 @@ namespace optimization {
             for (int i = 0; i < max_iterations; ++i) {
                 Eigen::Vector3<T> gradient;
                 for (int j = 0; j < 3; ++j) {
-                    Eigen::Vector3<T> perturbed_position = current_position;
+                    auto perturbed_position = current_position;
                     perturbed_position[j] += epsilon;
 
                     ViewPoint<T> perturbed_viewpoint(perturbed_position);
-                    Image<> perturbed_image = Image<>::fromViewPoint(perturbed_viewpoint);
-                    T perturbed_score = comparator->compare(target, perturbed_image);
+                    auto perturbed_image = Image<>::fromViewPoint(perturbed_viewpoint);
+                    auto perturbed_score = comparator->compare(target, perturbed_image);
 
                     gradient[j] = (perturbed_score - current_score) / epsilon;
 
@@ -203,10 +179,10 @@ namespace optimization {
                                                                  {"refinement_iteration", i}});
                 }
 
-                Eigen::Vector3<T> new_position = current_position + learning_rate * gradient;
+                auto new_position = current_position + learning_rate * gradient;
                 ViewPoint<T> new_viewpoint(new_position);
-                Image<> new_image = Image<>::fromViewPoint(new_viewpoint);
-                T new_score = comparator->compare(target, new_image);
+                auto new_image = Image<>::fromViewPoint(new_viewpoint);
+                auto new_score = comparator->compare(target, new_image);
 
                 if (new_score > current_score) {
                     current_position = new_position;
@@ -220,26 +196,24 @@ namespace optimization {
 
         bool refine(const Image<> &target, const std::shared_ptr<processing::image::ImageComparator> &comparator,
                     int current_iteration) {
-
             if (hasReachedMaxPoints()) {
-                LOG_WARN("Reached maximum number of points. Stopping optimization, assuming refined.");
+                LOG_WARN("Max points reached. Stopping optimization, assuming refined.");
                 return true;
             }
 
             updateAcquisitionFunction(current_iteration);
 
             std::priority_queue<NodeScore> pq;
-            T distance_scale = octree_.getRoot()->size / 10.0;
+            const T distance_scale = octree_.getRoot()->size / 10.0;
             pq.emplace(octree_.getRoot()->max_acquisition, 0.0, octree_.getRoot());
 
             int nodes_explored = 0;
-            const int min_nodes_to_explore = config::get("octree.min_nodes_to_explore", 5);
+            const int min_nodes_to_explore = config::get<int>("octree.min_nodes_to_explore", 5);
             T best_score_this_refinement = best_viewpoint_->getScore();
 
             while (!pq.empty() && (nodes_explored < min_nodes_to_explore || current_iteration < max_iterations_ / 2)) {
-
                 if (hasReachedMaxPoints()) {
-                    LOG_WARN("Reached maximum number of points. Stopping optimization, assuming refined.");
+                    LOG_WARN("Max points reached during iteration. Stopping optimization, assuming refined.");
                     return true;
                 }
 
@@ -260,7 +234,6 @@ namespace optimization {
                     return true;
                 }
 
-
                 if (current_best_score > best_score_this_refinement) {
                     best_score_this_refinement = current_best_score;
                     LOG_INFO("Best score updated to {} at iteration {} - {} nodes explored.",
@@ -270,7 +243,7 @@ namespace optimization {
                 }
 
                 if (!node->isLeaf()) {
-                    for (auto &child: node->children) {
+                    for (const auto &child: node->children) {
                         if (child) {
                             T dist_to_best = (child->center - best_viewpoint_->getPosition()).norm();
                             T child_distance_penalty = std::exp(-dist_to_best / distance_scale);
@@ -323,7 +296,7 @@ namespace optimization {
             }
         }
 
-        void updateAcquisitionFunction(int current_iteration) {
+        void updateAcquisitionFunction(const int current_iteration) {
             T recent_improvement_rate = calculateRecentImprovementRate();
             T current_best_score = best_viewpoint_->getScore();
 
@@ -371,7 +344,7 @@ namespace optimization {
             auto renderFunction = [](const ViewPoint<T> &vp) { return Image<T>::fromViewPoint(vp); };
 
             auto radius_optimizer = RadiusOptimizer<T>();
-            auto result = radius_optimizer.optimize(*best_viewpoint_, target, renderFunction);
+            auto result = radius_optimizer.optimize(best_viewpoint_.value(), target, renderFunction);
 
             LOG_INFO("Final radius refinement complete.");
 
@@ -380,22 +353,8 @@ namespace optimization {
 
         bool hasReachedMaxPoints() const noexcept {
             LOG_WARN("STATE - count: {}, max_points: {}", state::get("count", 0), max_points_);
-            return state::get("count", 0) > max_points_ && max_points_ > 0;
+            return state::get("count", 0) > static_cast<int>(max_points_) && max_points_ > 0;
         }
-
-        struct NodeScore {
-            T acquisition_value;
-            T distance_penalty;
-            typename spatial::Octree<T>::Node *node;
-
-            NodeScore(T acquisition, T dist_penalty, typename spatial::Octree<T>::Node *n) :
-                acquisition_value(acquisition), distance_penalty(dist_penalty), node(n) {}
-
-            bool operator<(const NodeScore &other) const {
-                // Higher values have higher priority
-                return (acquisition_value - distance_penalty) < (other.acquisition_value - other.distance_penalty);
-            }
-        };
     };
 } // namespace optimization
 

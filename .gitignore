@@ -32,20 +32,22 @@
 *.app
 
 # CMake
-cmake-build-*/
+cmake-build-*
+CMakeFiles/
+CMakeCache.txt
+build/
 
 # Xmake cache
 .xmake/
-build/
 
 # CLion
 .idea/
 
-# images
-*.png
+# Generated images
+**/viewspace_images/**/*.png
+**/libtorch/**
+**/score/**.png
+3d_models/**
+*/selected_views/**
 
-# Text
-*.txt
-
-# Logs
-*.log
+*.onnx
