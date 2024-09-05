@@ -1,0 +1,55 @@
+# Prerequisites
+*.d
+
+# Compiled Object files
+*.slo
+*.lo
+*.o
+*.obj
+
+# Precompiled Headers
+*.gch
+*.pch
+
+# Compiled Dynamic libraries
+*.so
+*.dylib
+*.dll
+
+# Fortran module files
+*.mod
+*.smod
+
+# Compiled Static libraries
+*.lai
+*.la
+*.a
+*.lib
+
+# Executables
+*.exe
+*.out
+*.app
+
+# CMake
+cmake-build-*
+CMakeFiles/
+CMakeCache.txt
+build/
+Makefile
+
+# Xmake cache
+.xmake/
+build/
+
+# CLion
+.idea/
+
+# Generated images
+**/viewspace_images/**/*.png
+**/libtorch/**
+**/score/**.png
+3d_models/**
+*/selected_views/**
+
+*.onnx
