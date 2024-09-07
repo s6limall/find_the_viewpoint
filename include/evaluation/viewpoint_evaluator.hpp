@@ -20,6 +20,7 @@ public:
 
     void evaluatePoint(ViewPoint<T> &point, const Image<> &target,
                        const std::shared_ptr<processing::image::ImageComparator> &comparator) {
+        LOG_DEBUG("Evaluating viewpoint at position {}", point.getPosition());
         if (!point.hasScore()) {
             auto cached_score = cache_.query(point.getPosition());
             if (cached_score) {

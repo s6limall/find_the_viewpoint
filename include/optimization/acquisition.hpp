@@ -61,10 +61,11 @@ namespace optimization {
         T compute(const VectorXt &x, T mean, T std_dev) {
             LOG_DEBUG("Computing acquisition function with mean: {}, std_dev: {}", mean, std_dev);
 
-            if (!best_known_value_ || mean > *best_known_value_) {
+            if (!best_known_value_ || mean > best_known_value_.value()) {
+                LOG_DEBUG("New best value found: {}", mean);
                 best_known_value_ = mean;
                 best_point_ = x;
-                LOG_DEBUG("New best point found: {} with value: {}", best_point_, *best_known_value_);
+                LOG_DEBUG("New best point found: {} with value: {}", best_point_, best_known_value_.value());
             }
 
             T ucb = config_.exploration_weight * (mean + config_.beta * std_dev);
@@ -83,7 +84,7 @@ namespace optimization {
             }
 
             // Encourage exploration of unexplored areas
-            if (explored_points_.find(x) == explored_points_.end()) {
+            if (!explored_points_.contains(x)) {
                 acquisition_value *= config_.novelty_bonus;
             }
 

@@ -19,12 +19,14 @@ namespace optimization {
     public:
         OptimizationEngine(const Eigen::Vector3<T> &center, T size, T min_size, GPR<kernel::Matern52<T>> &gpr,
                            std::optional<T> radius = std::nullopt, std::optional<T> tolerance = std::nullopt) :
-            octree_(center, size, min_size), sampler_(center, radius.value_or(0), tolerance.value_or(0)),
-            min_size_(min_size), gpr_(gpr), cache_(typename cache::ViewpointCache<T>::CacheConfig{}),
+            octree_(center, size, min_size), cache_(typename cache::ViewpointCache<T>::CacheConfig{}), gpr_(gpr),
             acquisition_(typename Acquisition<T>::Config{}),
+            sampler_(center, radius.value_or(0), tolerance.value_or(0), gpr_, acquisition_),
             evaluator_(gpr, cache_, acquisition_, config::get("optimization.patience", 10),
                        config::get("optimization.improvement_threshold", 1e-4)),
-            max_points_(config::get("optimization.max_points", 0)) {}
+            min_size_(min_size), max_points_(config::get("optimization.max_points", 0)),
+            max_iterations_(config::get("optimization.max_iterations", 5)) {}
+
 
         std::optional<ViewPoint<T>> refine(const Image<> &target,
                                            const std::shared_ptr<processing::image::ImageComparator> &comparator,
@@ -34,6 +36,8 @@ namespace optimization {
                 return best_viewpoint_;
             }
 
+            LOG_DEBUG("Starting optimization - refinement iteration {}", current_iteration);
+            LOG_DEBUG("Updating acquisition function");
             updateAcquisitionFunction(current_iteration);
 
             std::priority_queue<NodeScore> pq;
@@ -94,17 +98,25 @@ namespace optimization {
         void exploreNode(typename spatial::Octree<T>::Node &node, const Image<> &target,
                          const std::shared_ptr<processing::image::ImageComparator> &comparator) {
             if (node.points.empty()) {
-                node.points = sampler_.samplePoints(node);
-                if (best_viewpoint_ && octree_.isWithinNode(node, best_viewpoint_->getPosition())) {
-                    sampler_.addPointsAroundBest(node, *best_viewpoint_);
+                LOG_WARN("Node has no points. Attempting to sample points.");
+                node.points = sampler_.samplePoints(node, best_viewpoint_ ? &(*best_viewpoint_) : nullptr);
+
+                if (node.points.empty()) {
+                    LOG_ERROR("Failed to sample any valid points for node.");
+                    return; //  skip node
                 }
             }
+
+            LOG_DEBUG("Exploring node with center {} and size {}", node.center, node.size);
+
+
+            LOG_DEBUG("Exploring node with center {} and size {}", node.center, node.size);
 
             node.max_acquisition = std::numeric_limits<T>::lowest();
             for (auto &point: node.points) {
                 evaluator_.evaluatePoint(point, target, comparator);
                 auto [mean, std_dev] = gpr_.predict(point.getPosition());
-                T acquisition_value = evaluator_.computeAcquisition(point.getPosition(), mean, std_dev);
+                T acquisition_value = acquisition_.compute(point.getPosition(), mean, std_dev);
                 node.max_acquisition = std::max(node.max_acquisition, acquisition_value);
 
                 metrics::recordMetrics(point, {{"position_x", point.getPosition().x()},
@@ -118,6 +130,12 @@ namespace optimization {
 
             if (octree_.shouldSplit(node, best_viewpoint_)) {
                 octree_.split(node);
+                // Add points around best viewpoint in new child nodes if applicable
+                for (const auto &child: node.children) {
+                    if (child && best_viewpoint_ && octree_.isWithinNode(*child, best_viewpoint_->getPosition())) {
+                        sampler_.addPointsAroundBest(*child, *best_viewpoint_);
+                    }
+                }
             }
 
             node.explored = true;
@@ -185,6 +203,19 @@ namespace optimization {
         }
 
     private:
+        spatial::Octree<T> octree_;
+        cache::ViewpointCache<T> cache_;
+        GPR<kernel::Matern52<T>> &gpr_;
+        Acquisition<T> acquisition_;
+        ViewpointSampler<T> sampler_;
+        ViewpointEvaluator<T> evaluator_;
+
+        T min_size_;
+        size_t max_points_;
+        int max_iterations_;
+        std::optional<ViewPoint<T>> best_viewpoint_;
+        std::deque<T> recent_scores_;
+
         struct NodeScore {
             T acquisition_value;
             T distance_penalty;
@@ -198,17 +229,6 @@ namespace optimization {
             }
         };
 
-        spatial::Octree<T> octree_;
-        ViewpointSampler<T> sampler_;
-        T min_size_;
-        GPR<kernel::Matern52<T>> &gpr_;
-        std::optional<ViewPoint<T>> best_viewpoint_;
-        std::deque<T> recent_scores_;
-        cache::ViewpointCache<T> cache_;
-        Acquisition<T> acquisition_;
-        ViewpointEvaluator<T> evaluator_;
-        size_t max_points_;
-        int max_iterations_{};
 
         void focusExplorationAroundBest(std::priority_queue<NodeScore> &pq) {
             if (!best_viewpoint_)

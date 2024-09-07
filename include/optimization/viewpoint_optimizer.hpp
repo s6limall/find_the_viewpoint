@@ -24,7 +24,7 @@ namespace optimization {
             convergence_checker_(config::get("optimization.patience", 10),
                                  config::get("optimization.improvement_threshold", 1e-4),
                                  config::get("optimization.target_score", T(0.95))),
-            local_refiner_(comparator), max_iterations_(max_iterations), gpr_(gpr),
+            local_refiner_(comparator), gpr_(gpr), max_iterations_(max_iterations),
             refinement_threshold_(config::get("optimization.refinement_threshold", T(0.8))),
             significant_improvement_threshold_(config::get("optimization.significant_improvement_threshold", T(0.01))) {
             engine_.setMaxIterations(max_iterations);
