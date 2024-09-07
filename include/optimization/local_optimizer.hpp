@@ -7,113 +7,80 @@
 #include "cache/viewpoint_cache.hpp"
 #include "evaluation/viewpoint_evaluator.hpp"
 #include "local_optimizer.hpp"
+#include "optimizer/levenberg_marquardt.hpp"
 #include "radius_optimizer.hpp"
 #include "sampling/viewpoint_sampler.hpp"
 #include "spatial/octree.hpp"
 
 namespace optimization {
 
-    template<FloatingPoint T = double>
+    template<typename Scalar, int Dim = 3>
     class LocalOptimizer {
     public:
+        using VectorType = typename LevenbergMarquardt<Scalar, Dim>::VectorType;
+        using ResidualType = typename LevenbergMarquardt<Scalar, Dim>::ResidualType;
+        using JacobianType = typename LevenbergMarquardt<Scalar, Dim>::JacobianType;
+
         explicit LocalOptimizer(const std::shared_ptr<processing::image::ImageComparator> &comparator) :
             comparator_(comparator) {}
 
-        ViewPoint<T> optimize(const ViewPoint<T> &initial_viewpoint, const Image<> &target) {
-            const int max_iterations = config::get("optimization.local_search.max_iterations", 50);
-            const T initial_step_size = config::get("optimization.local_search.initial_step_size", 0.1);
-            const T step_size_reduction_factor =
-                    config::get("optimization.local_search.step_size_reduction_factor", 0.5);
-            const T min_step_size = config::get("optimization.local_search.min_step_size", 1e-6);
-            const T gradient_threshold = config::get("optimization.local_search.gradient_threshold", 1e-8);
-            const T momentum_factor = config::get("optimization.local_search.momentum_factor", 0.9);
-            const T c1 = config::get("optimization.local_search.armijo_c1", 1e-4);
-            const T backtrack_factor = config::get("optimization.local_search.backtrack_factor", 0.5);
+        ViewPoint<Scalar> optimize(const ViewPoint<Scalar> &initial_viewpoint, const Image<> &target) {
+            const auto residual_func = [this, &target](const VectorType &position) {
+                return computeResiduals(position, target);
+            };
 
-            Eigen::Vector3<T> current_position = initial_viewpoint.getPosition();
-            T current_score = initial_viewpoint.getScore();
-            T step_size = initial_step_size;
+            const auto jacobian_func = [this, &target](const VectorType &position) {
+                return computeJacobian(position, target);
+            };
 
-            Eigen::Vector3<T> momentum = Eigen::Vector3<T>::Zero();
+            const auto result = lm_optimizer_.optimize(initial_viewpoint.getPosition(), residual_func, jacobian_func);
 
-            ViewPoint<T> best_viewpoint = initial_viewpoint;
-
-            for (int i = 0; i < max_iterations; ++i) {
-                Eigen::Vector3<T> gradient = computeGradient(current_position, target, step_size);
-
-                if (gradient.norm() < gradient_threshold) {
-                    LOG_INFO("Local optimization converged due to small gradient at iteration {}", i);
-                    break;
-                }
-
-                momentum = momentum_factor * momentum + (1 - momentum_factor) * gradient;
-                Eigen::Vector3<T> search_direction = momentum.normalized();
-
-                T alpha = step_size;
-                Eigen::Vector3<T> new_position;
-                T new_score;
-
-                while (true) {
-                    new_position = current_position + alpha * search_direction;
-                    ViewPoint<T> new_viewpoint(new_position);
-                    Image<> new_image = Image<>::fromViewPoint(new_viewpoint);
-                    new_score = comparator_->compare(target, new_image);
-
-                    if (new_score > current_score + c1 * alpha * gradient.dot(search_direction)) {
-                        break;
-                    }
-
-                    alpha *= backtrack_factor;
-                    if (alpha < min_step_size) {
-                        LOG_INFO("Local optimization stopped due to small step size at iteration {}", i);
-                        return best_viewpoint;
-                    }
-                }
-
-                if (new_score > current_score) {
-                    current_position = new_position;
-                    current_score = new_score;
-                    best_viewpoint = ViewPoint<T>(new_position, new_score);
-                    step_size /= step_size_reduction_factor;
-                } else {
-                    step_size *= step_size_reduction_factor;
-                    if (step_size < min_step_size) {
-                        LOG_INFO("Local optimization converged due to small step size at iteration {}", i);
-                        break;
-                    }
-                }
-
-                LOG_DEBUG("Local optimization iteration {}: score = {}, step_size = {}", i, current_score, step_size);
+            if (result) {
+                LOG_INFO("Local optimizement complete. Final error: {}, Iterations: {}, Function evals: {}, Jacobian "
+                         "evals: {}",
+                         result->final_error, result->iterations, result->function_evaluations,
+                         result->jacobian_evaluations);
+                return ViewPoint<Scalar>(result->position,
+                                         -result->final_error); // Negative because we're maximizing similarity
+            } else {
+                LOG_WARN("Local optimizement failed. Returning initial viewpoint.");
+                return initial_viewpoint;
             }
-
-            LOG_INFO("Local optimization complete. Final score: {}", current_score);
-            return best_viewpoint;
         }
 
     private:
         std::shared_ptr<processing::image::ImageComparator> comparator_;
+        LevenbergMarquardt<Scalar, Dim> lm_optimizer_;
 
-        Eigen::Vector3<T> computeGradient(const Eigen::Vector3<T> &position, const Image<> &target, T epsilon) {
-            Eigen::Vector3<T> gradient;
-            ViewPoint<T> center_viewpoint(position);
-            Image<> center_image = Image<>::fromViewPoint(center_viewpoint);
-            T center_score = comparator_->compare(target, center_image);
+        ResidualType computeResiduals(const VectorType &position, const Image<> &target) const {
+            ViewPoint<Scalar> viewpoint(position);
+            const Image<> image = Image<>::fromViewPoint(viewpoint);
+            Scalar similarity = comparator_->compare(target, image);
 
-            for (int j = 0; j < 3; ++j) {
-                Eigen::Vector3<T> perturbed_position = position;
-                perturbed_position[j] += epsilon;
+            // Convert similarity to residuals TODO: Adjust this
+            ResidualType residuals(1);
+            residuals << 1.0 - similarity; // Assuming similarity is in [0, 1]
+            return residuals;
+        }
 
-                ViewPoint<T> perturbed_viewpoint(perturbed_position);
-                Image<> perturbed_image = Image<>::fromViewPoint(perturbed_viewpoint);
-                T perturbed_score = comparator_->compare(target, perturbed_image);
+        JacobianType computeJacobian(const VectorType &position, const Image<> &target) const {
+            const Scalar h = std::sqrt(std::numeric_limits<Scalar>::epsilon());
+            JacobianType J(1, Dim); // 1 row because we have 1 residual
 
-                gradient[j] = (perturbed_score - center_score) / epsilon;
+            const ResidualType center_residual = computeResiduals(position, target);
+
+            for (int i = 0; i < Dim; ++i) {
+                VectorType perturbed_position = position;
+                perturbed_position[i] += h;
+
+                const ResidualType perturbed_residual = computeResiduals(perturbed_position, target);
+
+                J(0, i) = (perturbed_residual[0] - center_residual[0]) / h;
             }
 
-            return gradient;
+            return J;
         }
     };
-
 } // namespace optimization
 
 #endif // LOCAL_SEARCH_HPP

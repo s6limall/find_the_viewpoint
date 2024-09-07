@@ -71,7 +71,7 @@ void Executor::execute() {
 
             // Reset GPR and other components for each restart
             optimization::kernel::Matern52<> kernel(length_scale, variance, noise_variance);
-            optimization::GaussianProcessRegression<> gpr(kernel);
+            optimization::GPR<> gpr(kernel);
 
             FibonacciLatticeSampler<> sampler({0, 0, 0}, {1, 1, 1}, radius_);
             const int sample_count = config::get("sampling.count", 20);
@@ -114,7 +114,8 @@ void Executor::execute() {
 
             // Create ViewpointOptimizer with new components
             optimization::ViewpointOptimizer<> optimizer(Eigen::Vector3d::Zero(), size, min_size, max_iterations, gpr,
-                                                         radius_, tolerance);
+                                                         comparator_, radius_, tolerance);
+
 
             // Use the new optimize method
             optimizer.optimize(target_, comparator_, best_initial_viewpoint, target_score_);
@@ -132,9 +133,8 @@ void Executor::execute() {
                 LOG_WARN("No viewpoint found in restart {}", restart_count);
             }
 
-        } while (restart_count < max_restarts &&
-                 (!global_best_viewpoint || global_best_viewpoint->getScore() < target_score_ ||
-                  (global_best_viewpoint->getScore() - target_score_) < -0.05));
+        } while (restart_count < max_restarts && global_best_score < target_score_ &&
+                 (!global_best_viewpoint || (global_best_viewpoint->getScore() - target_score_) < -0.05));
 
         if (global_best_viewpoint) {
             LOG_INFO("Optimization completed. Best viewpoint: {} - Score: {}", global_best_viewpoint->toString(),
@@ -155,10 +155,10 @@ void Executor::execute() {
             const auto composite_score =
                     processing::image::CompositeComparator(extractor_, matcher_).compare(target_, best_image);
             const auto distance_from_initial = global_best_viewpoint->distance(initial_viewpoint);
-
-            LOG_INFO("Final scores - PSNR: {}, SSIM: {}, Feature: {}, Composite: {}", psnr, ssim, feature_score,
-                     composite_score);
-            LOG_INFO("Distance from initial viewpoint: {}", distance_from_initial);
+            const auto points_evaluated = state::get("count", 0);
+            LOG_INFO("Final scores - PSNR: {:.4f}, SSIM: {:.4f}, Feature: {:.4f}, Composite: {:.4f}, Points evaluated: "
+                     "{}, Distance (initial-final): {:.4f}",
+                     psnr, ssim, feature_score, composite_score, points_evaluated, distance_from_initial);
 
             metrics::recordMetrics(best_image.getViewPoint().value(), {{"psnr", psnr},
                                                                        {"ssim", ssim},

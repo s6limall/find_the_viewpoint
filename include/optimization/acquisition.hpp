@@ -24,10 +24,12 @@ namespace optimization {
 
         struct Config {
             Strategy strategy;
-            T beta; // exploration-exploitation trade-off (higher = more exploration, lower = more exploitation)
+            T beta;
             T exploration_weight;
             T exploitation_weight;
-            T momentum; // momentum factor for adaptive acquisition
+            T momentum;
+            T exploration_radius;
+            T novelty_bonus;
             int iteration_count;
 
             explicit Config(const Strategy strategy = Strategy::ADAPTIVE, T beta = 2.0, T exploration_weight = 1.0,
@@ -40,9 +42,14 @@ namespace optimization {
                 this->exploitation_weight =
                         config::get("optimization.gp.acquisition.exploitation_weight", exploitation_weight);
                 this->momentum = config::get("optimization.gp.acquisition.momentum", momentum);
+                this->exploration_radius = config::get("optimization.gp.acquisition.exploration_radius", 1.0);
+                this->novelty_bonus = config::get("optimization.gp.acquisition.novelty_bonus", 1.2);
                 this->iteration_count = config::get("optimization.gp.acquisition.iterations", iteration_count);
             }
         };
+
+        std::set<VectorXt, std::function<bool(const VectorXt &, const VectorXt &)>> explored_points_{
+                [](const VectorXt &a, const VectorXt &b) { return (a - b).norm() < 1e-6; }};
 
         explicit Acquisition(Config config = Config()) : config_(config), rng_(std::random_device{}()) {
             updateAcquisitionFunction();
@@ -54,20 +61,39 @@ namespace optimization {
         T compute(const VectorXt &x, T mean, T std_dev) {
             LOG_DEBUG("Computing acquisition function with mean: {}, std_dev: {}", mean, std_dev);
 
-            // Check if this is the new best point and update accordingly
             if (!best_known_value_ || mean > *best_known_value_) {
                 best_known_value_ = mean;
                 best_point_ = x;
                 LOG_DEBUG("New best point found: {} with value: {}", best_point_, *best_known_value_);
             }
 
-            T result = acquisition_func_(x, mean, std_dev);
-            LOG_TRACE("Acquisition function result: {}", result);
+            T ucb = config_.exploration_weight * (mean + config_.beta * std_dev);
+            T ei = config_.exploitation_weight * computeEI(mean, std_dev);
+            T pi = config_.exploitation_weight * computePI(mean, std_dev);
 
-            // Record metrics for each computed point
-            metrics::recordMetrics(x, {{"mean", mean}, {"std_dev", std_dev}, {"acquisition_value", result}});
+            T distance_to_best = best_point_.size() ? (x - best_point_).norm() : 0;
+            T distance_factor = std::exp(-config_.momentum * distance_to_best);
 
-            return result;
+            T acquisition_value = (ucb + ei + pi) * std::pow(distance_factor, 3);
+
+            // Add a strong penalty for exploring too far from the best known point
+            if (distance_to_best > config_.exploration_radius) {
+                acquisition_value *= std::exp(-std::pow(distance_to_best - config_.exploration_radius, 2) /
+                                              (2 * std::pow(config_.exploration_radius, 2)));
+            }
+
+            // Encourage exploration of unexplored areas
+            if (explored_points_.find(x) == explored_points_.end()) {
+                acquisition_value *= config_.novelty_bonus;
+            }
+
+            explored_points_.insert(x);
+
+            LOG_TRACE("Acquisition function result: {}", acquisition_value);
+
+            metrics::recordMetrics(x, {{"mean", mean}, {"std_dev", std_dev}, {"acquisition_value", acquisition_value}});
+
+            return acquisition_value;
         }
 
         void updateConfig(const Config &new_config) {

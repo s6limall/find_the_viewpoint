@@ -6,10 +6,10 @@
 #include <algorithm>
 #include <cmath>
 #include <deque>
-#include <numeric>
-#include <vector>
+#include <optional>
 #include "common/logging/logger.hpp"
 #include "optimization/gaussian/gpr.hpp"
+#include "optimization/gaussian/kernel/matern_52.hpp"
 #include "types/viewpoint.hpp"
 
 namespace optimization {
@@ -17,133 +17,132 @@ namespace optimization {
     template<FloatingPoint T = double>
     class ConvergenceChecker {
     public:
-        struct Config {
-            T target_score;
-            int max_iterations;
-            int patience;
-            T improvement_threshold;
-            int window_size;
-            T moving_average_threshold;
-            T confidence_interval_threshold;
-            T adaptive_threshold_factor;
-            std::vector<T> criteria_weights;
-        };
+        ConvergenceChecker(const int initial_patience, T initial_improvement_threshold, T target_score,
+                           const int window_size = 5) :
+            initial_patience_(initial_patience), patience_(initial_patience),
+            initial_improvement_threshold_(initial_improvement_threshold),
+            improvement_threshold_(initial_improvement_threshold), target_score_(target_score),
+            window_size_(window_size), stagnant_iterations_(0), total_iterations_(0) {}
 
-        ConvergenceChecker(const Config &config,
-                           optimization::GaussianProcessRegression<optimization::kernel::Matern52<T>> &gpr) :
-            config_(config), gpr_(gpr), stagnant_iterations_(0), recent_scores_(), iteration_(0) {
-            if (config_.criteria_weights.empty()) {
-                config_.criteria_weights = {1.0, 1.0, 1.0, 1.0, 1.0}; // Equal weights by default
+        bool hasConverged(T current_score, T best_score, int current_iteration, const ViewPoint<T> &best_viewpoint,
+                          const GPR<kernel::Matern52<T>> &gpr) {
+            total_iterations_++;
+            updateAdaptiveParameters();
+
+            if (current_score >= target_score_) {
+                LOG_INFO("Target score reached at iteration {}", current_iteration);
+                return true;
             }
-            normalizeWeights();
-        }
 
-        bool hasConverged(const ViewPoint<T> &best_viewpoint, T current_score, T best_score) {
-            iteration_++;
-            updateRecentScores(current_score);
+            LOG_INFO("Current score: {}, Best score: {}", current_score, best_score);
 
-            std::vector<bool> convergence_votes;
-            std::vector<T> vote_strengths;
+            // Calculate relative improvement
+            T relative_improvement = (current_score - best_score) / best_score;
 
-            // 1. Target score achievement
-            const bool target_achieved = checkTargetScore(current_score);
-            convergence_votes.push_back(target_achieved);
-            vote_strengths.push_back(target_achieved ? 1.0 : 0.0);
-
-            // 2. Improvement rate
-            const bool significant_improvement = checkImprovementRate(current_score, best_score);
-            convergence_votes.push_back(!significant_improvement);
-            vote_strengths.push_back(significant_improvement ? 0.0 : 1.0);
-
-            // 3. Stagnation detection
-            const bool stagnated = checkStagnation();
-            convergence_votes.push_back(stagnated);
-            vote_strengths.push_back(stagnated ? 1.0 : 0.0);
-
-            // 4. Moving average analysis
-            const bool moving_average_converged = checkMovingAverage();
-            convergence_votes.push_back(moving_average_converged);
-            vote_strengths.push_back(moving_average_converged ? 1.0 : 0.0);
-
-            // 5. Gaussian Process-based uncertainty estimation
-            const bool high_confidence = checkConfidenceInterval(best_viewpoint);
-            convergence_votes.push_back(high_confidence);
-            vote_strengths.push_back(high_confidence ? 1.0 : 0.0);
-
-            // Compute weighted vote
-            T weighted_vote = std::inner_product(vote_strengths.begin(), vote_strengths.end(),
-                                                 config_.criteria_weights.begin(), T(0));
-            T vote_threshold = adaptVoteThreshold();
-
-            bool converged = weighted_vote >= vote_threshold;
-
-            LOG_INFO("Convergence check at iteration {}: weighted vote = {}, threshold = {}, converged = {}",
-                     iteration_, weighted_vote, vote_threshold, converged);
-
-            return converged || iteration_ >= config_.max_iterations;
-        }
-
-    private:
-        Config config_;
-        optimization::GaussianProcessRegression<optimization::kernel::Matern52<T>> &gpr_;
-        int stagnant_iterations_;
-        std::deque<T> recent_scores_;
-        int iteration_;
-
-        void normalizeWeights() {
-            T sum = std::accumulate(config_.criteria_weights.begin(), config_.criteria_weights.end(), T(0));
-            std::transform(config_.criteria_weights.begin(), config_.criteria_weights.end(),
-                           config_.criteria_weights.begin(), [sum](T w) { return w / sum; });
-        }
-
-        void updateRecentScores(T current_score) {
-            recent_scores_.push_back(current_score);
-            if (recent_scores_.size() > config_.window_size) {
-                recent_scores_.pop_front();
-            }
-        }
-
-        bool checkTargetScore(T current_score) const { return current_score >= config_.target_score; }
-
-        bool checkImprovementRate(T current_score, T best_score) {
-            T relative_improvement = (current_score - best_score) / std::max(std::abs(best_score), T(1e-10));
-            const bool significant_improvement = relative_improvement > config_.improvement_threshold;
-
-            if (significant_improvement) {
+            if (relative_improvement > improvement_threshold_) {
                 stagnant_iterations_ = 0;
             } else {
                 stagnant_iterations_++;
             }
 
-            return significant_improvement;
-        }
+            // Early stopping based on stagnation
+            if (stagnant_iterations_ >= patience_) {
+                LOG_INFO("Early stopping triggered after {} stagnant iterations", patience_);
+                return true;
+            }
 
-        [[nodiscard]] bool checkStagnation() const { return stagnant_iterations_ >= config_.patience; }
+            // Adaptive moving average convergence check
+            recent_scores_.push_back(current_score);
+            if (recent_scores_.size() > window_size_) {
+                recent_scores_.pop_front();
+            }
 
-        [[nodiscard]] bool checkMovingAverage() const {
-            if (recent_scores_.size() < config_.window_size) {
+            if (recent_scores_.size() == window_size_) {
+                T avg_score = std::reduce(recent_scores_.begin(), recent_scores_.end(), T(0)) / window_size_;
+                T score_variance = calculateScoreVariance(avg_score);
+
+                T adaptive_threshold = std::max(T(1e-6), T(1e-4) * std::pow(0.95, total_iterations_));
+                if (score_variance < adaptive_threshold && avg_score > target_score_ * T(0.98)) {
+                    LOG_INFO("Convergence detected based on adaptive moving average at iteration {}",
+                             current_iteration);
+                    return true;
+                }
+            }
+
+            // Check confidence interval using GPR
+            auto [mean, variance] = gpr.predict(best_viewpoint.getPosition());
+            T confidence_interval = T(1.96) * std::sqrt(variance); // 95% confidence interval
+
+            // Adaptive confidence threshold
+            T adaptive_confidence_threshold =
+                    target_score_ * (T(1) - T(0.02) * std::exp(-T(total_iterations_) / T(20)));
+            if (mean - confidence_interval > adaptive_confidence_threshold) {
+                LOG_INFO("High confidence in solution at iteration {}", current_iteration);
+                return true;
+            }
+
+            // Check for rapid improvement
+            if (relative_improvement > T(0.1)) {
+                LOG_INFO("Significant improvement detected. Continuing optimization.");
                 return false;
             }
 
-            T avg_score = std::accumulate(recent_scores_.begin(), recent_scores_.end(), T(0)) / config_.window_size;
-            T score_variance =
-                    std::accumulate(recent_scores_.begin(), recent_scores_.end(), T(0),
-                                    [avg_score](T acc, T score) { return acc + std::pow(score - avg_score, 2); }) /
-                    config_.window_size;
+            // Check for diminishing returns
+            if (total_iterations_ > 10 && calculateAverageImprovement() < improvement_threshold_ / 10) {
+                LOG_INFO("Diminishing returns detected. Stopping optimization.");
+                return true;
+            }
 
-            return score_variance < config_.moving_average_threshold && avg_score > config_.target_score * T(0.95);
+            return false;
         }
 
-        bool checkConfidenceInterval(const ViewPoint<T> &best_viewpoint) const {
-            auto [mean, variance] = gpr_.predict(best_viewpoint.getPosition());
-            T confidence_interval = T(1.96) * std::sqrt(variance); // 95% confidence interval
-            return mean - confidence_interval > config_.target_score * config_.confidence_interval_threshold;
+        void reset() {
+            stagnant_iterations_ = 0;
+            total_iterations_ = 0;
+            recent_scores_.clear();
+            improvement_history_.clear();
+            patience_ = initial_patience_;
+            improvement_threshold_ = initial_improvement_threshold_;
         }
 
-        T adaptVoteThreshold() const {
-            T progress_ratio = static_cast<T>(iteration_) / config_.max_iterations;
-            T adaptive_factor = std::exp(-config_.adaptive_threshold_factor * progress_ratio);
-            return T(0.5) + T(0.5) * adaptive_factor; // Starts at 1.0 and decreases towards 0.5
+        void setTargetScore(T target_score) { target_score_ = target_score; }
+
+    private:
+        int initial_patience_;
+        int patience_;
+        T initial_improvement_threshold_;
+        T improvement_threshold_;
+        T target_score_;
+        size_t window_size_;
+        int stagnant_iterations_;
+        int total_iterations_;
+        std::deque<T> recent_scores_;
+        std::deque<T> improvement_history_;
+
+        void updateAdaptiveParameters() {
+            // Adaptively adjust patience
+            patience_ = initial_patience_ + static_cast<int>(std::log1p(total_iterations_));
+
+            // Adaptively adjust improvement threshold
+            improvement_threshold_ = initial_improvement_threshold_ * std::exp(-T(total_iterations_) / T(50));
+        }
+
+        T calculateScoreVariance(T avg_score) const {
+            return std::accumulate(recent_scores_.begin(), recent_scores_.end(), T(0),
+                                   [avg_score](T acc, T score) { return acc + std::pow(score - avg_score, 2); }) /
+                   window_size_;
+        }
+
+        T calculateAverageImprovement() const {
+            if (improvement_history_.size() < 2)
+                return T(0);
+
+            T sum_improvement = T(0);
+            for (size_t i = 1; i < improvement_history_.size(); ++i) {
+                sum_improvement +=
+                        (improvement_history_[i] - improvement_history_[i - 1]) / improvement_history_[i - 1];
+            }
+            return sum_improvement / T(improvement_history_.size() - 1);
         }
     };
 

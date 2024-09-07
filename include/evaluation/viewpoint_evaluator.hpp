@@ -13,9 +13,8 @@
 template<FloatingPoint T = double>
 class ViewpointEvaluator {
 public:
-    ViewpointEvaluator(optimization::GaussianProcessRegression<optimization::kernel::Matern52<T>> &gpr,
-                       cache::ViewpointCache<T> &cache, optimization::Acquisition<T> &acquisition, const int patience,
-                       T improvement_threshold) :
+    ViewpointEvaluator(optimization::GPR<optimization::kernel::Matern52<T>> &gpr, cache::ViewpointCache<T> &cache,
+                       optimization::Acquisition<T> &acquisition, const int patience, T improvement_threshold) :
         gpr_(gpr), cache_(cache), acquisition_(acquisition), patience_(patience),
         improvement_threshold_(improvement_threshold), current_iteration_(0) {}
 
@@ -105,7 +104,7 @@ public:
     }
 
 private:
-    optimization::GaussianProcessRegression<optimization::kernel::Matern52<T>> &gpr_;
+    optimization::GPR<optimization::kernel::Matern52<T>> &gpr_;
     cache::ViewpointCache<T> &cache_;
     optimization::Acquisition<T> &acquisition_;
     int patience_;

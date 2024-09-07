@@ -1,17 +1,17 @@
 # File: configuration.yaml
 
 object:
-  name: "obj_000021"
+  name: "obj_000020"
 
 target_images:
   generate: true
   output_directory: "target_images"
-  num_images: 8
+  num_images: 1
 
 paths:
   log_directory: "logs"
   mesh: "./3d_models/obj_000020.ply"
-  target_image: "./target_images/obj_000020/target_2.png"
+  target_image: "./target_images/obj_000020/target_1.png"
   models_directory: "./3d_models"
   object_name: "obj_000020"
 
@@ -48,19 +48,21 @@ image:
     type: "SSIM"                   # Selected image comparison method (FEATURE, SSIM, COMPOSITE, PSNR)
     normalize: false                    # Normalize the images before comparison (using MSE/PSNR which are absolute metrics)
     ssim:
-      threshold: 1.0                    # Higher is better
+      threshold: 0.95                   # Higher is better
     feature:
-      threshold: 0.60                   # Higher is better
+      threshold: 0.70                   # Higher is better
     psnr:
-      threshold: 0.20                   # Higher is better
+      threshold: 0.25                   # Higher is better
     composite:
-      threshold: 0.90                   # Higher is better
+      threshold: 0.85                   # Higher is better
 
 optimization:
-  max_restarts: 10 # Maximum number of restarts (0 = no restarts)
-  max_points: 100 # Maximum number of points to optimize (0 = no limit) TODO: Implement
-  patience: 10 # Number of allowed stagnant iterations before stopping the optimization
-  improvement_threshold: 1e-4 # DEFAULT: 1e-4; improvement less than this will be considered stagnant
+  significant_improvement_threshold: 0.1 # local search when improvement is greater than this
+  refinement_threshold: 0.80 # Refinement threshold to switch to local search
+  max_restarts: 0 # Maximum number of restarts (0 = no restarts)
+  max_points: 50 # Maximum number of points to optimize (0 = no limit) TODO: Implement
+  patience: 5 # Number of allowed stagnant iterations before stopping the optimization
+  improvement_threshold: 1e-3 # DEFAULT: 1e-4; improvement less than this will be considered stagnant
   gp:
     kernel:
       matern:
@@ -78,22 +80,24 @@ optimization:
           restarts: 5
           param_lower_bound: 1e-6
           param_upper_bound: 1e3
-    acquisition:
-      # ADAPTIVE =  adaptive exploration-exploitation + EI + PI + UCB
+    acquisition: # ADAPTIVE =  adaptive exploration-exploitation + EI + PI + UCB
       # ADAPTIVE_{strategy} = adaptive exploration-exploitation + {strategy} - other strategies are set to 0
       strategy: ADAPTIVE              # DEFAULT: ADAPTIVE; EI, PI, UCB, UCB_ALT, ADAPTIVE, ADAPTIVE_EI, ADAPTIVE_PI, ADAPTIVE_UCB
-      distance_penalty: false         # DEFAULT: false; Penalize large distances in the acquisition function
-      beta: 2.0                       # DEFAULT: 2.0; Exploration-exploitation trade-off parameter
-      exploration_weight: 5.0         # DEFAULT: 1.0; Exploration weight for the acquisition function
+      distance_penalty: false          # DEFAULT: false; Penalize large distances in the acquisition function
+      beta: 1.0                       # DEFAULT: 2.0; Exploration-exploitation trade-off parameter
+      exploration_weight: 1.0         # DEFAULT: 1.0; Exploration weight for the acquisition function
       exploitation_weight: 1.0        # DEFAULT: 1.0; Exploitation weight for the acquisition function
-      momentum: 0.95                  # DEFAULT: 0.1; Momentum for the acquisition function
-      distance_weight: 0.85           # DEFAULT: 0.5; Weight for the distance term in the acquisition function
+      momentum: 0.2                   # DEFAULT: 0.1; Momentum for the acquisition function
+      distance_weight: 0.50           # DEFAULT: 0.5; Weight for the distance term in the acquisition function
 
   local_search:
     frequency: 5 # Frequency of local search (every n steps)
-    max_iterations: 50 # Maximum number of iterations for local search
-    learning_rate: 0.01 # Learning rate for local search
-    epsilon: 1e-4
+    max_iterations: 10 # Maximum number of iterations for local search
+    learning_rate: 0.1 # Learning rate for local search
+    epsilon: 1e-5
+    patience: 5
+    momentum: 0.9
+
 
 
 estimation:
@@ -107,7 +111,7 @@ rendering:
   duration: 0 # Duration of the rendering in ms
 
 sampling:
-  count: 20
+  count: 2
 
 octree:
   min_nodes_to_explore: 8
@@ -121,8 +125,8 @@ octree:
 cache:
   evict: true
   max_size: 500
-  base_radius: 0.1 # Base radius for the cache (radius within which the cache will return pre-computed results)
-  score_threshold: 0.4 # pre-computed results returned with a score below this threshold (if available)
+  base_radius: 0.3 # Base radius for the cache (radius within which the cache will return pre-computed results)
+  score_threshold: 0.75 # pre-computed results returned with a score below this threshold (if available)
 
 perception:
   type: simulator
