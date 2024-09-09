@@ -16,12 +16,11 @@
 #include "optimization/gaussian/gpr.hpp"
 #include "spatial/octree.hpp"
 
-template<FloatingPoint T = double>
+template<FloatingPoint T = double, optimization::IsKernel<T> KernelType = optimization::DefaultKernel<T>>
 class ViewpointSampler {
 public:
     ViewpointSampler(const Eigen::Vector3<T> &center, T radius, T tolerance,
-                     const optimization::GPR<optimization::kernel::Matern52<T>> &gpr,
-                     optimization::Acquisition<T> &acquisition) :
+                     std::shared_ptr<optimization::GPR<T, KernelType>> gpr, optimization::Acquisition<T> &acquisition) :
         center_(center), radius_(radius), tolerance_(tolerance), gpr_(gpr), acquisition_(acquisition),
         rng_(std::random_device{}()), uniform_dist_(0.0, 1.0), normal_dist_(0.0, 1.0) {
         try {
@@ -73,7 +72,7 @@ public:
 private:
     Eigen::Vector3<T> center_;
     T radius_, tolerance_, min_radius_, max_radius_;
-    const optimization::GPR<optimization::kernel::Matern52<T>> &gpr_;
+    std::shared_ptr<optimization::GPR<T, KernelType>> gpr_;
     optimization::Acquisition<T> &acquisition_;
     mutable std::mt19937 rng_;
     mutable std::uniform_real_distribution<T> uniform_dist_;
@@ -114,7 +113,7 @@ private:
 
         T best_score = std::numeric_limits<T>::lowest();
         for (const auto &candidate: candidates) {
-            auto [mean, std_dev] = gpr_.predict(candidate.getPosition());
+            auto [mean, std_dev] = gpr_->predict(candidate.getPosition());
             T acquisition_value = acquisition_.compute(candidate.getPosition(), mean, std_dev);
             ranked_candidates.emplace_back(acquisition_value, candidate);
             best_score = std::max(best_score, mean);
@@ -214,7 +213,7 @@ private:
                 T best_theta = std::atan2(best_direction.y(), best_direction.x());
                 T best_phi = std::acos(std::clamp(best_direction.z() / best_r, T(-1), T(1)));
 
-                auto [mean, std_dev] = gpr_.predict(point);
+                auto [mean, std_dev] = gpr_->predict(point);
                 T prediction_confidence = 1 / (1 + std_dev);
 
                 // Adaptive biasing towards best_viewpoint
@@ -273,7 +272,7 @@ private:
             T best_theta = std::atan2(best_direction.y(), best_direction.x());
             T best_phi = std::acos(std::clamp(best_direction.z() / best_r, T(-1), T(1)));
 
-            auto [mean, std_dev] = gpr_.predict(point);
+            auto [mean, std_dev] = gpr_->predict(point);
             if (std::isnan(mean) || std::isnan(std_dev)) {
                 LOG_WARN("GPR prediction returned NaN. Using original point.");
             } else {
@@ -312,7 +311,7 @@ private:
     }
 
     bool isLikelyImprovement(const ViewPoint<T> &point, T best_score) const {
-        auto [mean, std_dev] = gpr_.predict(point.getPosition());
+        auto [mean, std_dev] = gpr_->predict(point.getPosition());
         T z_score = (best_score - mean) / std_dev;
         T improvement_probability = 1 - 0.5 * (1 + std::erf(z_score / std::sqrt(2)));
         return improvement_probability > 0.3; // 30% chance of improvement

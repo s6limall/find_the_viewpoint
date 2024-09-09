@@ -31,7 +31,7 @@ namespace metrics {
             return instance;
         }
 
-        void initialize(std::optional<std::string_view> objectName = std::nullopt) {
+        void initialize(const std::optional<std::string_view> &objectName = std::nullopt) {
             std::lock_guard<std::mutex> lock(mutex);
             if (objectName) {
                 currentObject = *objectName;
@@ -83,7 +83,9 @@ namespace metrics {
         }
 
     private:
-        MetricsCollector() : currentObject("unknown_object"), nextViewpointIndex(0) { loadOrCreateDataFile(); }
+        MetricsCollector() : currentObject(config::get("object.name", "unknown_object")), nextViewpointIndex(0) {
+            loadOrCreateDataFile();
+        }
 
         void loadOrCreateDataFile() {
             std::filesystem::create_directories(outputDirectory);

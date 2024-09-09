@@ -14,10 +14,10 @@
 
 namespace optimization {
 
-    template<FloatingPoint T = double>
+    template<FloatingPoint T = double, IsKernel<T> KernelType = DefaultKernel<T>>
     class OptimizationEngine {
     public:
-        OptimizationEngine(const Eigen::Vector3<T> &center, T size, T min_size, GPR<kernel::Matern52<T>> &gpr,
+        OptimizationEngine(const Eigen::Vector3<T> &center, T size, T min_size, std::shared_ptr<GPR<T, KernelType>> gpr,
                            std::optional<T> radius = std::nullopt, std::optional<T> tolerance = std::nullopt) :
             octree_(center, size, min_size), cache_(typename cache::ViewpointCache<T>::CacheConfig{}), gpr_(gpr),
             acquisition_(typename Acquisition<T>::Config{}),
@@ -86,7 +86,7 @@ namespace optimization {
                 }
 
                 // Early stopping condition
-                if (current_best_score > config::get<T>("optimization.target_score", 0.95)) {
+                if (current_best_score > config::get<T>("optimization.target_score", 0.9)) {
                     LOG_INFO("Target score reached. Stopping optimization.");
                     break;
                 }
@@ -115,7 +115,7 @@ namespace optimization {
             node.max_acquisition = std::numeric_limits<T>::lowest();
             for (auto &point: node.points) {
                 evaluator_.evaluatePoint(point, target, comparator);
-                auto [mean, std_dev] = gpr_.predict(point.getPosition());
+                auto [mean, std_dev] = gpr_->predict(point.getPosition());
                 T acquisition_value = acquisition_.compute(point.getPosition(), mean, std_dev);
                 node.max_acquisition = std::max(node.max_acquisition, acquisition_value);
 
@@ -205,7 +205,7 @@ namespace optimization {
     private:
         spatial::Octree<T> octree_;
         cache::ViewpointCache<T> cache_;
-        GPR<kernel::Matern52<T>> &gpr_;
+        std::shared_ptr<GPR<T, KernelType>> gpr_;
         Acquisition<T> acquisition_;
         ViewpointSampler<T> sampler_;
         ViewpointEvaluator<T> evaluator_;

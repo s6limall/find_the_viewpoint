@@ -3,38 +3,50 @@
 #ifndef IMAGE_PROCESSOR_HPP
 #define IMAGE_PROCESSOR_HPP
 
-#include <opencv2/opencv.hpp>
 #include <opencv2/dnn.hpp>
+#include <opencv2/opencv.hpp>
 #include <stdexcept>
+
+#include "common/logging/logger.hpp"
 
 class ImagePreprocessor {
 public:
     explicit ImagePreprocessor(const std::string &model_path = "./u2net.onnx") {
         // Load the pre-trained ONNX model
-        net = cv::dnn::readNetFromONNX(model_path);
-        if (net.empty()) {
-            throw std::runtime_error("Failed to load ONNX model from: " + model_path);
+        try {
+            net = cv::dnn::readNetFromONNX(model_path);
+            if (net.empty()) {
+                // throw std::runtime_error("Failed to load ONNX model from: " + model_path);
+                model_found = false;
+                LOG_WARN("Failed to load ONNX model from: {}", model_path);
+            } else {
+                model_found = true;
+            }
+        } catch (const cv::Exception &e) {
+            LOG_CRITICAL("Failed to load the model: {}", e.what());
+            model_found = false;
         }
     }
 
-     cv::Mat process(const cv::Mat& input_image) {
+    cv::Mat process(const cv::Mat &input_image) {
         cv::Mat processed_image = input_image.clone();
 
         // Check if background removal is necessary
-        if (hasSignificantBackground(input_image)) {
+        if (model_found && hasSignificantBackground(input_image)) {
             processed_image = removeBackground(input_image);
         } else {
             processed_image = input_image.clone();
         }
-        cv::Mat enhanced_image = enhanceFeatures(processed_image);
+        const cv::Mat enhanced_image = enhanceFeatures(processed_image);
 
         return normalizeImage(enhanced_image);
     }
 
 private:
     cv::dnn::Net net;
+    bool model_found;
 
-    static bool hasSignificantBackground(const cv::Mat& image) {
+    static bool hasSignificantBackground(const cv::Mat &image) {
         // Convert image to grayscale
         cv::Mat gray_image;
         cv::cvtColor(image, gray_image, cv::COLOR_BGR2GRAY);
@@ -48,7 +60,7 @@ private:
         return stddev[0] > background_threshold;
     }
 
-     cv::Mat removeBackground(const cv::Mat &image) {
+    cv::Mat removeBackground(const cv::Mat &image) {
         cv::Mat blob = cv::dnn::blobFromImage(image, 1.0 / 255.0, cv::Size(320, 320), cv::Scalar(0, 0, 0), true, false);
 
         net.setInput(blob);
@@ -100,12 +112,11 @@ private:
         return enhanced;
     }
 
-    static cv::Mat normalizeImage(const cv::Mat& image) {
+    static cv::Mat normalizeImage(const cv::Mat &image) {
         cv::Mat normalized;
         cv::normalize(image, normalized, 0, 255, cv::NORM_MINMAX, CV_8UC3);
         return normalized;
     }
-
 };
 
 #endif // IMAGE_PROCESSOR_HPP

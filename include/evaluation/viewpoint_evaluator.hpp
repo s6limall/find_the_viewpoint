@@ -5,15 +5,16 @@
 #include "cache/viewpoint_cache.hpp"
 #include "common/logging/logger.hpp"
 #include "common/metrics/metrics_collector.hpp"
+#include "common/traits/optimization_traits.hpp"
 #include "optimization/acquisition.hpp"
 #include "optimization/gaussian/gpr.hpp"
 #include "optimization/gaussian/kernel/matern_52.hpp"
 #include "processing/image/comparator.hpp"
 
-template<FloatingPoint T = double>
+template<FloatingPoint T = double, optimization::IsKernel<T> KernelType = optimization::DefaultKernel<T>>
 class ViewpointEvaluator {
 public:
-    ViewpointEvaluator(optimization::GPR<optimization::kernel::Matern52<T>> &gpr, cache::ViewpointCache<T> &cache,
+    ViewpointEvaluator(std::shared_ptr<optimization::GPR<T, KernelType>> gpr, cache::ViewpointCache<T> &cache,
                        optimization::Acquisition<T> &acquisition, const int patience, T improvement_threshold) :
         gpr_(gpr), cache_(cache), acquisition_(acquisition), patience_(patience),
         improvement_threshold_(improvement_threshold), current_iteration_(0) {}
@@ -34,7 +35,7 @@ public:
                 LOG_DEBUG("Computed new score {} for position {}", score, point.getPosition());
             }
 
-            gpr_.update(point.getPosition(), point.getScore());
+            gpr_->update(point.getPosition(), point.getScore());
         } else {
             // Update the cache with the existing point
             cache_.update(point);
@@ -93,7 +94,7 @@ public:
         }
 
         // Check confidence interval using GPR
-        auto [mean, variance] = gpr_.predict(best_viewpoint.getPosition());
+        auto [mean, variance] = gpr_->predict(best_viewpoint.getPosition());
         T confidence_interval = T(1.96) * std::sqrt(variance); // 95% confidence interval
 
         if (mean - confidence_interval > target_score) {
@@ -105,7 +106,7 @@ public:
     }
 
 private:
-    optimization::GPR<optimization::kernel::Matern52<T>> &gpr_;
+    std::shared_ptr<optimization::GPR<T, KernelType>> gpr_;
     cache::ViewpointCache<T> &cache_;
     optimization::Acquisition<T> &acquisition_;
     int patience_;

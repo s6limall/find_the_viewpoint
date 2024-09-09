@@ -6,6 +6,7 @@
 #include <optional>
 #include "common/logging/logger.hpp"
 #include "common/metrics/metrics_collector.hpp"
+#include "common/traits/optimization_traits.hpp"
 #include "optimization/convergence_checker.hpp"
 #include "optimization/engine.hpp"
 #include "optimization/local_refiner.hpp"
@@ -13,21 +14,17 @@
 
 namespace optimization {
 
-    template<FloatingPoint T = double>
+    template<FloatingPoint T = double, IsKernel<T> KernelType = DefaultKernel<T>>
     class ViewpointOptimizer {
     public:
         ViewpointOptimizer(const Eigen::Vector3<T> &center, T size, T min_size, const int max_iterations,
-                           GPR<kernel::Matern52<T>> &gpr,
+                           std::shared_ptr<GPR<T, KernelType>> gpr,
                            std::shared_ptr<processing::image::ImageComparator> comparator,
                            std::optional<T> radius = std::nullopt, std::optional<T> tolerance = std::nullopt) :
-            engine_(center, size, min_size, gpr, radius, tolerance),
-            convergence_checker_(config::get("optimization.patience", 10),
-                                 config::get("optimization.improvement_threshold", 1e-4),
-                                 config::get("optimization.target_score", T(0.95))),
-            local_refiner_(comparator), gpr_(gpr), max_iterations_(max_iterations),
+            engine_(center, size, min_size, gpr, radius, tolerance), convergence_checker_(),
+            local_refiner_(comparator, gpr), gpr_(gpr), max_iterations_(max_iterations),
             refinement_threshold_(config::get("optimization.refinement_threshold", T(0.8))),
             significant_improvement_threshold_(config::get("optimization.significant_improvement_threshold", T(0.01))) {
-            engine_.setMaxIterations(max_iterations);
         }
 
         void optimize(const Image<> &target, const std::shared_ptr<processing::image::ImageComparator> &comparator,
@@ -43,6 +40,10 @@ namespace optimization {
             bool refinement_mode = false;
 
             for (int i = 0; i < max_iterations_; ++i) {
+                if (state::get("count", 0) > config::get("optimization.max_points", 0)) {
+                    LOG_INFO("Maximum number of points reached. Stopping optimization.");
+                    break;
+                }
                 if (refinement_mode) {
                     localRefinement(target, comparator);
                 } else {
@@ -78,7 +79,7 @@ namespace optimization {
                 }
 
                 if (i % hyperparameter_optimization_frequency == 0) {
-                    gpr_.optimizeHyperparameters();
+                    gpr_->optimizeHyperparameters();
                 }
             }
 
@@ -117,7 +118,7 @@ namespace optimization {
         OptimizationEngine<T> engine_;
         ConvergenceChecker<T> convergence_checker_;
         LocalRefiner<T> local_refiner_;
-        GPR<kernel::Matern52<T>> &gpr_;
+        std::shared_ptr<GPR<T, KernelType>> gpr_;
         ViewPoint<T> best_viewpoint_;
         int max_iterations_;
         T refinement_threshold_;

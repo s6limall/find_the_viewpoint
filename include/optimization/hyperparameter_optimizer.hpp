@@ -4,17 +4,16 @@
 #define HYPERPARAMETER_OPTIMIZER_HPP
 
 #include <Eigen/Dense>
-#include <algorithm>
 #include <cmath>
 #include <limits>
 #include <random>
 #include <vector>
 #include "common/logging/logger.hpp"
-#include "optimization/gaussian/kernel/matern_52.hpp"
+#include "common/traits/optimization_traits.hpp"
 
 namespace optimization {
 
-    template<typename Kernel = kernel::Matern52<>>
+    template<FloatingPoint T = double, IsKernel<T> KernelType = DefaultKernel<T>>
     class HyperparameterOptimizer {
     public:
         using VectorXd = Eigen::VectorXd;
@@ -39,7 +38,7 @@ namespace optimization {
                      max_iterations_, convergence_tol_, n_restarts_, param_lower_bound_, param_upper_bound_);
         }
 
-        VectorXd optimize(const MatrixXd &X, const VectorXd &y, Kernel &kernel) {
+        VectorXd optimize(const MatrixXd &X, const VectorXd &y, KernelType &kernel) {
             LOG_INFO("Starting hyperparameter optimization");
             if (X.rows() != y.rows() || X.rows() == 0) {
                 LOG_ERROR("Invalid input dimensions: X rows: {}, y rows: {}", X.rows(), y.rows());
@@ -78,7 +77,7 @@ namespace optimization {
             return best_params;
         }
 
-        VectorXd optimizeBounded(const MatrixXd &X, const VectorXd &y, Kernel &kernel, const VectorXd &lower_bounds,
+        VectorXd optimizeBounded(const MatrixXd &X, const VectorXd &y, KernelType &kernel, const VectorXd &lower_bounds,
                                  const VectorXd &upper_bounds) {
             LOG_INFO("Starting bounded hyperparameter optimization");
             if (X.rows() != y.rows() || X.rows() == 0) {
@@ -120,9 +119,9 @@ namespace optimization {
         }
 
         struct OptimizationStats {
-            int iterations;
-            double final_nlml;
-            double initial_nlml;
+            int iterations{};
+            double final_nlml{};
+            double initial_nlml{};
             VectorXd initial_params;
             VectorXd final_params;
         };
@@ -138,7 +137,7 @@ namespace optimization {
         std::mt19937 rng_;
         OptimizationStats last_optimization_stats_;
 
-        VectorXd optimizeFromInitial(const MatrixXd &X, const VectorXd &y, Kernel &kernel,
+        VectorXd optimizeFromInitial(const MatrixXd &X, const VectorXd &y, KernelType &kernel,
                                      const VectorXd &initial_params) {
             LOG_DEBUG("Starting optimization from initial parameters: {}", initial_params);
             VectorXd params = initial_params;
@@ -205,7 +204,7 @@ namespace optimization {
             return best_params;
         }
 
-        VectorXd generateIntelligentInitialParams(const MatrixXd &X, const VectorXd &y, const Kernel &kernel,
+        VectorXd generateIntelligentInitialParams(const MatrixXd &X, const VectorXd &y, const KernelType &kernel,
                                                   int restart) {
             VectorXd current_params = kernel.getParameters();
             LOG_DEBUG("Generating intelligent initial parameters for restart {}", restart);
@@ -241,13 +240,13 @@ namespace optimization {
             return params;
         }
 
-        VectorXd constrainParameters(const VectorXd &params) const {
+        [[nodiscard]] VectorXd constrainParameters(const VectorXd &params) const {
             VectorXd constrained = params.cwiseMax(param_lower_bound_).cwiseMin(param_upper_bound_);
             LOG_TRACE("Constrained parameters: {} -> {}", params, constrained);
             return constrained;
         }
 
-        void setKernelParameters(Kernel &kernel, const VectorXd &params) {
+        void setKernelParameters(KernelType &kernel, const VectorXd &params) {
             try {
                 kernel.setParameters(params(0), params(1), params(2));
                 LOG_DEBUG("Kernel parameters set successfully: {}", params);
@@ -259,7 +258,7 @@ namespace optimization {
             }
         }
 
-        double computeNLML(const MatrixXd &X, const VectorXd &y, Kernel &kernel, const VectorXd &params,
+        double computeNLML(const MatrixXd &X, const VectorXd &y, KernelType &kernel, const VectorXd &params,
                            VectorXd *grad = nullptr) {
             setKernelParameters(kernel, params);
             MatrixXd K = kernel.computeGramMatrix(X);
@@ -282,7 +281,7 @@ namespace optimization {
             return nlml;
         }
 
-        double handleCholeskyFailure(const MatrixXd &X, const VectorXd &y, MatrixXd &K, Kernel &kernel,
+        double handleCholeskyFailure(const MatrixXd &X, const VectorXd &y, MatrixXd &K, KernelType &kernel,
                                      const VectorXd &params, VectorXd *grad) {
             LOG_WARN("Handling Cholesky decomposition failure");
             double jitter = 1e-9;
@@ -311,8 +310,8 @@ namespace optimization {
         }
 
 
-        void computeNLMLGradient(const MatrixXd &X, const VectorXd &y, const MatrixXd &K, const VectorXd &alpha,
-                                 Kernel &kernel, const VectorXd &params, VectorXd *grad) {
+        static void computeNLMLGradient(const MatrixXd &X, const VectorXd &y, const MatrixXd &K, const VectorXd &alpha,
+                                        KernelType &kernel, const VectorXd &params, VectorXd *grad) {
             MatrixXd K_inv = K.ldlt().solve(MatrixXd::Identity(X.rows(), X.rows()));
             MatrixXd alpha_alpha_t = alpha * alpha.transpose();
             MatrixXd factor = alpha_alpha_t - K_inv;
@@ -325,7 +324,7 @@ namespace optimization {
             LOG_TRACE("Computed NLML gradient: {}", grad->transpose());
         }
 
-        VectorXd computeGradient(const MatrixXd &X, const VectorXd &y, Kernel &kernel, const VectorXd &params) {
+        VectorXd computeGradient(const MatrixXd &X, const VectorXd &y, KernelType &kernel, const VectorXd &params) {
             VectorXd grad;
             computeNLML(X, y, kernel, params, &grad);
             return grad;
@@ -342,7 +341,7 @@ namespace optimization {
             std::vector<double> alpha(s.size());
 
             for (int i = static_cast<int>(s.size()) - 1; i >= 0; --i) {
-                double rho_i = 1.0 / y[i].dot(s[i]);
+                const double rho_i = 1.0 / y[i].dot(s[i]);
                 if (!std::isfinite(rho_i)) {
                     LOG_WARN("Non-finite rho_i encountered in L-BFGS. Skipping this correction pair.");
                     continue;
@@ -371,13 +370,13 @@ namespace optimization {
             return z;
         }
 
-        double adaptiveLineSearch(const MatrixXd &X, const VectorXd &y, Kernel &kernel, const VectorXd &params,
+        double adaptiveLineSearch(const MatrixXd &X, const VectorXd &y, KernelType &kernel, const VectorXd &params,
                                   const VectorXd &direction, const VectorXd &grad, const double current_nlml) {
             LOG_DEBUG("Starting adaptive line search");
             double alpha = 1.0;
-            const double c1 = 1e-4;
-            const double c2 = 0.9;
-            const double initial_alpha = 1.0;
+            constexpr double c1 = 1e-4;
+            constexpr double c2 = 0.9;
+            constexpr double initial_alpha = 1.0;
 
             const double phi_0 = current_nlml;
             const double dphi_0 = grad.dot(direction);
@@ -448,13 +447,13 @@ namespace optimization {
             return initial_alpha;
         }
 
-        VectorXd fallbackOptimization(const MatrixXd &X, const VectorXd &y, Kernel &kernel,
+        VectorXd fallbackOptimization(const MatrixXd &X, const VectorXd &y, KernelType &kernel,
                                       const VectorXd &initial_params) {
             LOG_INFO("Entering fallback optimization strategy");
             VectorXd best_params = initial_params;
             double best_nlml = std::numeric_limits<double>::infinity();
 
-            const int num_samples = 100;
+            constexpr int num_samples = 100;
             for (int i = 0; i < num_samples; ++i) {
                 VectorXd params = generateRandomParams();
                 double nlml = computeNLML(X, y, kernel, params);
@@ -470,13 +469,13 @@ namespace optimization {
             return best_params;
         }
 
-        VectorXd alternativeOptimizationStrategy(const MatrixXd &X, const VectorXd &y, Kernel &kernel,
+        VectorXd alternativeOptimizationStrategy(const MatrixXd &X, const VectorXd &y, KernelType &kernel,
                                                  const VectorXd &initial_params) {
             LOG_INFO("Entering alternative optimization strategy");
             VectorXd best_params = initial_params;
             double best_nlml = computeNLML(X, y, kernel, best_params);
 
-            const int num_iterations = 50;
+            constexpr int num_iterations = 50;
             const double step_size = 0.1;
 
             for (int i = 0; i < num_iterations; ++i) {
@@ -533,7 +532,7 @@ namespace optimization {
 
 namespace optimization {
 
-    template<typename Kernel = kernel::Matern52<>>
+    template<typename KernelType = kernel::Matern52<>>
     class HyperparameterOptimizer {
     public:
         using VectorXd = Eigen::VectorXd;
@@ -555,7 +554,7 @@ namespace optimization {
                                              param_upper_bound_);
         }
 
-        VectorXd optimize(const MatrixXd &X, const VectorXd &y, Kernel &kernel) {
+        VectorXd optimize(const MatrixXd &X, const VectorXd &y, KernelType &kernel) {
             if (X.rows() != y.rows() || X.rows() == 0) {
                 LOG_ERROR("Invalid input dimensions: X rows: {}, y rows: {}", X.rows(), y.rows());
                 return kernel.getParameters();
@@ -588,7 +587,7 @@ namespace optimization {
         double param_upper_bound_;
         std::mt19937 rng_;
 
-        VectorXd optimizeFromInitial(const MatrixXd &X, const VectorXd &y, Kernel &kernel,
+        VectorXd optimizeFromInitial(const MatrixXd &X, const VectorXd &y, KernelType &kernel,
                                      const VectorXd &initial_params) {
             VectorXd params = initial_params;
             VectorXd best_params = params;
@@ -661,7 +660,7 @@ namespace optimization {
             return params.cwiseMax(param_lower_bound_).cwiseMin(param_upper_bound_);
         }
 
-        void setKernelParameters(Kernel &kernel, const VectorXd &params) {
+        void setKernelParameters(KernelType &kernel, const VectorXd &params) {
             try {
                 kernel.setParameters(params(0), params(1), params(2));
             } catch (const std::exception &e) {
@@ -673,7 +672,7 @@ namespace optimization {
 
         // Compute the Negative Log Marginal Likelihood (NLML) and its gradient
         // NLML = 1/2 * y^T * K^(-1) * y + 1/2 * log|K| + n/2 * log(2π)
-        double computeNLML(const MatrixXd &X, const VectorXd &y, Kernel &kernel, const VectorXd &params,
+        double computeNLML(const MatrixXd &X, const VectorXd &y, KernelType &kernel, const VectorXd &params,
                            VectorXd *grad = nullptr) {
             setKernelParameters(kernel, params);
             MatrixXd K = kernel.computeGramMatrix(X);
@@ -712,7 +711,7 @@ namespace optimization {
             return nlml;
         }
 
-        VectorXd computeGradient(const MatrixXd &X, const VectorXd &y, Kernel &kernel, const VectorXd &params) {
+        VectorXd computeGradient(const MatrixXd &X, const VectorXd &y, KernelType &kernel, const VectorXd &params) {
             VectorXd grad;
             computeNLML(X, y, kernel, params, &grad);
             return grad;
@@ -759,7 +758,7 @@ namespace optimization {
 
         // Perform a backtracking line search to find an appropriate step size
         // This method uses the Armijo condition to ensure sufficient decrease in the objective function
-        double lineSearch(const MatrixXd &X, const VectorXd &y, Kernel &kernel, const VectorXd &params,
+        double lineSearch(const MatrixXd &X, const VectorXd &y, KernelType &kernel, const VectorXd &params,
                           const VectorXd &direction, const VectorXd &grad, const double current_nlml) {
             double alpha = 1.0;
             const double c = 0.5;

@@ -1,321 +1,563 @@
 // File: optimization/gaussian/gp.hpp
 
+
 #ifndef OPTIMIZATION_GAUSSIAN_PROCESS_HPP
-#define OPTIMIZATION_GAUSSIAN_PROCESS_HPP
+#define OPTIMIZATION_GAUSIAN_PROCESS_HPP
 
 #include <Eigen/Dense>
 #include <limits>
 #include <stdexcept>
 #include "common/logging/logger.hpp"
-#include "optimization/gaussian/kernel/matern_52.hpp"
+#include "optimization/gaussian/kernel/kernel.hpp"
 #include "optimization/hyperparameter_optimizer.hpp"
 
 namespace optimization {
 
-    template<typename Kernel = kernel::Matern52<>>
+    template<FloatingPoint T = double, optimization::IsKernel<T> KernelType = optimization::DefaultKernel<T>>
     class GaussianProcess {
     public:
-        using MatrixXd = Eigen::MatrixXd;
-        using VectorXd = Eigen::VectorXd;
+        using MatrixXd = Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>;
+        using VectorXd = Eigen::Matrix<T, Eigen::Dynamic, 1>;
 
-        explicit GaussianProcess(const Kernel &kernel, const double noise_variance = 1e-6) :
-            kernel_(kernel), noise_variance_(std::max(noise_variance, std::numeric_limits<double>::epsilon())),
+        explicit GaussianProcess(const KernelType &kernel, const T noise_variance = 1e-6) :
+            kernel_(kernel), noise_variance_(std::max(noise_variance, std::numeric_limits<T>::epsilon())),
             optimizer_() {
-            noise_variance_ = config::get("optimization.gp.kernel.hyperparameters.noise_variance", noise_variance_);
             LOG_INFO("Initialized Gaussian Process with noise variance: {}", noise_variance_);
         }
 
+        // Set the data matrix X and precompute the covariance matrix
         void setData(const MatrixXd &X) {
             if (X.rows() == 0 || X.cols() == 0) {
-                LOG_ERROR("Attempted to set empty data!");
+                LOG_ERROR("Attempted to set empty data");
                 throw std::invalid_argument("Input data X cannot be empty.");
             }
-            X_ = X;
-            updateCovariance();
-            LOG_INFO("Set data with {} points of dimension {}", X_.rows(), X_.cols());
+
+            try {
+                // Directly assign input data to avoid unnecessary resizing
+                this->x_data_ = X;
+
+                // Update the covariance matrix based on the new data
+                updateCovariance();
+                LOG_INFO("Set data with {} points of dimension {}", x_data_.rows(), x_data_.cols());
+            } catch (const std::exception &e) {
+                LOG_ERROR("Failed to set data: {}. Attempting fallback.", e.what());
+                fallbackSetData(X);
+            }
         }
 
+
+        // Optimize the kernel hyperparameters based on the provided target values
         void optimizeHyperparameters(const VectorXd &y, const VectorXd &lower_bounds, const VectorXd &upper_bounds) {
-            if (X_.rows() == 0 || y.size() == 0) {
-                LOG_ERROR("Attempted hyperparameter optimization with no data");
+            LOG_DEBUG("Starting hyperparameter optimization");
+
+            if (x_data_.rows() == 0 || y.size() == 0) {
+                LOG_ERROR("No data available for hyperparameter optimization. x_data_ rows={}, y size={}",
+                          x_data_.rows(), y.size());
                 throw std::runtime_error("No data available for hyperparameter optimization.");
             }
-            LOG_INFO("Starting hyperparameter optimization");
 
-            VectorXd best_params = optimizer_.optimizeBounded(X_, y, kernel_, lower_bounds, upper_bounds);
-            setParameters(best_params);
-            updateCovariance();
-            LOG_INFO("Hyperparameter optimization completed with parameters: {}", best_params);
+            try {
+                VectorXd best_params = optimizer_.optimizeBounded(x_data_, y, kernel_, lower_bounds, upper_bounds);
+                setParameters(best_params);
+                updateCovariance();
+                LOG_INFO("Hyperparameter optimization completed successfully with parameters: {}", best_params);
+            } catch (const std::exception &e) {
+                LOG_ERROR("Hyperparameter optimization failed: {}. Attempting robust optimization.", e.what());
+                robustOptimizeHyperparameters(y, lower_bounds, upper_bounds);
+            }
         }
 
+        // Compute covariance between two datasets X1 and X2
         [[nodiscard]] MatrixXd computeCovariance(const MatrixXd &X1, const MatrixXd &X2) const {
             return kernel_.computeGramMatrix(X1, X2);
         }
 
+        // Compute the posterior mean and covariance for new test points X_star
         [[nodiscard]] std::pair<VectorXd, MatrixXd> posterior(const MatrixXd &X_star) const {
-            if (X_.rows() == 0) {
+            if (x_data_.rows() == 0) {
                 LOG_ERROR("Attempted posterior computation with no data");
-                throw std::runtime_error("No data set for Gaussian Process.");
+                throw std::runtime_error("No data available for posterior computation.");
             }
 
-            MatrixXd K_star = computeCovariance(X_, X_star);
+            MatrixXd K_star = computeCovariance(x_data_, X_star);
             MatrixXd K_star_star = computeCovariance(X_star, X_star);
 
             VectorXd mean = K_star.transpose() * alpha_;
 
-            MatrixXd cov = K_star_star - K_star.transpose() * L_.triangularView<Eigen::Lower>().solve(K_star);
+            MatrixXd cov;
+            try {
+                cov = K_star_star - K_star.transpose() * ldlt_.solve(K_star);
+                LOG_DEBUG("Posterior covariance successfully computed");
+            } catch (const std::exception &e) {
+                LOG_ERROR("Posterior covariance computation failed: {}. Attempting fallback method.", e.what());
+                return fallbackPosterior(X_star, K_star, K_star_star);
+            }
 
-            // Ensure numerical stability of the covariance matrix
-            cov = (cov + cov.transpose()) / 2.0;
-            Eigen::SelfAdjointEigenSolver<MatrixXd> eigenSolver(cov);
-            VectorXd eigenvalues = eigenSolver.eigenvalues().cwiseMax(0.0);
-            cov = eigenSolver.eigenvectors() * eigenvalues.asDiagonal() * eigenSolver.eigenvectors().transpose();
-
+            // Ensure positive semi-definiteness by cleaning covariance matrix
+            cov = cleanCovarianceMatrix(cov);
+            LOG_INFO("Posterior mean and covariance successfully computed");
             return {mean, cov};
         }
 
     protected:
-        Kernel kernel_;
-        double noise_variance_;
-        MatrixXd X_;
-        MatrixXd L_; // Cholesky decomposition of K
+        KernelType kernel_;
+        T noise_variance_;
+        MatrixXd x_data_;
+        Eigen::LDLT<MatrixXd> ldlt_; // LDLT decomposition of the covariance matrix
         VectorXd alpha_; // alpha = K^(-1) * y, precomputed for efficiency
-        HyperparameterOptimizer<Kernel> optimizer_;
+        HyperparameterOptimizer<T, KernelType> optimizer_;
 
+        // Update the covariance matrix based on current data and kernel parameters
         void updateCovariance() {
-            if (X_.rows() == 0) {
-                LOG_WARN("Attempted to update covariance with no data");
+            if (x_data_.rows() == 0) {
+                LOG_WARN("No data available to update covariance matrix");
                 return;
             }
 
-            MatrixXd K = computeCovariance(X_, X_);
-            K.diagonal().array() += noise_variance_;
+            try {
+                MatrixXd K = computeCovariance(x_data_, x_data_);
+                K.diagonal().array() += noise_variance_;
+                K = (K + K.transpose()) / 2.0; // Ensure symmetry
 
-            // Ensure K is symmetric
-            K = (K + K.transpose()) / 2.0;
+                // Perform regularized LDLT decomposition
+                ldlt_ = performRegularizedLDLT(K);
+                LOG_DEBUG("Covariance matrix updated successfully");
 
-            // Perform Cholesky decomposition with adaptive regularization
-            Eigen::LLT<MatrixXd> llt;
-            double lambda = 1e-9;
-            do {
-                llt.compute(K + lambda * MatrixXd::Identity(K.rows(), K.cols()));
-                lambda *= 10;
-            } while (llt.info() != Eigen::Success && lambda < 1e-3);
-
-            if (llt.info() != Eigen::Success) {
-                LOG_ERROR("Cholesky decomposition failed even with regularization");
-                throw std::runtime_error(
-                        "Cholesky decomposition failed. The kernel matrix may not be positive definite.");
+            } catch (const std::exception &e) {
+                LOG_ERROR("Error updating covariance matrix: {}. Using fallback method.", e.what());
+                fallbackUpdateCovariance();
             }
-            L_ = llt.matrixL();
-
-            LOG_DEBUG("Updated covariance matrix with regularization lambda = {}", lambda);
         }
 
-        void setParameters(const VectorXd &params) {
-            if (params.size() != 3) {
-                throw std::invalid_argument("Expected 3 parameters for kernel.");
+        // Fallback methods for setting data
+        void fallbackSetData(const MatrixXd &X) {
+            LOG_WARN("Attempting fallback mechanism for setting data");
+
+            try {
+                x_data_ = MatrixXd::Zero(X.rows(), X.cols());
+                x_data_ += X;
+                updateCovariance();
+                LOG_INFO("Fallback data setting successful");
+
+            } catch (const std::exception &e) {
+                LOG_ERROR("Fallback data setting failed: {}", e.what());
+                x_data_ = MatrixXd::Constant(1, X.cols(), 0.0); // Minimal safe fallback
+                ldlt_.compute(MatrixXd::Identity(1, 1));
+                LOG_WARN("Set default minimal data matrix after fallback failure");
             }
-            kernel_.setParameters(params(0), params(1), params(2));
-            LOG_DEBUG("Updated kernel parameters: {}", params);
+        }
+
+        // Set kernel parameters and update covariance matrix accordingly
+        void setParameters(const VectorXd &params) {
+            if (params.size() != kernel_.getParameterCount()) {
+                LOG_ERROR("Invalid number of parameters provided for kernel. Expected {}, got {}",
+                          kernel_.getParameterCount(), params.size());
+                throw std::invalid_argument("Incorrect number of kernel parameters.");
+            }
+
+            kernel_.setParameters(params);
+            updateCovariance();
+            LOG_DEBUG("Kernel parameters successfully updated: {}", params);
+        }
+
+        // Perform regularized LDLT decomposition with adaptive regularization
+        Eigen::LDLT<MatrixXd> performRegularizedLDLT(MatrixXd K) {
+            Eigen::LDLT<MatrixXd> ldlt;
+            T lambda = 0;
+            const T max_lambda = 1e-3;
+            const T lambda_factor = 10;
+
+            // Retry with increasing regularization until decomposition succeeds
+            while (lambda < max_lambda) {
+                ldlt.compute(K + lambda * MatrixXd::Identity(K.rows(), K.cols()));
+                if (ldlt.info() == Eigen::Success) {
+                    LOG_DEBUG("LDLT decomposition successful with regularization lambda = {}", lambda);
+                    return ldlt;
+                }
+                lambda = (lambda == 0) ? 1e-9 : lambda * lambda_factor;
+            }
+
+            if (ldlt.info() != Eigen::Success) {
+                LOG_ERROR("LDLT decomposition failed even with regularization");
+                throw std::runtime_error("LDLT decomposition failed despite regularization attempts");
+            }
+
+            return ldlt;
+        }
+
+        // Clean covariance matrix by ensuring positive semi-definiteness
+        MatrixXd cleanCovarianceMatrix(const MatrixXd &cov) const {
+            MatrixXd cleaned_cov = (cov + cov.transpose()) / 2.0;
+            Eigen::SelfAdjointEigenSolver<MatrixXd> eigen_solver(cleaned_cov);
+            VectorXd eigenvalues = eigen_solver.eigenvalues().cwiseMax(0.0);
+            cleaned_cov =
+                    eigen_solver.eigenvectors() * eigenvalues.asDiagonal() * eigen_solver.eigenvectors().transpose();
+            LOG_DEBUG("Covariance matrix cleaned for positive semi-definiteness");
+            return cleaned_cov;
+        }
+
+        // Fallback method for updating the covariance matrix
+        void fallbackUpdateCovariance() {
+            LOG_WARN("Fallback for covariance matrix update initiated");
+
+            try {
+                MatrixXd K = computeCovariance(x_data_, x_data_);
+                K.diagonal().array() += noise_variance_;
+                Eigen::SelfAdjointEigenSolver<MatrixXd> eigen_solver(K);
+                VectorXd eigenvalues = eigen_solver.eigenvalues().cwiseMax(1e-9); // Ensure all eigenvalues are positive
+                MatrixXd V = eigen_solver.eigenvectors();
+                MatrixXd L = eigenvalues.cwiseSqrt().asDiagonal();
+                K = V * L * L * V.transpose();
+
+                ldlt_.compute(K);
+                LOG_WARN("Covariance matrix fallback successful");
+
+            } catch (const std::exception &e) {
+                LOG_ERROR("Fallback covariance matrix update failed: {}", e.what());
+                throw std::runtime_error("Failed to update covariance matrix using fallback.");
+            }
+        }
+
+        // Robust optimization of hyperparameters in case of failure
+        void robustOptimizeHyperparameters(const VectorXd &y, const VectorXd &lower_bounds,
+                                           const VectorXd &upper_bounds) {
+            const int max_attempts = 5;
+            const T perturbation_factor = 0.1;
+
+            VectorXd best_params = kernel_.getParameters();
+            T best_likelihood = -std::numeric_limits<T>::infinity();
+
+            for (int attempt = 0; attempt < max_attempts; ++attempt) {
+                try {
+                    VectorXd perturbed_lower = lower_bounds * (1 - perturbation_factor * attempt);
+                    VectorXd perturbed_upper = upper_bounds * (1 + perturbation_factor * attempt);
+                    VectorXd params = optimizer_.optimizeBounded(x_data_, y, kernel_, perturbed_lower, perturbed_upper);
+                    setParameters(params);
+                    T likelihood = computeLogLikelihood(y);
+
+                    if (likelihood > best_likelihood) {
+                        best_params = params;
+                        best_likelihood = likelihood;
+                    }
+
+                    LOG_INFO("Robust optimization attempt {} succeeded", attempt + 1);
+                    break;
+                } catch (const std::exception &e) {
+                    LOG_WARN("Robust optimization attempt {} failed: {}", attempt + 1, e.what());
+                }
+            }
+
+            setParameters(best_params);
+            LOG_INFO("Robust hyperparameter optimization completed with parameters: {}", best_params);
+        }
+
+        // Fallback method for posterior computation
+        [[nodiscard]] std::pair<VectorXd, MatrixXd> fallbackPosterior(const MatrixXd &X_star, const MatrixXd &K_star,
+                                                                      const MatrixXd &K_star_star) const {
+            VectorXd mean = K_star.transpose() * (x_data_.transpose() * x_data_ +
+                                                  noise_variance_ * MatrixXd::Identity(x_data_.rows(), x_data_.rows()))
+                                                         .ldlt()
+                                                         .solve(x_data_.transpose() * alpha_);
+            MatrixXd cov = K_star_star - K_star.transpose() * K_star / (noise_variance_ * x_data_.rows());
+
+            // Clean the covariance matrix
+            cov = cleanCovarianceMatrix(cov);
+            LOG_WARN("Fallback posterior computation successful");
+
+            return {mean, cov};
+        }
+
+        // Compute the log-likelihood of the current model
+        [[nodiscard]] T computeLogLikelihood(const VectorXd &y) const {
+            if (y.size() != x_data_.rows()) {
+                LOG_ERROR("Size mismatch between target vector and data matrix rows");
+                throw std::invalid_argument("y size does not match number of data points.");
+            }
+
+            T n = static_cast<T>(y.size());
+            T log_det_K = ldlt_.vectorD().array().log().sum();
+            T quadratic = y.transpose() * alpha_;
+            return -0.5 * (quadratic + log_det_K + n * std::log(2 * M_PI));
         }
     };
-
 } // namespace optimization
 
 #endif // OPTIMIZATION_GAUSSIAN_PROCESS_HPP
 
-/*
-#ifndef OPTIMIZATION_GAUSSIAN_PROCESS_HPP
+
+/*#ifndef OPTIMIZATION_GAUSSIAN_PROCESS_HPP
 #define OPTIMIZATION_GAUSSIAN_PROCESS_HPP
 
 #include <Eigen/Dense>
 #include <limits>
-#include <random>
 #include <stdexcept>
 #include "common/logging/logger.hpp"
-#include "optimization/gaussian/kernel/matern_52.hpp"
+#include "common/traits/optimization_traits.hpp"
+#include "optimization/gaussian/kernel/kernel.hpp"
 #include "optimization/hyperparameter_optimizer.hpp"
 
 namespace optimization {
-    template<typename Kernel = kernel::Matern52<>>
+    template<FloatingPoint T = double, optimization::IsKernel<T> KernelType = optimization::DefaultKernel<T>>
     class GaussianProcess {
     public:
-        using MatrixXd = Eigen::MatrixXd;
-        using VectorXd = Eigen::VectorXd;
+        using MatrixXd = Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic>;
+        using VectorXd = Eigen::Matrix<T, Eigen::Dynamic, 1>;
 
-        explicit GaussianProcess(const Kernel &kernel, const double noise_variance = 1e-6) :
-            kernel_(kernel), noise_variance_(std::max(noise_variance, std::numeric_limits<double>::epsilon())),
-            optimizer_(), rng_(std::random_device{}()) {
-            noise_variance_ = config::get("optimization.gp.kernel.hyperparameters.noise_variance", noise_variance_);
+        explicit GaussianProcess(const KernelType &kernel, const T noise_variance = 1e-6) :
+            kernel_(kernel), noise_variance_(std::max(noise_variance, std::numeric_limits<T>::epsilon())),
+            optimizer_() {
             LOG_INFO("Initialized Gaussian Process with noise variance: {}", noise_variance_);
         }
 
         void setData(const MatrixXd &X) {
             if (X.rows() == 0 || X.cols() == 0) {
-                LOG_ERROR("Attempted to set empty data!");
+                LOG_ERROR("Attempted to set empty data");
                 throw std::invalid_argument("Input data X cannot be empty.");
             }
-            X_ = X;
-            updateCovariance();
-            LOG_INFO("Set data with {} points of dimension {}", X_.rows(), X_.cols());
+
+            try {
+                // Use conservative resize to avoid potential memory issues
+                x_data_.conservativeResize(X.rows(), X.cols());
+                x_data_ = X;
+
+                updateCovariance();
+                LOG_INFO("Set data with {} points of dimension {}", x_data_.rows(), x_data_.cols());
+            } catch (const std::exception &e) {
+                LOG_ERROR("Failed to set data: {}. Attempting fallback.", e.what());
+                fallbackSetData(X);
+            }
         }
 
-        void optimizeHyperparameters(const VectorXd &y) {
-            if (X_.rows() == 0 || y.size() == 0) {
+
+        void optimizeHyperparameters(const VectorXd &y, const VectorXd &lower_bounds, const VectorXd &upper_bounds) {
+            if (x_data_.rows() == 0 || y.size() == 0) {
                 LOG_ERROR("Attempted hyperparameter optimization with no data");
                 throw std::runtime_error("No data available for hyperparameter optimization.");
             }
             LOG_INFO("Starting hyperparameter optimization");
 
-            // Perform cross-validation for robust hyperparameter optimization
-            const int n_folds = std::min(5, static_cast<int>(X_.rows()));
-            VectorXd best_params = crossValidateHyperparameters(X_, y, n_folds);
-
-            setParameters(best_params);
-            updateCovariance();
-            LOG_INFO("Hyperparameter optimization completed with parameters: {}", best_params);
+            try {
+                VectorXd best_params = optimizer_.optimizeBounded(x_data_, y, kernel_, lower_bounds, upper_bounds);
+                setParameters(best_params);
+                updateCovariance();
+                LOG_INFO("Hyperparameter optimization completed with parameters: {}", best_params);
+            } catch (const std::exception &e) {
+                LOG_ERROR("Hyperparameter optimization failed: {}. Attempting robust optimization.", e.what());
+                robustOptimizeHyperparameters(y, lower_bounds, upper_bounds);
+            }
         }
 
-        // Compute the kernel function k(X1, X2)
         [[nodiscard]] MatrixXd computeCovariance(const MatrixXd &X1, const MatrixXd &X2) const {
             return kernel_.computeGramMatrix(X1, X2);
         }
 
-        // Compute the posterior distribution
-        // Returns mean and covariance of f_star ~ N(mean, cov)
         [[nodiscard]] std::pair<VectorXd, MatrixXd> posterior(const MatrixXd &X_star) const {
-            if (X_.rows() == 0) {
+            if (x_data_.rows() == 0) {
                 LOG_ERROR("Attempted posterior computation with no data");
                 throw std::runtime_error("No data set for Gaussian Process.");
             }
 
-            // Compute K(X, X_star)
-            MatrixXd K_star = computeCovariance(X_, X_star);
-
-            // Compute K(X_star, X_star)
+            MatrixXd K_star = computeCovariance(x_data_, X_star);
             MatrixXd K_star_star = computeCovariance(X_star, X_star);
 
-            // Compute the mean: E[f_star] = K_star^T * K^(-1) * y = K_star^T * alpha
             VectorXd mean = K_star.transpose() * alpha_;
+            MatrixXd cov;
 
-            // Compute the covariance: Var[f_star] = K_star_star - K_star^T * K^(-1) * K_star
-            MatrixXd cov = K_star_star - K_star.transpose() * L_.triangularView<Eigen::Lower>().solve(K_star);
+            try {
+                cov = K_star_star - K_star.transpose() * ldlt_.solve(K_star);
+            } catch (const std::exception &e) {
+                LOG_ERROR("Error in posterior computation: {}. Using fallback method.", e.what());
+                return fallbackPosterior(X_star, K_star, K_star_star);
+            }
 
             // Ensure numerical stability of the covariance matrix
             cov = (cov + cov.transpose()) / 2.0; // Ensure symmetry
-            Eigen::SelfAdjointEigenSolver<MatrixXd> eigenSolver(cov);
-            VectorXd eigenvalues = eigenSolver.eigenvalues().cwiseMax(0.0); // Ensure non-negative eigenvalues
-            cov = eigenSolver.eigenvectors() * eigenvalues.asDiagonal() * eigenSolver.eigenvectors().transpose();
+            Eigen::SelfAdjointEigenSolver<MatrixXd> eigen_solver(cov);
+            VectorXd eigenvalues = eigen_solver.eigenvalues().cwiseMax(0.0); // Ensure non-negative eigenvalues
+            cov = eigen_solver.eigenvectors() * eigenvalues.asDiagonal() * eigen_solver.eigenvectors().transpose();
 
             return {mean, cov};
         }
 
     protected:
-        Kernel kernel_;
-        double noise_variance_;
-        MatrixXd X_;
-        MatrixXd L_; // Cholesky decomposition of K
+        KernelType kernel_;
+        T noise_variance_;
+        MatrixXd x_data_;
+        Eigen::LDLT<MatrixXd> ldlt_; // LDLT decomposition of K
         VectorXd alpha_; // alpha = K^(-1) * y, precomputed for efficiency
-        HyperparameterOptimizer<Kernel> optimizer_;
-        mutable std::mt19937 rng_;
+        HyperparameterOptimizer<T, KernelType> optimizer_;
 
         void updateCovariance() {
-            if (X_.rows() == 0) {
+            if (x_data_.rows() == 0) {
                 LOG_WARN("Attempted to update covariance with no data");
                 return;
             }
 
-            // Compute the kernel matrix K
-            MatrixXd K = computeCovariance(X_, X_);
+            try {
+                MatrixXd K = computeCovariance(x_data_, x_data_);
+                K.diagonal().array() += noise_variance_;
+
+                // Ensure K is symmetric
+                K = (K + K.transpose()) / 2.0;
+
+                // LDLT decomposition with adaptive regularization
+                T lambda = 0;
+                const T max_lambda = 1e-3;
+                const T lambda_factor = 10;
+
+                do {
+                    ldlt_.compute(K + lambda * MatrixXd::Identity(K.rows(), K.cols()));
+                    if (ldlt_.info() == Eigen::Success)
+                        break;
+                    lambda = (lambda == 0) ? 1e-9 : lambda * lambda_factor;
+                } while (lambda < max_lambda);
+
+                if (ldlt_.info() != Eigen::Success) {
+                    throw std::runtime_error("LDLT decomposition failed even with regularization");
+                }
+
+                LOG_DEBUG("Updated covariance matrix with regularization lambda = {}", lambda);
+            } catch (const std::exception &e) {
+                LOG_ERROR("Error in updateCovariance: {}. Using fallback method.", e.what());
+                fallbackUpdateCovariance();
+            }
+        }
+
+        /*void fallbackUpdateCovariance() {
+            // simple diagonal matrix as a fallback
+            MatrixXd K = MatrixXd::Identity(x_data_.rows(), x_data_.rows()) * (noise_variance_ + 1e-6);
+            ldlt_.compute(K);
+            LOG_WARN("Used fallback method for covariance update");
+        }#1#
+
+        void fallbackUpdateCovariance() {
+            MatrixXd K = computeCovariance(x_data_, x_data_);
             K.diagonal().array() += noise_variance_;
 
-            // Ensure K is symmetric
-            K = (K + K.transpose()) / 2.0;
+            // Use eigendecomposition as a more robust fallback
+            Eigen::SelfAdjointEigenSolver<MatrixXd> eigen_solver(K);
+            VectorXd eigenvalues = eigen_solver.eigenvalues().cwiseMax(1e-9); // Ensure all eigenvalues are positive
+            MatrixXd V = eigen_solver.eigenvectors();
+            MatrixXd L = eigenvalues.cwiseSqrt().asDiagonal();
 
-            // Perform Cholesky decomposition with adaptive regularization
-            Eigen::LLT<MatrixXd> llt;
-            double lambda = 1e-9;
-            do {
-                llt.compute(K + lambda * MatrixXd::Identity(K.rows(), K.cols()));
-                lambda *= 10;
-            } while (llt.info() != Eigen::Success && lambda < 1e-3);
+            // Reconstruct a valid covariance matrix
+            K = V * L * L * V.transpose();
 
-            if (llt.info() != Eigen::Success) {
-                LOG_ERROR("Cholesky decomposition failed even with regularization");
-                throw std::runtime_error(
-                        "Cholesky decomposition failed. The kernel matrix may not be positive definite.");
+            ldlt_.compute(K);
+            LOG_WARN("Used fallback method for covariance update");
+        }
+
+        void fallbackSetData(const MatrixXd &X) {
+            try {
+                // Use a more conservative approach
+                x_data_ = MatrixXd::Zero(X.rows(), X.cols());
+                x_data_ += X; // Element-wise addition instead of direct assignment
+
+                updateCovariance();
+            } catch (const std::exception &e) {
+                LOG_ERROR("Fallback data setting failed: {}. Using minimal safe approach.", e.what());
+                x_data_ = MatrixXd::Constant(1, X.cols(), 0.0); // Set to a single zero row
+                ldlt_.compute(MatrixXd::Identity(1, 1));
             }
-            L_ = llt.matrixL();
-
-            LOG_DEBUG("Updated covariance matrix with regularization lambda = {}", lambda);
+            LOG_WARN("Used fallback method to set data");
         }
 
         void setParameters(const VectorXd &params) {
-            if (params.size() != 3) {
-                throw std::invalid_argument("Expected 3 parameters for kernel.");
+            if (params.size() != kernel_.getParameterCount()) {
+                throw std::invalid_argument("Incorrect number of parameters for kernel.");
             }
-            kernel_.setParameters(params(0), params(1), params(2));
+            kernel_.setParameters(params);
+            try {
+                updateCovariance();
+            } catch (const std::exception &e) {
+                LOG_ERROR("Failed to update covariance after parameter update: {}. Attempting fallback.", e.what());
+                fallbackUpdateCovariance();
+            }
             LOG_DEBUG("Updated kernel parameters: {}", params);
         }
 
-        VectorXd crossValidateHyperparameters(const MatrixXd &X, const VectorXd &y, int n_folds) {
-            std::vector<VectorXd> fold_params;
-            std::vector<double> fold_scores;
+        void robustOptimizeHyperparameters(const VectorXd &y, const VectorXd &lower_bounds,
+                                           const VectorXd &upper_bounds) {
+            const int max_attempts = 5;
+            const T perturbation_factor = 0.1;
 
-            // Create folds
-            std::vector<int> indices(X.rows());
-            std::iota(indices.begin(), indices.end(), 0);
-            std::shuffle(indices.begin(), indices.end(), rng_);
+            VectorXd best_params = kernel_.getParameters();
+            T best_likelihood = -std::numeric_limits<T>::infinity();
 
-            for (int fold = 0; fold < n_folds; ++fold) {
-                // Split data into train and validation sets
-                std::vector<int> train_indices, val_indices;
-                for (int i = 0; i < X.rows(); ++i) {
-                    if (i % n_folds == fold) {
-                        val_indices.push_back(indices[i]);
-                    } else {
-                        train_indices.push_back(indices[i]);
+            for (int attempt = 0; attempt < max_attempts; ++attempt) {
+                try {
+                    VectorXd perturbed_lower = lower_bounds * (1 - perturbation_factor * attempt);
+                    VectorXd perturbed_upper = upper_bounds * (1 + perturbation_factor * attempt);
+                    VectorXd params = optimizer_.optimizeBounded(x_data_, y, kernel_, perturbed_lower, perturbed_upper);
+                    setParameters(params);
+                    T likelihood = computeLogLikelihood(y);
+
+                    if (likelihood > best_likelihood) {
+                        best_params = params;
+                        best_likelihood = likelihood;
                     }
+
+                    LOG_INFO("Robust optimization attempt {} succeeded", attempt + 1);
+                    break;
+                } catch (const std::exception &e) {
+                    LOG_WARN("Robust optimization attempt {} failed: {}", attempt + 1, e.what());
                 }
-
-                MatrixXd X_train(train_indices.size(), X.cols());
-                VectorXd y_train(train_indices.size());
-                for (size_t i = 0; i < train_indices.size(); ++i) {
-                    X_train.row(i) = X.row(train_indices[i]);
-                    y_train(i) = y(train_indices[i]);
-                }
-
-                // Optimize hyperparameters on training set
-                VectorXd fold_param = optimizer_.optimize(X_train, y_train, kernel_);
-                fold_params.push_back(fold_param);
-
-                // Compute score on validation set
-                setParameters(fold_param);
-                setData(X_train);
-                updateCovariance();
-
-                MatrixXd X_val(val_indices.size(), X.cols());
-                VectorXd y_val(val_indices.size());
-                for (size_t i = 0; i < val_indices.size(); ++i) {
-                    X_val.row(i) = X.row(val_indices[i]);
-                    y_val(i) = y(val_indices[i]);
-                }
-
-                auto [mean, _] = posterior(X_val);
-                double mse = (mean - y_val).squaredNorm() / y_val.size();
-                fold_scores.push_back(-mse); // Negative MSE as score (higher is better)
             }
 
-            // Select best parameters
-            auto best_it = std::max_element(fold_scores.begin(), fold_scores.end());
-            int best_fold = std::distance(fold_scores.begin(), best_it);
+            setParameters(best_params);
+            LOG_INFO("Robust hyperparameter optimization completed with parameters: {}", best_params);
+        }
 
-            LOG_INFO("Cross-validation complete. Best fold: {}, Score: {}", best_fold, fold_scores[best_fold]);
-            return fold_params[best_fold];
+        [[nodiscard]] std::pair<VectorXd, MatrixXd> fallbackPosterior(const MatrixXd &X_star, const MatrixXd &K_star,
+                                                                      const MatrixXd &K_star_star) const {
+            // Use a simpler approximation method
+            VectorXd mean = K_star.transpose() * (x_data_.transpose() * x_data_ +
+                                                  noise_variance_ * MatrixXd::Identity(x_data_.rows(), x_data_.rows()))
+                                                         .ldlt()
+                                                         .solve(x_data_.transpose() * alpha_);
+            MatrixXd cov = K_star_star - K_star.transpose() * K_star / (noise_variance_ * x_data_.rows());
+
+            // Ensure positive semi-definiteness
+            Eigen::SelfAdjointEigenSolver<MatrixXd> eigen_solver(cov);
+            VectorXd eigenvalues = eigen_solver.eigenvalues().cwiseMax(0.0);
+            cov = eigen_solver.eigenvectors() * eigenvalues.asDiagonal() * eigen_solver.eigenvectors().transpose();
+
+            LOG_WARN("Used fallback method for posterior computation");
+            return {mean, cov};
+        }
+
+        [[nodiscard]] T computeLogLikelihood(const VectorXd &y) const {
+            if (y.size() != x_data_.rows()) {
+                throw std::invalid_argument("y size does not match number of data points.");
+            }
+
+            T n = static_cast<T>(y.size());
+            T log_det_K = ldlt_.vectorD().array().log().sum();
+            T quadratic = y.transpose() * alpha_;
+
+            return -0.5 * (quadratic + log_det_K + n * std::log(2 * M_PI));
+        }
+
+        [[nodiscard]] VectorXd computeLogLikelihoodGradient(const VectorXd &y) const {
+            if (y.size() != x_data_.rows()) {
+                throw std::invalid_argument("y size does not match number of data points.");
+            }
+
+            int n_params = kernel_.parameterCount();
+            VectorXd gradient(n_params);
+
+            MatrixXd K_inv = ldlt_.solve(MatrixXd::Identity(x_data_.rows(), x_data_.rows()));
+
+            for (int i = 0; i < n_params; ++i) {
+                MatrixXd K_grad = kernel_.computeGradientMatrix(x_data_, i);
+                T trace_term = (K_inv * K_grad).trace();
+                T quadratic_term = alpha_.transpose() * K_grad * alpha_;
+                gradient(i) = 0.5 * (trace_term - quadratic_term);
+            }
+
+            return gradient;
         }
     };
 } // namespace optimization
 
-#endif // OPTIMIZATION_GAUSSIAN_PROCESS_HPP
-*/
+#endif // OPTIMIZATION_GAUSSIAN_PROCESS_HPP*/

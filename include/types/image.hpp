@@ -15,6 +15,7 @@
 #include "processing/image/feature/extractor/akaze_extractor.hpp"
 #include "processing/image/feature/extractor/orb_extractor.hpp"
 #include "processing/image/feature/extractor/sift_extractor.hpp"
+#include "processing/image_preprocessor.hpp"
 #include "types/concepts.hpp"
 #include "types/viewpoint.hpp"
 
@@ -29,8 +30,11 @@ public:
 
     Image() = default;
 
-    explicit Image(cv::Mat image, std::shared_ptr<processing::image::FeatureExtractor> extractor = nullptr) noexcept :
-        image_(std::move(image)), extractor_(std::move(extractor)) {}
+    explicit Image(const cv::Mat &image,
+                   std::shared_ptr<processing::image::FeatureExtractor> extractor = nullptr) noexcept :
+        extractor_(std::move(extractor)) {
+        setImage(image);
+    }
 
     // Rule of five
     Image(const Image &) = delete;
@@ -65,8 +69,13 @@ public:
         return viewpoint_.has_value() ? viewpoint_->getUncertainty() : T{};
     }
 
-    void setImage(cv::Mat image) noexcept {
-        image_ = std::move(image);
+    void setImage(const cv::Mat &image) noexcept {
+        if (config::get("image.preprocess", false)) {
+            static ImagePreprocessor preprocessor;
+            image_ = preprocessor.process(image);
+        } else {
+            image_ = image.clone();
+        }
         features_.reset();
     }
 

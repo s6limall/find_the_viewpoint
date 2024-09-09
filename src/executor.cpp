@@ -6,14 +6,31 @@
 #include "processing/image/comparison/feature_comparator.hpp"
 #include "processing/image/comparison/ssim_comparator.hpp"
 
-using KernelType = optimization::kernel::Matern52<>;
-
 Image<> Executor::target_;
 std::once_flag Executor::init_flag_;
 double Executor::radius_, Executor::target_score_;
 std::shared_ptr<processing::image::FeatureMatcher> Executor::matcher_;
 std::shared_ptr<processing::image::FeatureExtractor> Executor::extractor_;
 std::shared_ptr<processing::image::ImageComparator> Executor::comparator_;
+
+std::shared_ptr<Executor::KernelType> Executor::kernel_;
+std::shared_ptr<optimization::GPR<>> Executor::gpr_;
+std::shared_ptr<optimization::ViewpointOptimizer<>> Executor::optimizer_;
+
+
+void Executor::reset() {
+    // kernel_.reset();
+    // gpr_.reset();
+
+    /*const auto size = 2 * radius_;
+    const auto length_scale = config::get("optimization.gp.kernel.hyperparameters.length_scale", 0.5) * size;
+    const auto variance = config::get("optimization.gp.kernel.hyperparameters.variance", 1.0);
+    const auto noise_variance = config::get("optimization.gp.kernel.hyperparameters.noise_variance", 1e-6);
+
+
+    kernel_ = std::make_shared<KernelType>(length_scale, variance, noise_variance);
+    gpr_ = std::make_shared<optimization::GPR<>>(*kernel_);*/
+}
 
 void Executor::initialize() {
     LOG_INFO("Initializing executor.");
@@ -40,6 +57,20 @@ void Executor::initialize() {
     radius_ = config::get("estimation.distance.skip", true)
                       ? config::get("estimation.distance.initial_guess", 1.5)
                       : processing::vision::DistanceEstimator().estimate(target_.getImage());
+
+    // GPR and Kernel
+    const auto size = 2 * radius_;
+    const auto length_scale = config::get("optimization.gp.kernel.hyperparameters.length_scale", 0.5) * size;
+    const auto variance = config::get("optimization.gp.kernel.hyperparameters.variance", 1.0);
+    const auto noise_variance = config::get("optimization.gp.kernel.hyperparameters.noise_variance", 1e-6);
+
+
+    kernel_ = std::make_shared<KernelType>(length_scale, variance, noise_variance);
+    gpr_ = std::make_shared<optimization::GPR<>>(*kernel_);
+
+    if (!gpr_ || !kernel_) {
+        throw std::runtime_error("Failed to initialize GPR and kernel.");
+    }
 }
 
 void Executor::execute() {
@@ -48,15 +79,7 @@ void Executor::execute() {
     try {
         LOG_INFO("Starting viewpoint optimization.");
 
-        /*const auto mesh_path = state::get("paths.mesh", config::get("paths.mesh", "./3d_models/obj_000020.ply"));
-        LOG_INFO("Loading mesh: {}", mesh_path);
-        simulator_->loadMesh(mesh_path);
-        LOG_INFO("Mesh loaded successfully.");*/
-
         const double size = 2 * radius_;
-        const auto length_scale = config::get("optimization.gp.kernel.hyperparameters.length_scale", 0.5) * size;
-        const auto variance = config::get("optimization.gp.kernel.hyperparameters.variance", 1.0);
-        const auto noise_variance = config::get("optimization.gp.kernel.hyperparameters.noise_variance", 1e-6);
 
         ViewPoint<> initial_viewpoint;
         std::optional<ViewPoint<>> global_best_viewpoint;
@@ -70,8 +93,7 @@ void Executor::execute() {
             LOG_INFO("Starting optimization restart {} of {}", restart_count, max_restarts);
 
             // Reset GPR and other components for each restart
-            optimization::kernel::Matern52<> kernel(length_scale, variance, noise_variance);
-            optimization::GPR<> gpr(kernel);
+            // reset();
 
             FibonacciLatticeSampler<> sampler({0, 0, 0}, {1, 1, 1}, radius_);
             const int sample_count = config::get("sampling.count", 20);
@@ -106,21 +128,22 @@ void Executor::execute() {
 
             LOG_INFO("Best initial viewpoint: {} - Score: {}", best_initial_viewpoint.toString(), best_initial_score);
 
-            gpr.fit(X_train, y_train);
+            gpr_->fit(X_train, y_train);
 
             const auto min_size = config::get("octree.min_size_multiplier", 0.01) * size;
             const auto max_iterations = config::get("octree.max_iterations", 5);
             const auto tolerance = config::get("octree.tolerance", 0.1);
 
             // Create ViewpointOptimizer with new components
-            optimization::ViewpointOptimizer<> optimizer(Eigen::Vector3d::Zero(), size, min_size, max_iterations, gpr,
-                                                         comparator_, radius_, tolerance);
+            // optimizer_.reset();
+            optimizer_ = std::make_shared<optimization::ViewpointOptimizer<>>(
+                    Eigen::Vector3d::Zero(), size, min_size, max_iterations, gpr_, comparator_, radius_, tolerance);
 
 
             // Use the new optimize method
-            optimizer.optimize(target_, comparator_, best_initial_viewpoint, target_score_);
+            optimizer_->optimize(target_, comparator_, best_initial_viewpoint, target_score_);
 
-            if (auto best_viewpoint = optimizer.getBestViewpoint()) {
+            if (auto best_viewpoint = optimizer_->getBestViewpoint()) {
                 LOG_INFO("Restart {}: Best viewpoint: {} - Score: {}", restart_count, best_viewpoint->toString(),
                          best_viewpoint->getScore());
 

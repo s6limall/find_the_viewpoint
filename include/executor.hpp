@@ -7,10 +7,10 @@
 #include <mutex>
 
 #include "common/state/state.hpp"
+#include "common/traits/optimization_traits.hpp"
 #include "common/utilities/visualizer.hpp"
 #include "misc/target_generator.hpp"
 #include "optimization/gaussian/gpr.hpp"
-#include "optimization/gaussian/kernel/matern_52.hpp"
 #include "optimization/viewpoint_optimizer.hpp"
 #include "processing/image/comparator.hpp"
 #include "processing/image/feature/matcher/flann_matcher.hpp"
@@ -18,10 +18,12 @@
 #include "sampling/sampler/fibonacci.hpp"
 #include "types/image.hpp"
 
-
 class Executor {
 public:
+    using KernelType = optimization::DefaultKernel<double>;
+
     static void execute();
+    static void reset();
 
     // Rule of five
     Executor(const Executor &) = delete;
@@ -40,7 +42,9 @@ private:
     static std::shared_ptr<processing::image::ImageComparator> comparator_;
     static std::shared_ptr<processing::image::FeatureExtractor> extractor_;
     static std::shared_ptr<processing::image::FeatureMatcher> matcher_;
-    // static std::shared_ptr<core::Simulator> simulator_;
+    static std::shared_ptr<KernelType> kernel_;
+    static std::shared_ptr<optimization::GPR<>> gpr_;
+    static std::shared_ptr<optimization::ViewpointOptimizer<>> optimizer_;
 
     static void initialize();
 };

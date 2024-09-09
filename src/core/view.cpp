@@ -1,6 +1,9 @@
 // File: core/view.cpp
 
 #include "core/view.hpp"
+
+#include <config/configuration.hpp>
+
 #include "common/logging/logger.hpp"
 
 namespace core {
@@ -17,11 +20,17 @@ namespace core {
             throw std::invalid_argument("Position and object center must not contain NaN values.");
         }
 
+        const auto x = config::get("origin.x", 0.0);
+        const auto y = config::get("origin.y", 0.0);
+        const auto z = config::get("origin.z", 0.0);
+
+        const auto center = Eigen::Vector3d(x, y, z);
+
         camera_->setPosition(position.x(), position.y(), position.z()); // Set camera position
-        camera_->lookAt(object_center); // Orient camera towards the object center
+        camera_->lookAt(center); // Orient camera towards the object center
         pose_ = camera_->getExtrinsics().matrix; // Update view pose with camera's current pose
         LOG_TRACE("Computed view pose for position ({}, {}, {}) with object center ({}, {}, {})",
-                  position.x(), position.y(), position.z(), object_center.x(), object_center.y(), object_center.z());
+                  position.x(), position.y(), position.z(), center.x(), center.y(), center.z());
     }
 
     Eigen::Matrix4d View::getPose() const noexcept {
@@ -46,7 +55,12 @@ namespace core {
     }
 
     void View::setObjectCenter(const Eigen::Vector3d &object_center) const noexcept {
-        camera_->lookAt(object_center);
+        const auto x = config::get("origin.x", 0.0);
+        const auto y = config::get("origin.y", 0.0);
+        const auto z = config::get("origin.z", 0.0);
+
+        const auto center = Eigen::Vector3d(x, y, z);
+        camera_->lookAt(center);
     }
 
     View View::fromPosition(const Eigen::Vector3d &position, const Eigen::Vector3d &object_center) {

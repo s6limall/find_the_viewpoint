@@ -104,7 +104,6 @@ namespace core {
     }
 
     // New methods for projecting points and computing Jacobian
-
     Eigen::Vector2d Camera::project(const Eigen::Vector3d &point) const noexcept {
         Eigen::Vector4d homogeneous_point(point.x(), point.y(), point.z(), 1.0);
         Eigen::Vector3d cam_point = intrinsics_.matrix * homogeneous_point.head<3>();
