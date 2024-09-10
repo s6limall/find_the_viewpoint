@@ -5,9 +5,13 @@
 #include <algorithm>
 #include <array>
 #include <memory>
+#include <random>
 #include <stdexcept>
 #include "common/logging/logger.hpp"
+#include "config/configuration.hpp"
+#include "optimization/acquisition.hpp"
 #include "optimization/optimizer/lbfgs.hpp"
+#include "processing/image/comparator.hpp"
 
 namespace optimization {
 
@@ -16,9 +20,9 @@ namespace optimization {
     public:
         explicit LocalRefiner(std::shared_ptr<processing::image::ImageComparator> comparator,
                               std::shared_ptr<GPR<T, KernelType>> gpr) :
-            comparator_(std::move(comparator)), gpr_(std::move(gpr)),
+            comparator_(std::move(comparator)), gpr_(std::move(gpr)), acquisition_(std::make_unique<Acquisition<T>>()),
             max_iterations_(config::get("optimization.local_search.max_iterations", 20)),
-            initial_step_size_(config::get("optimization.local_search.initial_step_size", 0.05)),
+            initial_step_size_(config::get("optimization.local_search.initial_step_size", 0.1)),
             min_step_size_(config::get("optimization.local_search.min_step_size", 1e-6)),
             step_reduction_factor_(config::get("optimization.local_search.step_reduction_factor", 0.7)),
             improvement_threshold_(config::get("optimization.local_search.improvement_threshold", 1e-7)),
@@ -38,22 +42,61 @@ namespace optimization {
             T step_size = initial_step_size_;
             int stagnant_iterations = 0;
 
-            const std::array<Eigen::Vector3<T>, 6> directions = {
-                    Eigen::Vector3<T>(1, 0, 0),  Eigen::Vector3<T>(-1, 0, 0), Eigen::Vector3<T>(0, 1, 0),
-                    Eigen::Vector3<T>(0, -1, 0), Eigen::Vector3<T>(0, 0, 1),  Eigen::Vector3<T>(0, 0, -1)};
+            std::mt19937 gen(std::random_device{}());
+            std::uniform_real_distribution<T> dist(0, 1);
+
+            const int num_directions = 8;
+            std::array<Eigen::Vector3<T>, num_directions> directions;
+            for (int i = 0; i < num_directions; ++i) {
+                T theta = 2 * M_PI * i / num_directions;
+                directions[i] = Eigen::Vector3<T>(std::cos(theta), std::sin(theta), 0).normalized();
+            }
 
             try {
                 for (int iteration = 0; iteration < max_iterations_; ++iteration) {
                     bool improved = false;
+                    Eigen::Vector3<T> best_direction;
+                    T best_acquisition_value = -std::numeric_limits<T>::max();
 
+                    // Evaluate acquisition function for each direction
                     for (const auto &direction: directions) {
                         Eigen::Vector3<T> new_position =
                                 (current_position + step_size * direction).normalized() * radius;
-
                         if (new_position.z() < 0)
                             continue; // Ensure upper hemisphere
 
-                        T new_score = evaluateAndUpdate(new_position, target);
+                        auto [mean, variance] = gpr_->predict(new_position);
+                        T acquisition_value = acquisition_->compute(new_position, mean, std::sqrt(variance));
+
+                        if (acquisition_value > best_acquisition_value) {
+                            best_acquisition_value = acquisition_value;
+                            best_direction = direction;
+                        }
+                    }
+
+                    // Evaluate the best direction
+                    Eigen::Vector3<T> new_position =
+                            (current_position + step_size * best_direction).normalized() * radius;
+                    T new_score = evaluateAndUpdate(new_position, target);
+
+                    if (new_score > current_score) {
+                        T improvement = new_score - current_score;
+                        current_score = new_score;
+                        current_position = new_position;
+                        improved = true;
+
+                        if (new_score > best_score) {
+                            best_score = new_score;
+                            best_position = new_position;
+                            acquisition_->updateBestPoint(best_position);
+                        }
+
+                        // Adaptive step size based on improvement
+                        step_size = std::min(step_size * (1 + improvement / current_score), initial_step_size_);
+                    } else {
+                        // If no improvement, try a smaller step in the opposite direction
+                        new_position = (current_position - 0.5 * step_size * best_direction).normalized() * radius;
+                        new_score = evaluateAndUpdate(new_position, target);
 
                         if (new_score > current_score) {
                             current_score = new_score;
@@ -63,19 +106,19 @@ namespace optimization {
                             if (new_score > best_score) {
                                 best_score = new_score;
                                 best_position = new_position;
+                                acquisition_->updateBestPoint(best_position);
                             }
-
-                            break; // Greedy: move to first improvement
                         }
                     }
 
                     if (improved) {
                         stagnant_iterations = 0;
-                        step_size = std::min(step_size * 1.2, initial_step_size_);
                     } else {
                         stagnant_iterations++;
                         step_size *= step_reduction_factor_;
                     }
+
+                    acquisition_->incrementIteration();
 
                     // Early stopping checks
                     if (step_size < min_step_size_ || stagnant_iterations > 3 ||
@@ -93,8 +136,9 @@ namespace optimization {
                 best_score = evaluateAndUpdate(best_position, target);
 
             } catch (const std::exception &e) {
-                LOG_ERROR("Exception during local refinement: {}. Falling back to initial viewpoint.", e.what());
-                return initial_viewpoint; // Fallback to initial viewpoint in case of any exception
+                LOG_ERROR("Exception during local refinement: {}. Falling back to best found point.", e.what());
+                // Instead of returning initial viewpoint, return the best point found so far
+                return ViewPoint<T>(best_position, best_score);
             }
 
             return ViewPoint<T>(best_position, best_score);
@@ -103,6 +147,7 @@ namespace optimization {
     private:
         std::shared_ptr<processing::image::ImageComparator> comparator_;
         std::shared_ptr<GPR<T, KernelType>> gpr_;
+        std::unique_ptr<Acquisition<T>> acquisition_;
         int max_iterations_;
         T initial_step_size_;
         T min_step_size_;
