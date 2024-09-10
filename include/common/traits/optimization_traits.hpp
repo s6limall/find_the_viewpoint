@@ -3,6 +3,9 @@
 #ifndef OPTIMIZATION_TRAITS_HPP
 #define OPTIMIZATION_TRAITS_HPP
 
+#include "optimization/gaussian/kernel/geodesic_matern_52.hpp"
+
+
 #include <Eigen/Dense>
 #include <concepts>
 #include <types/concepts.hpp>
@@ -14,7 +17,7 @@ namespace optimization {
     concept IsKernel = std::is_base_of_v<kernel::Kernel<T>, K>;
 
     template<FloatingPoint T = double>
-    using DefaultKernel = kernel::Matern52<T>;
+    using DefaultKernel = kernel::GeodesicMatern52<T>;
 
 
     /*template<typename T, typename K>

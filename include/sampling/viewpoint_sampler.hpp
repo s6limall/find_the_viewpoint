@@ -187,67 +187,6 @@ private:
         return offset;
     }
 
-    /*Eigen::Vector3<T> projectToShell(const Eigen::Vector3<T> &point, const ViewPoint<T> *best_viewpoint) const {
-        try {
-            Eigen::Vector3<T> direction = point - center_;
-            T distance = direction.norm();
-
-            if (distance < std::numeric_limits<T>::epsilon()) {
-                LOG_WARN("Point too close to center. Using fallback method.");
-                return fallbackProjection(point);
-            }
-
-
-            // Convert to spherical coordinates
-            T r = std::clamp(distance, min_radius_, max_radius_);
-            T theta = std::atan2(direction.y(), direction.x());
-            T phi = std::acos(std::clamp(direction.z() / distance, T(-1), T(1)));
-
-            // Restrict to upper hemisphere
-            phi = std::clamp(phi, T(0), T(M_PI_2));
-
-            // Apply adaptive constraints based on GPR predictions
-            if (best_viewpoint) {
-                Eigen::Vector3<T> best_direction = best_viewpoint->getPosition() - center_;
-                T best_r = best_direction.norm();
-                T best_theta = std::atan2(best_direction.y(), best_direction.x());
-                T best_phi = std::acos(std::clamp(best_direction.z() / best_r, T(-1), T(1)));
-
-                auto [mean, std_dev] = gpr_->predict(point);
-                T prediction_confidence = 1 / (1 + std_dev);
-
-                // Adaptive biasing towards best_viewpoint
-                T bias_strength = 0.3 * prediction_confidence;
-                r = r * (1 - bias_strength) + best_r * bias_strength;
-                theta = theta * (1 - bias_strength) + best_theta * bias_strength;
-                phi = phi * (1 - bias_strength) + best_phi * bias_strength;
-            }
-
-            // Add controlled randomness to avoid exact boundary placement
-            T r_noise = (uniform_dist_(rng_) - 0.5) * (max_radius_ - min_radius_) * 0.05;
-            T theta_noise = (uniform_dist_(rng_) - 0.5) * M_PI * 0.05;
-            T phi_noise = (uniform_dist_(rng_) - 0.5) * M_PI_2 * 0.05;
-
-            r = std::clamp(r + r_noise, min_radius_, max_radius_);
-            theta += theta_noise;
-            phi = std::clamp(phi + phi_noise, T(0), T(M_PI_2));
-
-            // Convert back to Cartesian coordinates
-            Eigen::Vector3<T> result =
-                    center_ + Eigen::Vector3<T>(r * std::sin(phi) * std::cos(theta),
-                                                r * std::sin(phi) * std::sin(theta), r * std::cos(phi));
-
-            if (!isValidPoint(result)) {
-                LOG_WARN("Projected point is invalid. Using fallback method.");
-                return fallbackProjection(point);
-            }
-            return result;
-
-        } catch (const std::exception &e) {
-            LOG_ERROR("Error in projectToShell: {}", e.what());
-            return fallbackProjection(point);
-        }
-    }*/
 
     Eigen::Vector3<T> projectToShell(const Eigen::Vector3<T> &point, const ViewPoint<T> *best_viewpoint) const {
         Eigen::Vector3<T> direction = point - center_;
@@ -395,3 +334,66 @@ private:
 };
 
 #endif // VIEWPOINT_SAMPLER_HPP
+
+
+/*Eigen::Vector3<T> projectToShell(const Eigen::Vector3<T> &point, const ViewPoint<T> *best_viewpoint) const {
+        try {
+            Eigen::Vector3<T> direction = point - center_;
+            T distance = direction.norm();
+
+            if (distance < std::numeric_limits<T>::epsilon()) {
+                LOG_WARN("Point too close to center. Using fallback method.");
+                return fallbackProjection(point);
+            }
+
+
+            // Convert to spherical coordinates
+            T r = std::clamp(distance, min_radius_, max_radius_);
+            T theta = std::atan2(direction.y(), direction.x());
+            T phi = std::acos(std::clamp(direction.z() / distance, T(-1), T(1)));
+
+            // Restrict to upper hemisphere
+            phi = std::clamp(phi, T(0), T(M_PI_2));
+
+            // Apply adaptive constraints based on GPR predictions
+            if (best_viewpoint) {
+                Eigen::Vector3<T> best_direction = best_viewpoint->getPosition() - center_;
+                T best_r = best_direction.norm();
+                T best_theta = std::atan2(best_direction.y(), best_direction.x());
+                T best_phi = std::acos(std::clamp(best_direction.z() / best_r, T(-1), T(1)));
+
+                auto [mean, std_dev] = gpr_->predict(point);
+                T prediction_confidence = 1 / (1 + std_dev);
+
+                // Adaptive biasing towards best_viewpoint
+                T bias_strength = 0.3 * prediction_confidence;
+                r = r * (1 - bias_strength) + best_r * bias_strength;
+                theta = theta * (1 - bias_strength) + best_theta * bias_strength;
+                phi = phi * (1 - bias_strength) + best_phi * bias_strength;
+            }
+
+            // Add controlled randomness to avoid exact boundary placement
+            T r_noise = (uniform_dist_(rng_) - 0.5) * (max_radius_ - min_radius_) * 0.05;
+            T theta_noise = (uniform_dist_(rng_) - 0.5) * M_PI * 0.05;
+            T phi_noise = (uniform_dist_(rng_) - 0.5) * M_PI_2 * 0.05;
+
+            r = std::clamp(r + r_noise, min_radius_, max_radius_);
+            theta += theta_noise;
+            phi = std::clamp(phi + phi_noise, T(0), T(M_PI_2));
+
+            // Convert back to Cartesian coordinates
+            Eigen::Vector3<T> result =
+                    center_ + Eigen::Vector3<T>(r * std::sin(phi) * std::cos(theta),
+                                                r * std::sin(phi) * std::sin(theta), r * std::cos(phi));
+
+            if (!isValidPoint(result)) {
+                LOG_WARN("Projected point is invalid. Using fallback method.");
+                return fallbackProjection(point);
+            }
+            return result;
+
+        } catch (const std::exception &e) {
+            LOG_ERROR("Error in projectToShell: {}", e.what());
+            return fallbackProjection(point);
+        }
+    }*/

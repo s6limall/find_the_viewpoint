@@ -35,7 +35,8 @@ namespace optimization {
             config_.patience = config::get("optimization.patience", config_.patience);
             config_.improvement_threshold =
                     config::get("optimization.improvement_threshold", config_.improvement_threshold);
-            config_.target_score = config::get("optimization.target_score", config_.target_score);
+            config_.target_score =
+                    state::get("target_score", config::get("optimization.target_score", config_.target_score));
             config_.window_size = config::get("optimization.window_size", config_.window_size);
             config_.confidence_threshold =
                     config::get("optimization.confidence_threshold", config_.confidence_threshold);
@@ -46,7 +47,7 @@ namespace optimization {
                     config::get("optimization.diminishing_returns_check", config_.diminishing_returns_check);
         }
 
-        bool hasConverged(T current_score, T best_score, int iteration, const ViewPoint<T> &best_viewpoint,
+        bool hasConverged(T current_score, T best_score, const int iteration, const ViewPoint<T> &best_viewpoint,
                           std::shared_ptr<GPR<T, KernelType>> gpr) {
             total_iterations_++;
             updateAdaptiveParameters();
@@ -121,7 +122,7 @@ namespace optimization {
             return (mean - confidence_interval > adaptive_confidence_threshold * config_.confidence_threshold);
         }
 
-        bool checkDiminishingReturns() const {
+        [[nodiscard]] bool checkDiminishingReturns() const {
             if (improvement_history_.size() < 2)
                 return false;
 
@@ -135,7 +136,7 @@ namespace optimization {
             return total_iterations_ > 10 && avg_improvement < improvement_threshold_ / 10;
         }
 
-        static bool logAndReturn(bool result, const std::string &message, int iteration) {
+        static bool logAndReturn(const bool result, const std::string &message, int iteration) {
             LOG_INFO("ConvergenceChecker: {} at iteration {}", message, iteration);
             return result;
         }

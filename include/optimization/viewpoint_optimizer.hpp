@@ -24,8 +24,9 @@ namespace optimization {
             engine_(center, size, min_size, gpr, radius, tolerance), convergence_checker_(),
             local_refiner_(comparator, gpr), gpr_(gpr), max_iterations_(max_iterations),
             refinement_threshold_(config::get("optimization.refinement_threshold", T(0.8))),
-            significant_improvement_threshold_(config::get("optimization.significant_improvement_threshold", T(0.01))) {
-        }
+            significant_improvement_threshold_(config::get("optimization.significant_improvement_threshold", T(0.01))),
+            uncertainty_threshold_(config::get("optimization.uncertainty_threshold", T(0.1))),
+            max_local_refinement_steps_(config::get("optimization.local_refinement.patience", 5)) {}
 
         void optimize(const Image<> &target, const std::shared_ptr<processing::image::ImageComparator> &comparator,
                       const ViewPoint<T> &initial_best, T target_score = T(0.95)) {
@@ -38,14 +39,26 @@ namespace optimization {
                     config::get("optimization.gp.kernel.hyperparameters.optimization.frequency", 10);
 
             bool refinement_mode = false;
+            int local_refinement_steps = 0;
 
             for (int i = 0; i < max_iterations_; ++i) {
                 if (state::get("count", 0) > config::get("optimization.max_points", 0)) {
                     LOG_INFO("Maximum number of points reached. Stopping optimization.");
                     break;
                 }
+
                 if (refinement_mode) {
                     localRefinement(target, comparator);
+                    local_refinement_steps++;
+
+                    // If no improvement after max_local_refinement_steps_, switch back to global exploration
+                    if (local_refinement_steps >= max_local_refinement_steps_) {
+                        LOG_INFO("Switching back to global exploration after {} local refinement steps",
+                                 local_refinement_steps);
+                        refinement_mode = false;
+                        local_refinement_steps = 0; // Reset local steps
+                    }
+
                 } else {
                     auto refined_viewpoint = engine_.refine(target, comparator, i);
 
@@ -63,10 +76,13 @@ namespace optimization {
                             }
                         }
 
-                        if (best_score >= refinement_threshold_) {
-                            LOG_INFO("Switching to refinement-only mode at iteration {}", i);
+                        // Check acquisition function uncertainty and mean score
+                        auto [mean, uncertainty] = gpr_->predict(refined_viewpoint->getPosition());
+                        if (mean >= refinement_threshold_ && uncertainty <= uncertainty_threshold_) {
+                            LOG_INFO("Switching to local refinement due to low uncertainty and high mean score.");
                             refinement_mode = true;
                         }
+
                     } else {
                         LOG_INFO("Refinement complete at iteration {}", i);
                         break;
@@ -123,6 +139,8 @@ namespace optimization {
         int max_iterations_;
         T refinement_threshold_;
         T significant_improvement_threshold_;
+        T uncertainty_threshold_;
+        int max_local_refinement_steps_;
 
         void localRefinement(const Image<> &target, std::shared_ptr<processing::image::ImageComparator> comparator) {
             ViewPoint<T> refined_viewpoint = local_refiner_.refine(target, best_viewpoint_, comparator);

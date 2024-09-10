@@ -54,13 +54,13 @@ image:
     type: "COMPOSITE"                        # Selected image comparison method (FEATURE, SSIM, COMPOSITE, PSNR)
     normalize: false                    # Normalize the images before comparison (using MSE/PSNR which are absolute metrics)
     ssim:
-      threshold: 0.95                   # Higher is better
+      threshold: 1.0                   # Higher is better
     feature:
       threshold: 0.85                   # Higher is better
     psnr:
       threshold: 0.25                   # Higher is better
     composite:
-      threshold: 0.85                   # Higher is better
+      threshold: 0.95                   # Higher is better
 
 optimization:
   target_score: 0.90 # Target score for optimization

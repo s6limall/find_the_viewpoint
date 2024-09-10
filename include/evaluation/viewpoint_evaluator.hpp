@@ -2,22 +2,24 @@
 
 #ifndef VIEWPOINT_EVALUATOR_HPP
 #define VIEWPOINT_EVALUATOR_HPP
+
 #include "cache/viewpoint_cache.hpp"
 #include "common/logging/logger.hpp"
 #include "common/metrics/metrics_collector.hpp"
 #include "common/traits/optimization_traits.hpp"
 #include "optimization/acquisition.hpp"
+#include "optimization/convergence_checker.hpp"
 #include "optimization/gaussian/gpr.hpp"
-#include "optimization/gaussian/kernel/matern_52.hpp"
 #include "processing/image/comparator.hpp"
 
 template<FloatingPoint T = double, optimization::IsKernel<T> KernelType = optimization::DefaultKernel<T>>
 class ViewpointEvaluator {
 public:
     ViewpointEvaluator(std::shared_ptr<optimization::GPR<T, KernelType>> gpr, cache::ViewpointCache<T> &cache,
-                       optimization::Acquisition<T> &acquisition, const int patience, T improvement_threshold) :
-        gpr_(gpr), cache_(cache), acquisition_(acquisition), patience_(patience),
-        improvement_threshold_(improvement_threshold), current_iteration_(0) {}
+                       optimization::Acquisition<T> &acquisition,
+                       optimization::ConvergenceChecker<T, KernelType> &convergence_checker) :
+        gpr_(gpr), cache_(cache), acquisition_(acquisition), convergence_checker_(convergence_checker),
+        current_iteration_(0) {}
 
     void evaluatePoint(ViewPoint<T> &point, const Image<> &target,
                        const std::shared_ptr<processing::image::ImageComparator> &comparator) {
@@ -40,6 +42,7 @@ public:
             // Update the cache with the existing point
             cache_.update(point);
         }
+
         recordMetrics(point);
         current_iteration_++;
     }
@@ -49,69 +52,15 @@ public:
         return acquisition_.compute(x, mean, std_dev);
     }
 
-    bool hasConverged(T current_score, T best_score, T target_score, int current_iteration,
-                      std::deque<T> &recent_scores, int &stagnant_iterations, const ViewPoint<T> &best_viewpoint) {
-        // Check if we've reached or exceeded the target score
-        if (current_score >= target_score) {
-            LOG_INFO("Target score reached at iteration {}", current_iteration);
-            return true;
-        }
-
-        LOG_INFO("Current score: {}, Best score: {}", current_score, best_score);
-
-        // Calculate relative improvement
-        T relative_improvement = (current_score - best_score) / best_score;
-
-        if (relative_improvement > improvement_threshold_) {
-            stagnant_iterations = 0;
-        } else {
-            stagnant_iterations++;
-        }
-
-        // Early stopping based on stagnation
-        if (stagnant_iterations >= patience_) {
-            LOG_INFO("Early stopping triggered after {} stagnant iterations", patience_);
-            return true;
-        }
-
-        // Moving average convergence check
-        recent_scores.push_back(current_score);
-        if (recent_scores.size() > window_size_) {
-            recent_scores.pop_front();
-        }
-
-        if (recent_scores.size() == window_size_) {
-            T avg_score = std::reduce(recent_scores.begin(), recent_scores.end(), T(0)) / window_size_;
-            T score_variance =
-                    std::accumulate(recent_scores.begin(), recent_scores.end(), T(0),
-                                    [avg_score](T acc, T score) { return acc + std::pow(score - avg_score, 2); }) /
-                    window_size_;
-
-            if (score_variance < T(1e-6) && avg_score > target_score * T(0.95)) {
-                LOG_INFO("Convergence detected based on moving average at iteration {}", current_iteration);
-                return true;
-            }
-        }
-
-        // Check confidence interval using GPR
-        auto [mean, variance] = gpr_->predict(best_viewpoint.getPosition());
-        T confidence_interval = T(1.96) * std::sqrt(variance); // 95% confidence interval
-
-        if (mean - confidence_interval > target_score) {
-            LOG_INFO("High confidence in solution at iteration {}", current_iteration);
-            return true;
-        }
-
-        return false;
+    bool hasConverged(T current_score, T best_score, int current_iteration, const ViewPoint<T> &best_viewpoint) {
+        return convergence_checker_.hasConverged(current_score, best_score, current_iteration, best_viewpoint, gpr_);
     }
 
 private:
     std::shared_ptr<optimization::GPR<T, KernelType>> gpr_;
     cache::ViewpointCache<T> &cache_;
     optimization::Acquisition<T> &acquisition_;
-    int patience_;
-    T improvement_threshold_;
-    static constexpr int window_size_ = 5;
+    optimization::ConvergenceChecker<T, KernelType> &convergence_checker_;
     int current_iteration_;
 
     void recordMetrics(const ViewPoint<T> &point) {

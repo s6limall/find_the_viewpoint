@@ -7,6 +7,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include "types/concepts.hpp"
 
 namespace optimization::kernel {
 

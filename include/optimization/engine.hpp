@@ -22,9 +22,9 @@ namespace optimization {
             octree_(center, size, min_size), cache_(typename cache::ViewpointCache<T>::CacheConfig{}), gpr_(gpr),
             acquisition_(typename Acquisition<T>::Config{}),
             sampler_(center, radius.value_or(0), tolerance.value_or(0), gpr_, acquisition_),
-            evaluator_(gpr, cache_, acquisition_, config::get("optimization.patience", 10),
-                       config::get("optimization.improvement_threshold", 1e-4)),
-            min_size_(min_size), max_points_(config::get("optimization.max_points", 0)),
+            convergence_checker_(typename ConvergenceChecker<T, KernelType>::Config{}),
+            evaluator_(gpr, cache_, acquisition_, convergence_checker_), min_size_(min_size),
+            max_points_(config::get("optimization.max_points", 0)),
             max_iterations_(config::get("optimization.max_iterations", 5)) {}
 
 
@@ -208,6 +208,7 @@ namespace optimization {
         std::shared_ptr<GPR<T, KernelType>> gpr_;
         Acquisition<T> acquisition_;
         ViewpointSampler<T> sampler_;
+        ConvergenceChecker<T, KernelType> convergence_checker_;
         ViewpointEvaluator<T> evaluator_;
 
         T min_size_;

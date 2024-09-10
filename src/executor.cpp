@@ -37,6 +37,7 @@ void Executor::initialize() {
     extractor_ = processing::image::FeatureExtractor::create();
     matcher_ = processing::image::FeatureMatcher::create<processing::image::FLANNMatcher>();
     std::tie(comparator_, target_score_) = processing::image::ImageComparator::create(extractor_, matcher_);
+    state::set("target_score", target_score_); // Add this to state for use elsewhere
 
     const auto loadImage = [](const std::string &path) {
         LOG_DEBUG("Loaded image from path: {}", path);
