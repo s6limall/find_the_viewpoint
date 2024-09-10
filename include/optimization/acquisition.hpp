@@ -109,6 +109,11 @@ namespace optimization {
                           config::get("optimization.gp.acquisition.exploration_weight", 1.0),
                           config::get("optimization.gp.acquisition.exploitation_weight", 1.0),
                           config::get("optimization.gp.acquisition.momentum", 0.1));
+
+            LOG_DEBUG("Acquisition function updated with new configuration. [ Strategy = {}, Beta = {}, "
+                      "Exploration Weight = {}, Exploitation Weight = {}, Momentum = {} ]",
+                      strategyToString(config.strategy), config.beta, config.exploration_weight,
+                      config.exploitation_weight, config.momentum);
             config_ = config;
         }
 
