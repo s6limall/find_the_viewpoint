@@ -31,7 +31,7 @@
 #include "lightglue.hpp"
 #include "image.hpp"
 #include "path_and_vis.hpp"
-#include "eye.hpp"
+#include "core/eye.hpp"
 
 typedef unsigned long long pop_t;
 

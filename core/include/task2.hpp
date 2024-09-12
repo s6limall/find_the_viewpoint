@@ -28,7 +28,7 @@
 #include <opencv2/core/eigen.hpp>
 
 #include "../include/lightglue.hpp"
-#include "eye.hpp"
+#include "core/eye.hpp"
 #include "../include/config.hpp"
 #include "../include/image.hpp"
 #include "core/vision/perception.hpp"

@@ -11,7 +11,6 @@
 #include "common/logging/logger.hpp"
 #include "common/state/state.hpp"
 // #include "config/configuration.hpp"
-#include "task1.hpp"
 #include "core/vision/perception.hpp"
 #include "core/vision/simulator.hpp"
 

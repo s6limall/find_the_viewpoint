@@ -110,9 +110,23 @@ RUN echo "source /xarm_ws/install/setup.bash" >> /root/.bashrc
 RUN mkdir -p /ros2_ws/src
 WORKDIR /ros2_ws
 
+# Copy the prepare.sh script into the container
+COPY ./scripts/prepare.sh /ros2_ws/prepare.sh
+
+# Make the script executable
+RUN chmod +x /ros2_ws/prepare.sh
+
 RUN apt-get update && apt-get install -y \
     python3-ament-package \
     && rm -rf /var/lib/apt/lists/*
+
+# Create the Makefile using a single echo statement
+RUN echo 'all: build\n\
+\n\
+build:\n\
+\tcolcon build --packages-select ftv\n\
+\tsource /ros2_ws/install/setup.bash' > /ros2_ws/Makefile
+
 
 # Set environment variables for ROS and CMake
 ENV AMENT_PREFIX_PATH=/opt/ros/$ROS_DISTRO:/xarm_ws/install:/ros2_ws/install
@@ -136,5 +150,6 @@ source /ros2_ws/dev_env.sh\n\
 exec /usr/bin/cmake "$@"' > /usr/local/bin/cmake_wrapper.sh && \
     chmod +x /usr/local/bin/cmake_wrapper.sh
 
-ENTRYPOINT ["/ros2_ws/dev_env.sh"]
+# Ensure prepare.sh runs before setting up the ROS environment
+ENTRYPOINT ["/bin/bash", "-c", "/ros2_ws/prepare.sh && /ros2_ws/dev_env.sh"]
 CMD ["bash"]
