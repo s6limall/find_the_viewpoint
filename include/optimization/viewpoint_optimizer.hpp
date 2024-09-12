@@ -38,7 +38,6 @@ namespace optimization {
             const auto hyperparameter_optimization_frequency =
                     config::get("optimization.gp.kernel.hyperparameters.optimization.frequency", 10);
 
-            bool refinement_mode = false;
             int local_refinement_steps = 0;
 
             for (int i = 0; i < max_iterations_; ++i) {
@@ -47,18 +46,8 @@ namespace optimization {
                     break;
                 }
 
-                if (refinement_mode) {
+                if (state::get("count", 0) % config::get("optimization.local_refinement.frequency", 10) == 0) {
                     localRefinement(target, comparator);
-                    local_refinement_steps++;
-
-                    // If no improvement after max_local_refinement_steps_, switch back to global exploration
-                    if (local_refinement_steps >= max_local_refinement_steps_) {
-                        LOG_INFO("Switching back to global exploration after {} local refinement steps",
-                                 local_refinement_steps);
-                        refinement_mode = false;
-                        local_refinement_steps = 0; // Reset local steps
-                    }
-
                 } else {
                     auto refined_viewpoint = engine_.refine(target, comparator, i);
 
@@ -79,8 +68,8 @@ namespace optimization {
                         // Check acquisition function uncertainty and mean score
                         auto [mean, uncertainty] = gpr_->predict(refined_viewpoint->getPosition());
                         if (mean >= refinement_threshold_ && uncertainty <= uncertainty_threshold_) {
-                            LOG_INFO("Switching to local refinement due to low uncertainty and high mean score.");
-                            refinement_mode = true;
+                            LOG_INFO("Trying local refinement due to low uncertainty and high mean score.");
+                            localRefinement(target, comparator);
                         }
 
                     } else {
@@ -100,33 +89,21 @@ namespace optimization {
             }
 
             auto refined_result = optimizeRadius(target);
-
-            if (!refined_result) {
-                LOG_ERROR("Radius refinement failed");
-                return;
-            }
-
             Image<T> refined_image = Image<>::fromViewPoint(refined_result->best_viewpoint);
-
             T refined_score = comparator->compare(target, refined_image);
             refined_result->best_viewpoint.setScore(refined_score);
             refined_image.setScore(refined_score);
 
-            LOG_INFO("Optimization complete.");
-            LOG_INFO("Initial best viewpoint: {}, Score: {:.6f}", initial_best.toString(), initial_best.getScore());
-            LOG_INFO("Best viewpoint after main optimization: {}", best_viewpoint_.toString());
-            LOG_INFO("Final best viewpoint after radius refinement: {}, Score: {:.6f}",
-                     refined_result->best_viewpoint.toString(), refined_score);
-            LOG_INFO("Total score improvement: {:.6f}", refined_score - initial_best.getScore());
-            LOG_INFO("Radius refinement iterations: {}", refined_result->iterations);
-
             if (refined_score > best_viewpoint_.getScore()) {
                 best_viewpoint_ = refined_result->best_viewpoint;
-                LOG_INFO("Radius refinement improved the viewpoint");
-            } else {
-                LOG_INFO("Radius refinement did not improve the viewpoint. Keeping the original.");
+                LOG_INFO("Radius refinement improved viewpoint, best viewpoint: {}", best_viewpoint_.toString());
             }
+
+            LOG_INFO("Optimization complete.");
+            LOG_INFO("Initial best viewpoint: {}", initial_best.toString());
+            LOG_INFO("Best viewpoint after main optimization: {}", best_viewpoint_.toString());
         }
+
 
         [[nodiscard]] std::optional<ViewPoint<T>> getBestViewpoint() const noexcept { return best_viewpoint_; }
 
@@ -143,7 +120,7 @@ namespace optimization {
         int max_local_refinement_steps_;
 
         void localRefinement(const Image<> &target, std::shared_ptr<processing::image::ImageComparator> comparator) {
-            ViewPoint<T> refined_viewpoint = local_refiner_.refine(target, best_viewpoint_, comparator);
+            ViewPoint<T> refined_viewpoint = local_refiner_.refine(target, best_viewpoint_);
 
             if (refined_viewpoint.getScore() > best_viewpoint_.getScore()) {
                 best_viewpoint_ = refined_viewpoint;

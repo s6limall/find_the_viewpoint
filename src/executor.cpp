@@ -17,21 +17,6 @@ std::shared_ptr<Executor::KernelType> Executor::kernel_;
 std::shared_ptr<optimization::GPR<>> Executor::gpr_;
 std::shared_ptr<optimization::ViewpointOptimizer<>> Executor::optimizer_;
 
-
-void Executor::reset() {
-    // kernel_.reset();
-    // gpr_.reset();
-
-    /*const auto size = 2 * radius_;
-    const auto length_scale = config::get("optimization.gp.kernel.hyperparameters.length_scale", 0.5) * size;
-    const auto variance = config::get("optimization.gp.kernel.hyperparameters.variance", 1.0);
-    const auto noise_variance = config::get("optimization.gp.kernel.hyperparameters.noise_variance", 1e-6);
-
-
-    kernel_ = std::make_shared<KernelType>(length_scale, variance, noise_variance);
-    gpr_ = std::make_shared<optimization::GPR<>>(*kernel_);*/
-}
-
 void Executor::initialize() {
     LOG_INFO("Initializing executor.");
     extractor_ = processing::image::FeatureExtractor::create();
@@ -40,7 +25,6 @@ void Executor::initialize() {
     state::set("target_score", target_score_); // Add this to state for use elsewhere
 
     const auto loadImage = [](const std::string &path) {
-        LOG_DEBUG("Loaded image from path: {}", path);
         return Image<>(common::io::image::readImage(path), extractor_);
     };
 

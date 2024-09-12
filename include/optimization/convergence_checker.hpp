@@ -35,8 +35,9 @@ namespace optimization {
             config_.patience = config::get("optimization.patience", config_.patience);
             config_.improvement_threshold =
                     config::get("optimization.improvement_threshold", config_.improvement_threshold);
-            config_.target_score =
-                    state::get("target_score", config::get("optimization.target_score", config_.target_score));
+            /*config_.target_score =
+                    state::get("target_score", config::get("optimization.target_score", config_.target_score));*/
+            config_.target_score = state::get("target_score", config_.target_score);
             config_.window_size = config::get("optimization.window_size", config_.window_size);
             config_.confidence_threshold =
                     config::get("optimization.confidence_threshold", config_.confidence_threshold);
@@ -119,7 +120,10 @@ namespace optimization {
 
             T adaptive_confidence_threshold =
                     config_.target_score * (T(1) - config_.variance_factor * std::exp(-T(total_iterations_) / T(20)));
-            return (mean - confidence_interval > adaptive_confidence_threshold * config_.confidence_threshold);
+
+            bool is_high_confidence =
+                    mean - confidence_interval > adaptive_confidence_threshold * config_.confidence_threshold;
+            return is_high_confidence && mean > config_.target_score;
         }
 
         [[nodiscard]] bool checkDiminishingReturns() const {
