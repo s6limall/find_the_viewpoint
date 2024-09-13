@@ -17,6 +17,11 @@
 #include "common/state/state.hpp"
 #include "task2.hpp"
 
+#include <moveit/planning_scene_interface/planning_scene_interface.h>
+#include <geometric_shapes/shape_operations.h>
+
+
+
 class FTVNode final : public rclcpp::Node {
 public:
     FTVNode() : Node("ftv_ros"), custom_origin_(Eigen::Isometry3d::Identity()) {
@@ -30,6 +35,7 @@ public:
             RCLCPP_INFO(this->get_logger(), "Initialized MoveGroupInterface");
         });
         marker_pub_ = this->create_publisher<visualization_msgs::msg::MarkerArray>("visualization_marker_array", 10);
+        publishGroundPlaneMarker();
         RCLCPP_INFO(this->get_logger(), "FTVNode initialized successfully!");
     }
 
@@ -61,12 +67,25 @@ private:
         try {
             move_group_interface_ = std::make_unique<moveit::planning_interface::MoveGroupInterface>(
                 shared_from_this(), "xarm7");
+
+            move_group_interface_->setPlannerId("RRTConnect");
+            move_group_interface_->setNumPlanningAttempts(20);
+            move_group_interface_->setPlanningTime(1.0);
+            move_group_interface_->setMaxVelocityScalingFactor(1.0);
+            move_group_interface_->setMaxAccelerationScalingFactor(1.0);
+            move_group_interface_->setGoalPositionTolerance(0.01);
+            move_group_interface_->setGoalOrientationTolerance(0.01);
+
+            /*
             move_group_interface_->setPlanningTime(2.0);
             move_group_interface_->setNumPlanningAttempts(10);
             move_group_interface_->setGoalPositionTolerance(0.01);
             move_group_interface_->setGoalOrientationTolerance(0.01);
             move_group_interface_->setMaxVelocityScalingFactor(0.8);
             move_group_interface_->setMaxAccelerationScalingFactor(0.8);
+            */
+
+            setupScene();
 
             core::Eye::setCallback(
                 [this](const Eigen::Matrix4d &extrinsics, std::condition_variable &cv, bool &ready_flag) {
@@ -94,6 +113,122 @@ private:
         }
     }
 
+    void setupScene() {
+        if (!move_group_interface_) {
+            RCLCPP_ERROR(this->get_logger(), "MoveGroupInterface not initialized");
+            return;
+        }
+
+        moveit::planning_interface::PlanningSceneInterface planning_scene_interface;
+
+        // Add a ground plane
+        moveit_msgs::msg::CollisionObject ground_plane;
+        ground_plane.header.frame_id = "link_base";
+        ground_plane.id = "ground_plane";
+
+        shape_msgs::msg::Plane plane;
+
+        /*
+            Equation of a plane: ax + by + cz + d = 0
+            {1, 0, 0, 0}: vertical plane at x = 0 (the YZ plane)
+            {0, 1, 0, 0}: vertical plane at y = 0 (the XZ plane)
+            {0, 0, 1, -1}: horizontal plane at z = 1
+            {1, 1, 1, -1}: plane that intersects the x, y, and z axes at 1
+         */
+        plane.coef = {0, 0, 1, 0}; // Ground plane
+
+        ground_plane.planes.push_back(plane);
+        ground_plane.plane_poses.push_back(geometry_msgs::msg::Pose());
+
+        planning_scene_interface.applyCollisionObject(ground_plane);
+
+        // Add bounding box
+        addBoundingBox(planning_scene_interface);
+
+        RCLCPP_INFO(this->get_logger(), "Added ground plane and bounding box to the scene");
+    }
+
+    void addBoundingBox(moveit::planning_interface::PlanningSceneInterface& planning_scene_interface) {
+        std::vector<moveit_msgs::msg::CollisionObject> collision_objects;
+
+        // Define the dimensions of the bounding box
+        const double x_min = -0.5, x_max = 1.0;
+        const double y_min = -0.75, y_max = 0.75;
+        const double z_min = 0.0, z_max = 1.5;
+
+        // Create 6 planes to form a box
+        std::vector<std::array<double, 4>> plane_coeffs = {
+            {1, 0, 0, -x_min},  // Left wall
+            {-1, 0, 0, x_max},  // Right wall
+            {0, 1, 0, -y_min},  // Front wall
+            {0, -1, 0, y_max},  // Back wall
+            {0, 0, 1, -z_min},  // Floor (already added as ground plane but still)
+            {0, 0, -1, z_max}   // Ceiling
+        };
+
+        for (size_t i = 0; i < plane_coeffs.size(); ++i) {
+            moveit_msgs::msg::CollisionObject collision_object;
+            collision_object.header.frame_id = "link_base";
+            collision_object.id = "bounding_plane_" + std::to_string(i);
+
+            shape_msgs::msg::Plane plane;
+            plane.coef = {plane_coeffs[i][0], plane_coeffs[i][1], plane_coeffs[i][2], plane_coeffs[i][3]};
+
+            collision_object.planes.push_back(plane);
+            collision_object.plane_poses.push_back(geometry_msgs::msg::Pose());
+
+            collision_objects.push_back(collision_object);
+        }
+
+        planning_scene_interface.applyCollisionObjects(collision_objects);
+
+        // Visualize the bounding box
+        publishBoundingBoxMarkers(x_min, x_max, y_min, y_max, z_min, z_max);
+    }
+
+    void publishBoundingBoxMarkers(double x_min, double x_max, double y_min, double y_max, double z_min, double z_max) const {
+        visualization_msgs::msg::MarkerArray marker_array;
+
+        auto createBoxMarker = [&](int id, double x, double y, double z, double dx, double dy, double dz) {
+            visualization_msgs::msg::Marker marker;
+            marker.header.frame_id = "link_base";
+            marker.header.stamp = this->now();
+            marker.ns = "bounding_box";
+            marker.id = id;
+            marker.type = visualization_msgs::msg::Marker::CUBE;
+            marker.action = visualization_msgs::msg::Marker::ADD;
+            marker.pose.position.x = x;
+            marker.pose.position.y = y;
+            marker.pose.position.z = z;
+            marker.pose.orientation.w = 1.0;
+            marker.scale.x = dx;
+            marker.scale.y = dy;
+            marker.scale.z = dz;
+            marker.color.r = 0.5;
+            marker.color.g = 0.5;
+            marker.color.b = 0.5;
+            marker.color.a = 0.2;
+            return marker;
+        };
+
+        // Create markers for the edges of the bounding box
+        const double edge_thickness = 0.02;
+        marker_array.markers.push_back(createBoxMarker(0, (x_min + x_max) / 2, y_min, z_min, x_max - x_min, edge_thickness, edge_thickness));
+        marker_array.markers.push_back(createBoxMarker(1, (x_min + x_max) / 2, y_max, z_min, x_max - x_min, edge_thickness, edge_thickness));
+        marker_array.markers.push_back(createBoxMarker(2, (x_min + x_max) / 2, y_min, z_max, x_max - x_min, edge_thickness, edge_thickness));
+        marker_array.markers.push_back(createBoxMarker(3, (x_min + x_max) / 2, y_max, z_max, x_max - x_min, edge_thickness, edge_thickness));
+        marker_array.markers.push_back(createBoxMarker(4, x_min, (y_min + y_max) / 2, z_min, edge_thickness, y_max - y_min, edge_thickness));
+        marker_array.markers.push_back(createBoxMarker(5, x_max, (y_min + y_max) / 2, z_min, edge_thickness, y_max - y_min, edge_thickness));
+        marker_array.markers.push_back(createBoxMarker(6, x_min, (y_min + y_max) / 2, z_max, edge_thickness, y_max - y_min, edge_thickness));
+        marker_array.markers.push_back(createBoxMarker(7, x_max, (y_min + y_max) / 2, z_max, edge_thickness, y_max - y_min, edge_thickness));
+        marker_array.markers.push_back(createBoxMarker(8, x_min, y_min, (z_min + z_max) / 2, edge_thickness, edge_thickness, z_max - z_min));
+        marker_array.markers.push_back(createBoxMarker(9, x_max, y_min, (z_min + z_max) / 2, edge_thickness, edge_thickness, z_max - z_min));
+        marker_array.markers.push_back(createBoxMarker(10, x_min, y_max, (z_min + z_max) / 2, edge_thickness, edge_thickness, z_max - z_min));
+        marker_array.markers.push_back(createBoxMarker(11, x_max, y_max, (z_min + z_max) / 2, edge_thickness, edge_thickness, z_max - z_min));
+
+        marker_pub_->publish(marker_array);
+    }
+
     void moveArm(const Eigen::Matrix4d &extrinsics) const {
         RCLCPP_INFO(this->get_logger(), "Attempting to move the arm");
 
@@ -107,8 +242,8 @@ private:
             Eigen::Vector3d origin = custom_origin_.translation();
             Eigen::Vector3d line_direction = (target_position - origin).normalized();
 
-            double max_reach = 1.5; // TODO: tweak based on arm lenght
-            const int max_retries = 15;
+            double max_reach = 1; // TODO: tweak based on arm lenght
+            const int max_retries = 50;
             const double min_step = 0.01;
             double step_size = max_reach;
             geometry_msgs::msg::Pose best_reachable_pose = move_group_interface_->getCurrentPose().pose;
@@ -335,6 +470,31 @@ private:
         marker_array.markers.push_back(point_marker);
         marker_array.markers.push_back(arrow_marker);
 
+        marker_pub_->publish(marker_array);
+    }
+
+    void publishGroundPlaneMarker() const {
+        visualization_msgs::msg::Marker ground_marker;
+        ground_marker.header.frame_id = "link_base";
+        ground_marker.header.stamp = this->now();
+        ground_marker.ns = "ground_plane";
+        ground_marker.id = 3;
+        ground_marker.type = visualization_msgs::msg::Marker::CUBE;
+        ground_marker.action = visualization_msgs::msg::Marker::ADD;
+        ground_marker.pose.position.x = 0;
+        ground_marker.pose.position.y = 0;
+        ground_marker.pose.position.z = -0.005; // Slightly below z=0 to avoid z-fighting
+        ground_marker.pose.orientation.w = 1.0;
+        ground_marker.scale.x = 2.0;
+        ground_marker.scale.y = 2.0;
+        ground_marker.scale.z = 0.01;
+        ground_marker.color.r = 0.8;
+        ground_marker.color.g = 0.8;
+        ground_marker.color.b = 0.8;
+        ground_marker.color.a = 0.5;
+
+        visualization_msgs::msg::MarkerArray marker_array;
+        marker_array.markers.push_back(ground_marker);
         marker_pub_->publish(marker_array);
     }
 
