@@ -23,30 +23,28 @@ namespace optimization {
         enum class Strategy { UCB, EI, PI, ADAPTIVE, ADAPTIVE_UCB, ADAPTIVE_EI, ADAPTIVE_PI, UCB_ALT };
 
         struct Config {
-            Strategy strategy;
-            T beta;
-            T exploration_weight;
-            T exploitation_weight;
-            T momentum;
-            T exploration_radius;
-            T novelty_bonus;
-            int iteration_count;
+            Strategy strategy = Strategy::ADAPTIVE;
+            T beta = 2.0;
+            T exploration_weight = 1.0;
+            T exploitation_weight = 1.0;
+            T momentum = 0.1;
+            T exploration_radius = 1.0;
+            T novelty_bonus = 1.2;
+            int iteration_count = 0;
 
-            explicit Config(const Strategy strategy = Strategy::ADAPTIVE, T beta = 2.0, T exploration_weight = 1.0,
-                            T exploitation_weight = 1.0, T momentum = 0.1, const int iteration_count = 0) {
-                this->strategy = stringToStrategy(
-                        config::get("optimization.gp.acquisition.strategy", strategyToString(strategy)));
-                this->beta = config::get("optimization.gp.acquisition.beta", beta);
-                this->exploration_weight =
-                        config::get("optimization.gp.acquisition.exploration_weight", exploration_weight);
-                this->exploitation_weight =
+            Config() {
+                strategy = stringToStrategy(config::get("optimization.gp.acquisition.strategy", "ADAPTIVE"));
+                beta = config::get("optimization.gp.acquisition.beta", beta);
+                exploration_weight = config::get("optimization.gp.acquisition.exploration_weight", exploration_weight);
+                exploitation_weight =
                         config::get("optimization.gp.acquisition.exploitation_weight", exploitation_weight);
-                this->momentum = config::get("optimization.gp.acquisition.momentum", momentum);
-                this->exploration_radius = config::get("optimization.gp.acquisition.exploration_radius", 1.0);
-                this->novelty_bonus = config::get("optimization.gp.acquisition.novelty_bonus", 1.2);
-                this->iteration_count = config::get("optimization.gp.acquisition.iterations", iteration_count);
+                momentum = config::get("optimization.gp.acquisition.momentum", momentum);
+                exploration_radius = config::get("optimization.gp.acquisition.exploration_radius", exploration_radius);
+                novelty_bonus = config::get("optimization.gp.acquisition.novelty_bonus", novelty_bonus);
+                iteration_count = config::get("optimization.gp.acquisition.iterations", iteration_count);
             }
         };
+
 
         std::set<VectorXt, std::function<bool(const VectorXt &, const VectorXt &)>> explored_points_{
                 [](const VectorXt &a, const VectorXt &b) { return (a - b).norm() < 1e-6; }};

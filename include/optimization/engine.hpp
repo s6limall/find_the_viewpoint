@@ -202,6 +202,19 @@ namespace optimization {
             }
         }
 
+        void updateExplorationRate(T stagnation_ratio) {
+            T exploration_rate = std::max(T(0.1), T(1.0) - stagnation_ratio);
+            T exploitation_rate = T(1.0) - exploration_rate;
+
+            typename Acquisition<T>::Config new_config = acquisition_.getConfig();
+            new_config.exploration_weight = exploration_rate;
+            new_config.exploitation_weight = exploitation_rate;
+
+            acquisition_.updateConfig(new_config);
+
+            LOG_INFO("Updated exploration rate to {}, exploitation rate to {}", exploration_rate, exploitation_rate);
+        }
+
     private:
         spatial::Octree<T> octree_;
         cache::ViewpointCache<T> cache_;

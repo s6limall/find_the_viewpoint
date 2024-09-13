@@ -3,10 +3,8 @@
 
 #include <Eigen/Core>
 #include <algorithm>
-#include <array>
 #include <memory>
 #include <random>
-#include <stdexcept>
 #include "common/logging/logger.hpp"
 #include "config/configuration.hpp"
 #include "optimization/acquisition.hpp"
@@ -21,10 +19,9 @@ namespace optimization {
         explicit LocalRefiner(std::shared_ptr<processing::image::ImageComparator> comparator,
                               std::shared_ptr<GPR<T, KernelType>> gpr) :
             comparator_(std::move(comparator)), gpr_(std::move(gpr)), acquisition_(std::make_unique<Acquisition<T>>()),
-            max_iterations_(config::get("optimization.local_search.max_iterations", 20)),
+            max_iterations_(config::get("optimization.local_search.max_iterations", 50)),
             initial_step_size_(config::get("optimization.local_search.initial_step_size", 0.1)),
             min_step_size_(config::get("optimization.local_search.min_step_size", 1e-6)),
-            step_reduction_factor_(config::get("optimization.local_search.step_reduction_factor", 0.7)),
             improvement_threshold_(config::get("optimization.local_search.improvement_threshold", 1e-7)),
             lbfgs_optimizer_(typename LBFGSOptimizer<T>::Options()) {
             if (!comparator_ || !gpr_) {
@@ -39,106 +36,19 @@ namespace optimization {
             T best_score = current_score;
             Eigen::Vector3<T> best_position = current_position;
 
-            T step_size = initial_step_size_;
-            int stagnant_iterations = 0;
-
-            std::mt19937 gen(std::random_device{}());
-            std::uniform_real_distribution<T> dist(0, 1);
-
-            const int num_directions = 8;
-            std::array<Eigen::Vector3<T>, num_directions> directions;
-            for (int i = 0; i < num_directions; ++i) {
-                T theta = 2 * M_PI * i / num_directions;
-                directions[i] = Eigen::Vector3<T>(std::cos(theta), std::sin(theta), 0).normalized();
-            }
-
             try {
-                for (int iteration = 0; iteration < max_iterations_; ++iteration) {
-                    bool improved = false;
-                    Eigen::Vector3<T> best_direction;
-                    T best_acquisition_value = -std::numeric_limits<T>::max();
+                // Initial GPR-guided exploration
+                best_position = gprGuidedExploration(target, current_position, radius, best_score);
 
-                    // Evaluate acquisition function for each direction
-                    for (const auto &direction: directions) {
-                        Eigen::Vector3<T> new_position =
-                                (current_position + step_size * direction).normalized() * radius;
-                        if (new_position.z() < 0)
-                            continue; // Ensure upper hemisphere
-
-                        auto [mean, variance] = gpr_->predict(new_position);
-                        T acquisition_value = acquisition_->compute(new_position, mean, std::sqrt(variance));
-
-                        if (acquisition_value > best_acquisition_value) {
-                            best_acquisition_value = acquisition_value;
-                            best_direction = direction;
-                        }
-                    }
-
-                    // Evaluate the best direction
-                    Eigen::Vector3<T> new_position =
-                            (current_position + step_size * best_direction).normalized() * radius;
-                    T new_score = evaluateAndUpdate(new_position, target);
-
-                    if (new_score > current_score) {
-                        T improvement = new_score - current_score;
-                        current_score = new_score;
-                        current_position = new_position;
-                        improved = true;
-
-                        if (new_score > best_score) {
-                            best_score = new_score;
-                            best_position = new_position;
-                            acquisition_->updateBestPoint(best_position);
-                        }
-
-                        // Adaptive step size based on improvement
-                        step_size = std::min(step_size * (1 + improvement / current_score), initial_step_size_);
-                    } else {
-                        // If no improvement, try a smaller step in the opposite direction
-                        new_position = (current_position - 0.5 * step_size * best_direction).normalized() * radius;
-                        new_score = evaluateAndUpdate(new_position, target);
-
-                        if (new_score > current_score) {
-                            current_score = new_score;
-                            current_position = new_position;
-                            improved = true;
-
-                            if (new_score > best_score) {
-                                best_score = new_score;
-                                best_position = new_position;
-                                acquisition_->updateBestPoint(best_position);
-                            }
-                        }
-                    }
-
-                    if (improved) {
-                        stagnant_iterations = 0;
-                    } else {
-                        stagnant_iterations++;
-                        step_size *= step_reduction_factor_;
-                    }
-
-                    acquisition_->incrementIteration();
-
-                    // Early stopping checks
-                    if (step_size < min_step_size_ || stagnant_iterations > 3 ||
-                        best_score - initial_viewpoint.getScore() < improvement_threshold_) {
-                        LOG_INFO("Local refinement stopped after {} iterations. Reason: {}", iteration + 1,
-                                 step_size < min_step_size_ ? "Small step size"
-                                 : stagnant_iterations > 3  ? "Stagnation"
-                                                            : "Insufficient improvement");
-                        break;
-                    }
-                }
-
-                // Final refinement using L-BFGS
+                // L-BFGS refinement
                 best_position = performLBFGSRefinement(target, best_position, radius);
                 best_score = evaluateAndUpdate(best_position, target);
 
+                // Final local search
+                best_position = localSearch(target, best_position, radius, best_score);
+
             } catch (const std::exception &e) {
                 LOG_ERROR("Exception during local refinement: {}. Falling back to best found point.", e.what());
-                // Instead of returning initial viewpoint, return the best point found so far
-                return ViewPoint<T>(best_position, best_score);
             }
 
             return ViewPoint<T>(best_position, best_score);
@@ -151,7 +61,6 @@ namespace optimization {
         int max_iterations_;
         T initial_step_size_;
         T min_step_size_;
-        T step_reduction_factor_;
         T improvement_threshold_;
         LBFGSOptimizer<T> lbfgs_optimizer_;
 
@@ -160,6 +69,28 @@ namespace optimization {
             T score = comparator_->compare(target, Image<>::fromViewPoint(viewpoint));
             gpr_->update(position, score);
             return score;
+        }
+
+        Eigen::Vector3<T> gprGuidedExploration(const Image<> &target, const Eigen::Vector3<T> &initial_position,
+                                               T radius, T &best_score) {
+            Eigen::Vector3<T> best_position = initial_position;
+            const int num_exploration_points = 20;
+
+            for (int i = 0; i < num_exploration_points; ++i) {
+                Eigen::Vector3<T> candidate_position = sampleSphereSurface(radius);
+                auto [mean, variance] = gpr_->predict(candidate_position);
+                T acquisition_value = acquisition_->compute(candidate_position, mean, std::sqrt(variance));
+
+                if (acquisition_value > best_score) {
+                    T score = evaluateAndUpdate(candidate_position, target);
+                    if (score > best_score) {
+                        best_score = score;
+                        best_position = candidate_position;
+                    }
+                }
+            }
+
+            return best_position;
         }
 
         Eigen::Vector3<T> performLBFGSRefinement(const Image<> &target, const Eigen::Vector3<T> &initial_position,
@@ -177,8 +108,57 @@ namespace optimization {
             return optimized_position.normalized() * radius;
         }
 
+        Eigen::Vector3<T> localSearch(const Image<> &target, const Eigen::Vector3<T> &initial_position, T radius,
+                                      T &best_score) {
+            Eigen::Vector3<T> current_position = initial_position;
+            T step_size = initial_step_size_;
+            int stagnant_iterations = 0;
+
+            for (int iteration = 0; iteration < max_iterations_; ++iteration) {
+                bool improved = false;
+                Eigen::Vector3<T> best_direction;
+                T best_acquisition_value = -std::numeric_limits<T>::max();
+
+                // Generate and evaluate candidates
+                for (int i = 0; i < 8; ++i) {
+                    Eigen::Vector3<T> direction = sampleSphereSurface(1.0);
+                    Eigen::Vector3<T> new_position = (current_position + step_size * direction).normalized() * radius;
+
+                    auto [mean, variance] = gpr_->predict(new_position);
+                    T acquisition_value = acquisition_->compute(new_position, mean, std::sqrt(variance));
+
+                    if (acquisition_value > best_acquisition_value) {
+                        best_acquisition_value = acquisition_value;
+                        best_direction = direction;
+                    }
+                }
+
+                // Evaluate best candidate
+                Eigen::Vector3<T> new_position = (current_position + step_size * best_direction).normalized() * radius;
+                T new_score = evaluateAndUpdate(new_position, target);
+
+                if (new_score > best_score) {
+                    best_score = new_score;
+                    current_position = new_position;
+                    improved = true;
+                    step_size = std::min(step_size * 1.2, initial_step_size_);
+                    stagnant_iterations = 0;
+                } else {
+                    step_size *= 0.5;
+                    stagnant_iterations++;
+                }
+
+                // Early stopping checks
+                if (step_size < min_step_size_ || stagnant_iterations > 5) {
+                    break;
+                }
+            }
+
+            return current_position;
+        }
+
         Eigen::Vector3<T> computeGradient(const Eigen::Vector3<T> &position, const Image<> &target) {
-            const T h = 1e-5; // Step size for finite differences
+            const T h = 1e-5;
             Eigen::Vector3<T> gradient;
 
             for (int i = 0; i < 3; ++i) {
@@ -193,6 +173,18 @@ namespace optimization {
             }
 
             return gradient;
+        }
+
+        Eigen::Vector3<T> sampleSphereSurface(T radius) {
+            static std::mt19937 gen(std::random_device{}());
+            static std::normal_distribution<T> normal_dist(0, 1);
+
+            Eigen::Vector3<T> v;
+            do {
+                v = Eigen::Vector3<T>(normal_dist(gen), normal_dist(gen), std::abs(normal_dist(gen)));
+            } while (v.norm() < 1e-6);
+
+            return v.normalized() * radius;
         }
     };
 

@@ -39,71 +39,70 @@ namespace optimization {
                     config::get("optimization.gp.kernel.hyperparameters.optimization.frequency", 10);
 
             int local_refinement_steps = 0;
+            int global_iterations = 0;
+            int stagnant_iterations = 0;
 
-            for (int i = 0; i < max_iterations_; ++i) {
+            while (global_iterations < max_iterations_) {
                 if (state::get("count", 0) > config::get("optimization.max_points", 0)) {
                     LOG_INFO("Maximum number of points reached. Stopping optimization.");
                     break;
                 }
 
-                if (state::get("count", 0) % config::get("optimization.local_refinement.frequency", 10) == 0) {
-                    localRefinement(target, comparator);
-                } else {
-                    auto refined_viewpoint = engine_.refine(target, comparator, i);
+                auto refined_viewpoint = engine_.refine(target, comparator, global_iterations);
 
-                    if (refined_viewpoint) {
-                        T current_score = refined_viewpoint->getScore();
-                        engine_.addRecentScore(current_score);
+                if (refined_viewpoint) {
+                    T current_score = refined_viewpoint->getScore();
+                    engine_.addRecentScore(current_score);
 
-                        if (current_score > best_score) {
-                            T improvement = current_score - best_score;
-                            best_score = current_score;
-                            best_viewpoint_ = *refined_viewpoint;
+                    if (current_score > best_score) {
+                        T improvement = current_score - best_score;
+                        best_score = current_score;
+                        best_viewpoint_ = *refined_viewpoint;
+                        stagnant_iterations = 0;
 
-                            if (improvement > significant_improvement_threshold_) {
-                                localRefinement(target, comparator);
-                            }
-                        }
-
-                        // Check acquisition function uncertainty and mean score
-                        auto [mean, uncertainty] = gpr_->predict(refined_viewpoint->getPosition());
-                        if (mean >= refinement_threshold_ && uncertainty <= uncertainty_threshold_) {
-                            LOG_INFO("Trying local refinement due to low uncertainty and high mean score.");
+                        if (improvement > significant_improvement_threshold_) {
                             localRefinement(target, comparator);
+                            local_refinement_steps++;
                         }
-
                     } else {
-                        LOG_INFO("Refinement complete at iteration {}", i);
-                        break;
+                        stagnant_iterations++;
                     }
-                }
 
-                if (convergence_checker_.hasConverged(best_score, best_score, i, best_viewpoint_, gpr_)) {
-                    LOG_INFO("Optimization converged at iteration {}", i);
+                    // Check acquisition function uncertainty and mean score
+                    auto [mean, uncertainty] = gpr_->predict(refined_viewpoint->getPosition());
+                    if (mean >= refinement_threshold_ && uncertainty <= uncertainty_threshold_) {
+                        LOG_INFO("Trying local refinement due to low uncertainty and high mean score.");
+                        localRefinement(target, comparator);
+                        local_refinement_steps++;
+                    }
+
+                } else {
+                    LOG_INFO("Refinement complete at iteration {}", global_iterations);
                     break;
                 }
 
-                if (i % hyperparameter_optimization_frequency == 0) {
+                if (convergence_checker_.hasConverged(best_score, best_score, global_iterations, best_viewpoint_,
+                                                      gpr_)) {
+                    LOG_INFO("Optimization converged at iteration {}", global_iterations);
+                    break;
+                }
+
+                if (global_iterations % hyperparameter_optimization_frequency == 0) {
                     gpr_->optimizeHyperparameters();
                 }
+
+                // Adaptive exploration-exploitation balance
+                engine_.updateExplorationRate(static_cast<T>(stagnant_iterations) / max_iterations_);
+
+                global_iterations++;
             }
 
-            auto refined_result = optimizeRadius(target);
-            Image<T> refined_image = Image<>::fromViewPoint(refined_result->best_viewpoint);
-            T refined_score = comparator->compare(target, refined_image);
-            refined_result->best_viewpoint.setScore(refined_score);
-            refined_image.setScore(refined_score);
-
-            if (refined_score > best_viewpoint_.getScore()) {
-                best_viewpoint_ = refined_result->best_viewpoint;
-                LOG_INFO("Radius refinement improved viewpoint, best viewpoint: {}", best_viewpoint_.toString());
-            }
+            finalRefinement(target, comparator);
 
             LOG_INFO("Optimization complete.");
             LOG_INFO("Initial best viewpoint: {}", initial_best.toString());
             LOG_INFO("Best viewpoint after main optimization: {}", best_viewpoint_.toString());
         }
-
 
         [[nodiscard]] std::optional<ViewPoint<T>> getBestViewpoint() const noexcept { return best_viewpoint_; }
 
@@ -128,16 +127,26 @@ namespace optimization {
             }
         }
 
-        std::optional<typename RadiusOptimizer<T>::RadiusOptimizerResult> optimizeRadius(const Image<> &target) const {
-            auto renderFunction = [](const ViewPoint<T> &vp) { return Image<T>::fromViewPoint(vp); };
-
+        void finalRefinement(const Image<> &target, std::shared_ptr<processing::image::ImageComparator> comparator) {
+            // Perform radius optimization
             auto radius_optimizer = RadiusOptimizer<T>();
+            auto renderFunction = [](const ViewPoint<T> &vp) { return Image<T>::fromViewPoint(vp); };
             auto result = radius_optimizer.optimize(best_viewpoint_, target, renderFunction);
 
-            LOG_INFO("Final radius refinement complete.");
+            Image<T> refined_image = Image<>::fromViewPoint(result.best_viewpoint);
+            T refined_score = comparator->compare(target, refined_image);
+            result.best_viewpoint.setScore(refined_score);
 
-            return result;
+            if (refined_score > best_viewpoint_.getScore()) {
+                best_viewpoint_ = result.best_viewpoint;
+                LOG_INFO("Radius refinement improved viewpoint: {}", best_viewpoint_.toString());
+            }
+
+            // Final local refinement
+            localRefinement(target, comparator);
         }
+
+        void updateExplorationRate(T stagnation_ratio) { engine_.updateExplorationRate(stagnation_ratio); }
     };
 
 } // namespace optimization

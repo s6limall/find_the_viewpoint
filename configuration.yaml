@@ -51,7 +51,7 @@ image:
         cross_check: false            # Cross-check for matching
 
   comparator:
-    type: "COMPOSITE"                        # Selected image comparison method (FEATURE, SSIM, COMPOSITE, PSNR)
+    type: "FEATURE"                        # Selected image comparison method (FEATURE, SSIM, COMPOSITE, PSNR)
     normalize: false                    # Normalize the images before comparison (using MSE/PSNR which are absolute metrics)
     ssim:
       threshold: 1.0                   # Higher is better
@@ -63,13 +63,13 @@ image:
       threshold: 0.95                   # Higher is better
 
 optimization:
-  target_score: 0.90 # Target score for optimization
-  significant_improvement_threshold: 0.20 # local search when improvement is greater than this
+  target_score: 0.95 # Target score for optimization
+  significant_improvement_threshold: 0.10 # local search when improvement is greater than this
   refinement_threshold: 0.70 # Refinement threshold to switch to local search
   max_restarts: 0 # Maximum number of restarts (0 = no restarts)
-  max_points: 70 # Maximum number of points to optimize (0 = no limit) TODO: Implement
-  patience: 15 # Number of allowed stagnant iterations before stopping the optimization
-  improvement_threshold: 1e-5 # DEFAULT: 1e-4; improvement less than this will be considered stagnant
+  max_points: 1 # Maximum number of points to optimize (0 = no limit) TODO: Implement
+  patience: 5 # Number of allowed stagnant iterations before stopping the optimization
+  improvement_threshold: 1e-3 # DEFAULT: 1e-4; improvement less than this will be considered stagnant
   gp:
     kernel:
       matern:
@@ -81,10 +81,10 @@ optimization:
         variance: 1.0
         noise_variance: 1e-6
         optimization:
-          frequency: 10
-          max_iterations: 10
+          frequency: 20
+          max_iterations: 5
           convergence_tolerance: 1e-5
-          restarts: 5
+          restarts: 0
           param_lower_bound: 1e-6
           param_upper_bound: 1e3
     acquisition: # ADAPTIVE =  adaptive exploration-exploitation + EI + PI + UCB
@@ -92,19 +92,19 @@ optimization:
       strategy: ADAPTIVE              # DEFAULT: ADAPTIVE; EI, PI, UCB, UCB_ALT, ADAPTIVE, ADAPTIVE_EI, ADAPTIVE_PI, ADAPTIVE_UCB
       distance_penalty: false           # DEFAULT: false; Penalize large distances in the acquisition function
       beta: 2.0                       # DEFAULT: 2.0; Exploration-exploitation trade-off parameter
-      exploration_weight: 5.0         # DEFAULT: 1.0; Exploration weight for the acquisition function
+      exploration_weight: 1.0         # DEFAULT: 1.0; Exploration weight for the acquisition function
       exploitation_weight: 1.0        # DEFAULT: 1.0; Exploitation weight for the acquisition function
-      momentum: 0.75                   # DEFAULT: 0.1; Momentum for the acquisition function
+      momentum: 0.1                   # DEFAULT: 0.1; Momentum for the acquisition function
       distance_weight: 0.50           # DEFAULT: 0.5; Weight for the distance term in the acquisition function
       threshold: 0.75                 # DEFAULT: 0.75; Threshold until which few actual evaluations are done
 
   local_search:
-    frequency: 10 # Frequency of local search (every n steps)
-    max_iterations: 2 # Maximum number of iterations for local search
+    frequency: 3 # Frequency of local search (every n steps)
+    max_iterations: 50 # Maximum number of iterations for local search
     learning_rate: 0.01 # Learning rate for local search
     epsilon: 1e-4 # Epsilon for local search (high = big steps, low = small steps)
-    patience: 3
-    momentum: 0.85
+    patience: 5
+    momentum: 0.5
 
 
 
@@ -119,12 +119,12 @@ rendering:
   duration: 0 # Duration of the rendering in ms
 
 sampling:
-  count: 10
+  count: 6
 
 octree:
   min_nodes_to_explore: 8
   min_size_multiplier: 0.01 # CRITICAL - DO NOT CHANGE (0.01)
-  max_iterations: 20
+  max_iterations: 50
   tolerance: 0.01
   restrict_vicinity: false # Restricts search space to the vicinity of the current best point
   vicinity_multiplier: 0.9 # Multiplier/Importance for the vicinity radius
