@@ -30,7 +30,7 @@ namespace processing::image {
             size_t complexity_sample_size;
 
             Config() :
-                base_ssim_weight(0.4), feature_weight(0.4), color_weight(0.2), edge_low_threshold(50.0),
+                base_ssim_weight(0.4), feature_weight(0.6), color_weight(0.0), edge_low_threshold(50.0),
                 edge_high_threshold(150.0), complexity_sample_size(2000) {}
         };
 

@@ -57,9 +57,23 @@ namespace core {
                 cv_.wait(cv_lock, [] { return ready_flag_; });
             }
 
-
             cv::Mat result = perception_->render(extrinsics, image_save_path);
             state::set("count", state::get("count", 0) + 1);
+
+            // Get the last point from state, defaulting to zero vector if not set
+            Eigen::Vector3d last_point = Eigen::Vector3d::Zero();
+            if (auto last_point_opt = state::getOptional<std::array<double, 3>>("last_point")) {
+                last_point = Eigen::Map<const Eigen::Vector3d>(last_point_opt->data());
+            }
+
+            Eigen::Vector3d current_point(extrinsics(0, 3), extrinsics(1, 3), extrinsics(2, 3));
+
+            // Store the current point as the new last_point
+            state::set("last_point", std::array{current_point.x(), current_point.y(), current_point.z()});
+
+            // Update the path length
+            double path_increment = (current_point - last_point).norm();
+            state::set("path_length", state::get("path_length", 0.0) + path_increment);
 
             Camera::Extrinsics extrinsics_matrix;
             extrinsics_matrix.setPose(extrinsics);

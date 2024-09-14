@@ -1,5 +1,3 @@
-// File: common/metrics/metrics_collector.hpp
-
 #ifndef METRICS_COLLECTOR_HPP
 #define METRICS_COLLECTOR_HPP
 
@@ -31,59 +29,46 @@ namespace metrics {
             return instance;
         }
 
-        void initialize(const std::optional<std::string_view> &objectName = std::nullopt) {
-            std::lock_guard<std::mutex> lock(mutex);
-            if (objectName) {
-                currentObject = *objectName;
-            }
+        void initialize(std::string_view objectName = {}) {
+            std::lock_guard lock(mutex);
+            if (!objectName.empty())
+                currentObject = objectName;
             loadOrCreateDataFile();
         }
 
         template<typename T>
-        void recordMetric(const ViewPoint<T> &viewpoint, const std::string &key, const MetricValue &value) {
-            try {
-                std::lock_guard<std::mutex> lock(mutex);
-                updateOrAddViewpoint(viewpoint.getPosition(), {{key, value}});
-                saveDataFile();
-            } catch (const std::exception &error) {
-                LOG_ERROR("Failed to record metric: {}", error.what());
-                throw std::runtime_error(fmt::format("Failed to record metric: {}", error.what()));
-            }
+        void recordMetric(const ViewPoint<T> &viewpoint, std::string_view key, const MetricValue &value) {
+            recordMetrics(viewpoint, {{std::string(key), value}});
         }
 
         template<typename T>
         void recordMetrics(const ViewPoint<T> &viewpoint, const std::unordered_map<std::string, MetricValue> &metrics) {
-            try {
-                std::lock_guard<std::mutex> lock(mutex);
-                updateOrAddViewpoint(viewpoint.getPosition(), metrics);
-                saveDataFile();
-            } catch (const std::exception &error) {
-                LOG_ERROR("Failed to record metrics: {}", error.what());
-                throw std::runtime_error(fmt::format("Failed to record metrics: {}", error.what()));
-            }
+            recordMetrics(viewpoint.getPosition(), metrics);
         }
 
         template<typename Derived>
         void recordMetrics(const Eigen::MatrixBase<Derived> &point,
                            const std::unordered_map<std::string, MetricValue> &metrics) {
             try {
-                std::lock_guard<std::mutex> lock(mutex);
+                std::lock_guard lock(mutex);
                 updateOrAddViewpoint(point, metrics);
                 saveDataFile();
             } catch (const std::exception &error) {
                 LOG_ERROR("Failed to record metrics: {}", error.what());
-                throw std::runtime_error(fmt::format("Failed to record metrics: {}", error.what()));
+                throw;
             }
         }
 
         void setOutputDirectory(const std::filesystem::path &directory) {
-            std::lock_guard<std::mutex> lock(mutex);
+            std::lock_guard lock(mutex);
             outputDirectory = directory;
             loadOrCreateDataFile();
         }
 
     private:
-        MetricsCollector() : currentObject(config::get("object.name", "unknown_object")), nextViewpointIndex(0) {
+        MetricsCollector() :
+            currentObject(config::get("object.name", "unknown_object")),
+            outputDirectory(std::filesystem::current_path()), nextViewpointIndex(0) {
             loadOrCreateDataFile();
         }
 
@@ -124,7 +109,7 @@ namespace metrics {
                 updateViewpointData(*existingViewpoint, point, metrics);
             } else {
                 viewpoints.push_back(createViewpointData(point, metrics));
-                nextViewpointIndex++;
+                ++nextViewpointIndex;
             }
         }
 
@@ -159,7 +144,7 @@ namespace metrics {
         }
 
         void updateNestedJson(json &j, const std::string &key, const MetricValue &value) const {
-            std::vector<std::string> keys = splitString(key, '.');
+            auto keys = splitString(key, '.');
             json *current = &j;
 
             for (size_t i = 0; i < keys.size() - 1; ++i) {
@@ -170,8 +155,8 @@ namespace metrics {
             }
 
             (*current)[keys.back()] = std::visit(
-                    []<typename T0>(const T0 &v) -> json {
-                        using T = std::decay_t<T0>;
+                    [](const auto &v) -> json {
+                        using T = std::decay_t<decltype(v)>;
                         if constexpr (std::is_same_v<T, int64_t> || std::is_same_v<T, double> ||
                                       std::is_same_v<T, std::string>) {
                             return v;
@@ -186,8 +171,8 @@ namespace metrics {
 
         std::vector<std::string> splitString(const std::string &s, char delimiter) const {
             std::vector<std::string> tokens;
-            std::string token;
             std::istringstream tokenStream(s);
+            std::string token;
             while (std::getline(tokenStream, token, delimiter)) {
                 tokens.push_back(token);
             }
@@ -195,14 +180,14 @@ namespace metrics {
         }
 
         std::string currentObject;
-        std::filesystem::path outputDirectory = std::filesystem::current_path();
+        std::filesystem::path outputDirectory;
         mutable std::mutex mutex;
         json data;
         size_t nextViewpointIndex;
     };
 
     template<typename T>
-    void recordMetric(const ViewPoint<T> &viewpoint, const std::string &key, const MetricValue &value) {
+    void recordMetric(const ViewPoint<T> &viewpoint, std::string_view key, const MetricValue &value) {
         MetricsCollector::getInstance().recordMetric(viewpoint, key, value);
     }
 
