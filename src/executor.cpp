@@ -164,14 +164,16 @@ void Executor::execute() {
                     processing::image::CompositeComparator(extractor_, matcher_).compare(target_, best_image);
             const auto distance_from_initial = global_best_viewpoint->distance(initial_viewpoint);
             const auto points_evaluated = state::get("count", 0);
+            const auto path_length = state::get("path_length", 0.0);
             LOG_INFO("Final scores - PSNR: {:.4f}, SSIM: {:.4f}, Feature: {:.4f}, Composite: {:.4f}, Points evaluated: "
-                     "{}, Distance (initial-final): {:.4f}",
-                     psnr, ssim, feature_score, composite_score, points_evaluated, distance_from_initial);
+                     "{}, Distance (initial-final): {:.4f}, Path travelled: {:.4f}",
+                     psnr, ssim, feature_score, composite_score, points_evaluated, distance_from_initial, path_length);
 
             metrics::recordMetrics(best_image.getViewPoint().value(), {{"psnr", psnr},
                                                                        {"ssim", ssim},
                                                                        {"feature", feature_score},
                                                                        {"composite", composite_score},
+                                                                       {"path_length", path_length},
                                                                        {"distance", distance_from_initial}});
 
         } else {
