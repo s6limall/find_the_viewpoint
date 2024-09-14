@@ -7,11 +7,9 @@
 #include <fstream>
 #include <mutex>
 #include <nlohmann/json.hpp>
-#include <optional>
 #include <string_view>
 #include <unordered_map>
 #include <variant>
-#include <vector>
 
 #include "common/logging/logger.hpp"
 #include "config/configuration.hpp"
@@ -33,7 +31,8 @@ namespace metrics {
             std::lock_guard lock(mutex);
             if (!objectName.empty())
                 currentObject = objectName;
-            loadOrCreateDataFile();
+            deleteExistingFile();
+            resetData();
         }
 
         template<typename T>
@@ -62,33 +61,40 @@ namespace metrics {
         void setOutputDirectory(const std::filesystem::path &directory) {
             std::lock_guard lock(mutex);
             outputDirectory = directory;
-            loadOrCreateDataFile();
+            deleteExistingFile();
+            resetData();
         }
 
     private:
         MetricsCollector() :
             currentObject(config::get("object.name", "unknown_object")),
             outputDirectory(std::filesystem::current_path()), nextViewpointIndex(0) {
-            loadOrCreateDataFile();
+            deleteExistingFile();
+            resetData();
         }
 
-        void loadOrCreateDataFile() {
-            std::filesystem::create_directories(outputDirectory);
+        void deleteExistingFile() {
             const auto filePath = getDataFilePath();
-
             if (std::filesystem::exists(filePath)) {
-                std::ifstream file(filePath);
-                file >> data;
-                nextViewpointIndex = data["viewpoints"].size();
-            } else {
-                data = {{"viewpoints", json::array()}};
-                saveDataFile();
+                std::filesystem::remove(filePath);
+                LOG_INFO("Existing metrics file deleted: {}", filePath.string());
             }
         }
 
+        void resetData() {
+            data = {{"viewpoints", json::array()}};
+            nextViewpointIndex = 0;
+        }
+
         void saveDataFile() const {
-            std::ofstream file(getDataFilePath());
+            const auto filePath = getDataFilePath();
+            std::filesystem::create_directories(filePath.parent_path());
+            std::ofstream file(filePath);
+            if (!file) {
+                throw std::runtime_error("Failed to create file for writing: " + filePath.string());
+            }
             file << std::setw(4) << data << std::endl;
+            LOG_INFO("Metrics saved to file: {}", filePath.string());
         }
 
         std::filesystem::path getDataFilePath() const {
@@ -147,11 +153,11 @@ namespace metrics {
             auto keys = splitString(key, '.');
             json *current = &j;
 
-            for (size_t i = 0; i < keys.size() - 1; ++i) {
-                if (!current->contains(keys[i])) {
-                    (*current)[keys[i]] = json::object();
+            for (auto it = keys.begin(); it != keys.end() - 1; ++it) {
+                if (!current->contains(*it)) {
+                    (*current)[*it] = json::object();
                 }
-                current = &(*current)[keys[i]];
+                current = &(*current)[*it];
             }
 
             (*current)[keys.back()] = std::visit(
@@ -186,6 +192,7 @@ namespace metrics {
         size_t nextViewpointIndex;
     };
 
+    // Free functions for convenience
     template<typename T>
     void recordMetric(const ViewPoint<T> &viewpoint, std::string_view key, const MetricValue &value) {
         MetricsCollector::getInstance().recordMetric(viewpoint, key, value);

@@ -1,7 +1,7 @@
 # File: configuration.yaml
 
 object:
-  name: "obj_000020"
+  name: "obj_000002"
 
 target_images:
   generate: true
@@ -77,30 +77,30 @@ optimization:
         initial_variance: 1.0
         initial_noise_variance: 1e-6
       hyperparameters:
-        length_scale: 0.5
+        length_scale: 0.8
         variance: 1.0
         noise_variance: 1e-6
         optimization:
           frequency: 20
-          max_iterations: 5
+          max_iterations: 2
           convergence_tolerance: 1e-5
-          restarts: 0
+          restarts: 1
           param_lower_bound: 1e-6
           param_upper_bound: 1e3
     acquisition: # ADAPTIVE =  adaptive exploration-exploitation + EI + PI + UCB
       # ADAPTIVE_{strategy} = adaptive exploration-exploitation + {strategy} - other strategies are set to 0
       strategy: ADAPTIVE              # DEFAULT: ADAPTIVE; EI, PI, UCB, UCB_ALT, ADAPTIVE, ADAPTIVE_EI, ADAPTIVE_PI, ADAPTIVE_UCB
       distance_penalty: false           # DEFAULT: false; Penalize large distances in the acquisition function
-      beta: 2.0                       # DEFAULT: 2.0; Exploration-exploitation trade-off parameter
+      beta: 3.0                       # DEFAULT: 2.0; Exploration-exploitation trade-off parameter
       exploration_weight: 1.0         # DEFAULT: 1.0; Exploration weight for the acquisition function
       exploitation_weight: 1.0        # DEFAULT: 1.0; Exploitation weight for the acquisition function
-      momentum: 0.1                   # DEFAULT: 0.1; Momentum for the acquisition function
+      momentum: 0.95                   # DEFAULT: 0.1; Momentum for the acquisition function
       distance_weight: 0.50           # DEFAULT: 0.5; Weight for the distance term in the acquisition function
       threshold: 0.75                 # DEFAULT: 0.75; Threshold until which few actual evaluations are done
 
   local_search:
-    frequency: 3 # Frequency of local search (every n steps)
-    max_iterations: 50 # Maximum number of iterations for local search
+    frequency: 5 # Frequency of local search (every n steps)
+    max_iterations: 25 # Maximum number of iterations for local search
     learning_rate: 0.01 # Learning rate for local search
     epsilon: 1e-4 # Epsilon for local search (high = big steps, low = small steps)
     patience: 5
