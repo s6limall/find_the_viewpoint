@@ -1,25 +1,49 @@
 #ifndef FTV_HPP
 #define FTV_HPP
 
-#include <rclcpp/rclcpp.hpp>
+#include <Eigen/Geometry>
+#include <ament_index_cpp/get_package_share_directory.hpp>
+#include <geometry_msgs/msg/pose_stamped.hpp>
 #include <moveit/move_group_interface/move_group_interface.h>
 #include <moveit/robot_trajectory/robot_trajectory.h>
 #include <moveit/trajectory_processing/iterative_time_parameterization.h>
-#include <geometry_msgs/msg/pose_stamped.hpp>
-#include <ament_index_cpp/get_package_share_directory.hpp>
-#include <Eigen/Geometry>
+#include <rclcpp/rclcpp.hpp>
 #include <tf2_eigen/tf2_eigen.h>
-#include <visualization_msgs/msg/marker_array.hpp>
 #include <visualization_msgs/msg/marker.hpp>
+#include <visualization_msgs/msg/marker_array.hpp>
 #include "core/eye.hpp"
-//#include "executor.hpp"
-//#include "config/configuration.hpp"
+// #include "executor.hpp"
+// #include "config/configuration.hpp"
 #include "common/state/state.hpp"
 #include "task2.hpp"
 
-#include <moveit/planning_scene_interface/planning_scene_interface.h>
 #include <geometric_shapes/shape_operations.h>
+#include <librealsense2/rs.hpp>
+#include <moveit/planning_scene_interface/planning_scene_interface.h>
 
+#include <librealsense2/rs.hpp>
+#include <opencv2/opencv.hpp>
+
+class RealSenseCamera {
+public:
+    RealSenseCamera() {
+        cfg_.enable_stream(RS2_STREAM_COLOR, 640, 480, RS2_FORMAT_BGR8, 30);
+        pipe_.start(cfg_);
+    }
+
+    cv::Mat captureImage() {
+        rs2::frameset frames = pipe_.wait_for_frames();
+        rs2::frame color_frame = frames.get_color_frame();
+
+        // Convert rs2::frame to cv::Mat
+        cv::Mat image(cv::Size(640, 480), CV_8UC3, (void*)color_frame.get_data(), cv::Mat::AUTO_STEP);
+        return image.clone();  // Return a copy to ensure the data persists
+    }
+
+private:
+    rs2::pipeline pipe_;
+    rs2::config cfg_;
+};
 
 
 class FTVNode final : public rclcpp::Node {
@@ -36,6 +60,13 @@ public:
         });
         marker_pub_ = this->create_publisher<visualization_msgs::msg::MarkerArray>("visualization_marker_array", 10);
         publishGroundPlaneMarker();
+
+        camera_ = std::make_unique<RealSenseCamera>();
+        image_capture_timer_ = this->create_wall_timer(
+            std::chrono::seconds(5),
+            std::bind(&FTVNode::captureAndProcessImage, this)
+        );
+
         RCLCPP_INFO(this->get_logger(), "FTVNode initialized successfully!");
     }
 
@@ -54,10 +85,8 @@ private:
     void setCustomOrigin() {
         custom_origin_ = Eigen::Isometry3d::Identity();
         custom_origin_.translation() = Eigen::Vector3d(0.25, 0.0, 0.0);
-        RCLCPP_INFO(this->get_logger(), "Custom origin set to (%.2f, %.2f, %.2f)",
-                    custom_origin_.translation().x(),
-                    custom_origin_.translation().y(),
-                    custom_origin_.translation().z());
+        RCLCPP_INFO(this->get_logger(), "Custom origin set to (%.2f, %.2f, %.2f)", custom_origin_.translation().x(),
+                    custom_origin_.translation().y(), custom_origin_.translation().z());
     }
 
     void initializeMoveGroup() {
@@ -65,8 +94,8 @@ private:
         init_timer_->cancel();
 
         try {
-            move_group_interface_ = std::make_unique<moveit::planning_interface::MoveGroupInterface>(
-                shared_from_this(), "xarm7");
+            move_group_interface_ =
+                    std::make_unique<moveit::planning_interface::MoveGroupInterface>(shared_from_this(), "xarm7");
 
             move_group_interface_->setPlannerId("RRTConnect");
             move_group_interface_->setNumPlanningAttempts(20);
@@ -88,11 +117,11 @@ private:
             setupScene();
 
             core::Eye::setCallback(
-                [this](const Eigen::Matrix4d &extrinsics, std::condition_variable &cv, bool &ready_flag) {
-                    moveArm(extrinsics);
-                    ready_flag = true;
-                    cv.notify_one();
-                });
+                    [this](const Eigen::Matrix4d &extrinsics, std::condition_variable &cv, bool &ready_flag) {
+                        moveArm(extrinsics);
+                        ready_flag = true;
+                        cv.notify_one();
+                    });
 
             std::thread core_thread([this] { runCoreProgram(); });
             core_thread.detach();
@@ -106,7 +135,7 @@ private:
     void runCoreProgram() const {
         try {
             RCLCPP_INFO(this->get_logger(), "Running core program");
-//            Executor::execute();
+            //            Executor::execute();
             task2::run_level_3();
         } catch (const std::exception &e) {
             RCLCPP_ERROR(this->get_logger(), "Core program execution failed: %s", e.what());
@@ -148,7 +177,7 @@ private:
         RCLCPP_INFO(this->get_logger(), "Added ground plane and bounding box to the scene");
     }
 
-    void addBoundingBox(moveit::planning_interface::PlanningSceneInterface& planning_scene_interface) {
+    void addBoundingBox(moveit::planning_interface::PlanningSceneInterface &planning_scene_interface) {
         std::vector<moveit_msgs::msg::CollisionObject> collision_objects;
 
         // Define the dimensions of the bounding box
@@ -158,12 +187,12 @@ private:
 
         // Create 6 planes to form a box
         std::vector<std::array<double, 4>> plane_coeffs = {
-            {1, 0, 0, -x_min},  // Left wall
-            {-1, 0, 0, x_max},  // Right wall
-            {0, 1, 0, -y_min},  // Front wall
-            {0, -1, 0, y_max},  // Back wall
-            {0, 0, 1, -z_min},  // Floor (already added as ground plane but still)
-            {0, 0, -1, z_max}   // Ceiling
+                {1, 0, 0, -x_min}, // Left wall
+                {-1, 0, 0, x_max}, // Right wall
+                {0, 1, 0, -y_min}, // Front wall
+                {0, -1, 0, y_max}, // Back wall
+                {0, 0, 1, -z_min}, // Floor (already added as ground plane but still)
+                {0, 0, -1, z_max} // Ceiling
         };
 
         for (size_t i = 0; i < plane_coeffs.size(); ++i) {
@@ -186,7 +215,8 @@ private:
         publishBoundingBoxMarkers(x_min, x_max, y_min, y_max, z_min, z_max);
     }
 
-    void publishBoundingBoxMarkers(double x_min, double x_max, double y_min, double y_max, double z_min, double z_max) const {
+    void publishBoundingBoxMarkers(double x_min, double x_max, double y_min, double y_max, double z_min,
+                                   double z_max) const {
         visualization_msgs::msg::MarkerArray marker_array;
 
         auto createBoxMarker = [&](int id, double x, double y, double z, double dx, double dy, double dz) {
@@ -213,18 +243,30 @@ private:
 
         // Create markers for the edges of the bounding box
         const double edge_thickness = 0.02;
-        marker_array.markers.push_back(createBoxMarker(0, (x_min + x_max) / 2, y_min, z_min, x_max - x_min, edge_thickness, edge_thickness));
-        marker_array.markers.push_back(createBoxMarker(1, (x_min + x_max) / 2, y_max, z_min, x_max - x_min, edge_thickness, edge_thickness));
-        marker_array.markers.push_back(createBoxMarker(2, (x_min + x_max) / 2, y_min, z_max, x_max - x_min, edge_thickness, edge_thickness));
-        marker_array.markers.push_back(createBoxMarker(3, (x_min + x_max) / 2, y_max, z_max, x_max - x_min, edge_thickness, edge_thickness));
-        marker_array.markers.push_back(createBoxMarker(4, x_min, (y_min + y_max) / 2, z_min, edge_thickness, y_max - y_min, edge_thickness));
-        marker_array.markers.push_back(createBoxMarker(5, x_max, (y_min + y_max) / 2, z_min, edge_thickness, y_max - y_min, edge_thickness));
-        marker_array.markers.push_back(createBoxMarker(6, x_min, (y_min + y_max) / 2, z_max, edge_thickness, y_max - y_min, edge_thickness));
-        marker_array.markers.push_back(createBoxMarker(7, x_max, (y_min + y_max) / 2, z_max, edge_thickness, y_max - y_min, edge_thickness));
-        marker_array.markers.push_back(createBoxMarker(8, x_min, y_min, (z_min + z_max) / 2, edge_thickness, edge_thickness, z_max - z_min));
-        marker_array.markers.push_back(createBoxMarker(9, x_max, y_min, (z_min + z_max) / 2, edge_thickness, edge_thickness, z_max - z_min));
-        marker_array.markers.push_back(createBoxMarker(10, x_min, y_max, (z_min + z_max) / 2, edge_thickness, edge_thickness, z_max - z_min));
-        marker_array.markers.push_back(createBoxMarker(11, x_max, y_max, (z_min + z_max) / 2, edge_thickness, edge_thickness, z_max - z_min));
+        marker_array.markers.push_back(
+                createBoxMarker(0, (x_min + x_max) / 2, y_min, z_min, x_max - x_min, edge_thickness, edge_thickness));
+        marker_array.markers.push_back(
+                createBoxMarker(1, (x_min + x_max) / 2, y_max, z_min, x_max - x_min, edge_thickness, edge_thickness));
+        marker_array.markers.push_back(
+                createBoxMarker(2, (x_min + x_max) / 2, y_min, z_max, x_max - x_min, edge_thickness, edge_thickness));
+        marker_array.markers.push_back(
+                createBoxMarker(3, (x_min + x_max) / 2, y_max, z_max, x_max - x_min, edge_thickness, edge_thickness));
+        marker_array.markers.push_back(
+                createBoxMarker(4, x_min, (y_min + y_max) / 2, z_min, edge_thickness, y_max - y_min, edge_thickness));
+        marker_array.markers.push_back(
+                createBoxMarker(5, x_max, (y_min + y_max) / 2, z_min, edge_thickness, y_max - y_min, edge_thickness));
+        marker_array.markers.push_back(
+                createBoxMarker(6, x_min, (y_min + y_max) / 2, z_max, edge_thickness, y_max - y_min, edge_thickness));
+        marker_array.markers.push_back(
+                createBoxMarker(7, x_max, (y_min + y_max) / 2, z_max, edge_thickness, y_max - y_min, edge_thickness));
+        marker_array.markers.push_back(
+                createBoxMarker(8, x_min, y_min, (z_min + z_max) / 2, edge_thickness, edge_thickness, z_max - z_min));
+        marker_array.markers.push_back(
+                createBoxMarker(9, x_max, y_min, (z_min + z_max) / 2, edge_thickness, edge_thickness, z_max - z_min));
+        marker_array.markers.push_back(
+                createBoxMarker(10, x_min, y_max, (z_min + z_max) / 2, edge_thickness, edge_thickness, z_max - z_min));
+        marker_array.markers.push_back(
+                createBoxMarker(11, x_max, y_max, (z_min + z_max) / 2, edge_thickness, edge_thickness, z_max - z_min));
 
         marker_pub_->publish(marker_array);
     }
@@ -407,8 +449,8 @@ private:
             pose.orientation.z = q.z();
             pose.orientation.w = q.w();
 
-            RCLCPP_INFO(this->get_logger(), "Set orientation to look at origin: [%f, %f, %f, %f]",
-                        q.w(), q.x(), q.y(), q.z());
+            RCLCPP_INFO(this->get_logger(), "Set orientation to look at origin: [%f, %f, %f, %f]", q.w(), q.x(), q.y(),
+                        q.z());
         } catch (const std::exception &e) {
             RCLCPP_ERROR(this->get_logger(), "Exception in setOrientationToLookAtOrigin: %s", e.what());
         }
@@ -498,10 +540,44 @@ private:
         marker_pub_->publish(marker_array);
     }
 
+    void captureAndProcessImage() {
+        try {
+            cv::Mat image = camera_->captureImage();
+
+            RCLCPP_INFO(this->get_logger(), "Image captured successfully. Size: %dx%d", image.cols, image.rows);
+
+            // Display the image
+            cv::imshow("RealSense Camera", image);
+            cv::waitKey(1);  // Wait for a key event for 1ms
+
+            // Generate a unique filename using current timestamp
+            auto now = std::chrono::system_clock::now();
+            auto in_time_t = std::chrono::system_clock::to_time_t(now);
+            std::stringstream ss;
+            ss << std::put_time(std::localtime(&in_time_t), "%Y%m%d_%H%M%S");
+            std::string filename = "/tmp/realsense_" + ss.str() + ".jpg";
+
+            // Save the image
+            cv::imwrite(filename, image);
+            RCLCPP_INFO(this->get_logger(), "Image saved as: %s", filename.c_str());
+
+        } catch (const std::exception &e) {
+            RCLCPP_ERROR(this->get_logger(), "Failed to capture or process image: %s", e.what());
+        }
+    }
+
+    std::unique_ptr<RealSenseCamera> camera_;
+    rclcpp::TimerBase::SharedPtr image_capture_timer_;
+
+    std::unique_ptr<moveit::planning_interface::MoveGroupInterface> move_group_interface_;
+    rclcpp::TimerBase::SharedPtr init_timer_;
+    Eigen::Isometry3d custom_origin_;
+    rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr marker_pub_;
+
     std::unique_ptr<moveit::planning_interface::MoveGroupInterface> move_group_interface_;
     rclcpp::TimerBase::SharedPtr init_timer_;
     Eigen::Isometry3d custom_origin_;
     rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr marker_pub_;
 };
 
-#endif //FTV_HPP
+#endif // FTV_HPP

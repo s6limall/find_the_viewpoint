@@ -15,7 +15,7 @@ enum Level {
     Level_3,
 };
 
-Level selected_task = Level_3; 
+Level selected_task = Level_3;
 
 int main() {
     Config::initializeLogging();
@@ -24,6 +24,9 @@ int main() {
     srand(43);
 
 
+
+    task2::run_level_3();
+    /*
     switch (selected_task) {
         case Level_1:{
             spdlog::info("Task_1: level_1");
@@ -44,9 +47,7 @@ int main() {
             spdlog::error("Unknown method selected.\n");
             return 1;
     }
-    
-
-    
+    */
 
     return 0;
 }

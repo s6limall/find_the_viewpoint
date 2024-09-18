@@ -21,6 +21,8 @@ namespace core {
         using ExtrinsicsCallback =
                 std::function<void(const Eigen::Matrix4d &extrinsics, std::condition_variable &cv, bool &ready_flag)>;
 
+        static int count;
+
         // Delete constructor to enforce static usage
         Eye() = delete;
 
@@ -65,6 +67,10 @@ namespace core {
             Camera::Extrinsics extrinsics_matrix;
             extrinsics_matrix.setPose(extrinsics);
 
+            cout << "Count: " << count << endl;
+
+            count++;
+
             return result;
         }
 
@@ -96,6 +102,7 @@ namespace core {
         inline static bool ready_flag_ = false;
         inline static std::optional<ExtrinsicsCallback> callback_ = std::nullopt;
     };
+
 
 } // namespace core
 

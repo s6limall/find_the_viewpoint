@@ -475,6 +475,35 @@
             <child
                     link="${prefix}link_eef"/>
         </joint>
+        <!-- REALSENSE -->
+        <link name="${prefix}realsense_camera_link">
+            <visual>
+                <origin xyz="0 0 0" rpy="0 0 0"/>
+                <geometry>
+                    <box size="0.025 0.09 0.025"/>
+                </geometry>
+                <material name="blue">
+                    <color rgba="0 0 1 0.5"/>
+                </material>
+            </visual>
+            <collision>
+                <origin xyz="0 0 0" rpy="0 0 0"/>
+                <geometry>
+                    <box size="0.025 0.09 0.025"/>
+                </geometry>
+            </collision>
+            <inertial>
+                <mass value="0.1"/>
+                <inertia ixx="0.000016666" ixy="0" ixz="0" iyy="0.000016666" iyz="0" izz="0.000016666"/>
+            </inertial>
+        </link>
+
+        <joint name="${prefix}realsense_camera_joint" type="fixed">
+            <origin xyz="0 0 0.05" rpy="0 0 0"/>
+            <parent link="${prefix}link_eef"/>
+            <child link="${prefix}realsense_camera_link"/>
+        </joint>
+    <!-- REALSENSE -->
     </xacro:macro>
     <xacro:xarm7_urdf prefix=""/>
 

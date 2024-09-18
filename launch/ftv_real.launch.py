@@ -21,7 +21,8 @@ def generate_launch_description():
     robot_description = {'robot_description': robot_description_content}
 
     # Process the SRDF file
-    srdf_xacro_file = os.path.join(xarm_moveit_config_pkg, 'srdf', 'xarm.srdf.xacro')
+    # srdf_xacro_file = os.path.join(xarm_moveit_config_pkg, 'srdf', 'xarm.srdf.xacro')
+    srdf_xacro_file = os.path.join(get_package_share_directory('ftv'), 'srdf', 'xarm.srdf.xacro')
     robot_description_semantic_content = Command(['xacro ', srdf_xacro_file])
     robot_description_semantic = {'robot_description_semantic': robot_description_semantic_content}
 

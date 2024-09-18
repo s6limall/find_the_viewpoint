@@ -36,7 +36,7 @@ set(PROJECT_INCLUDE_DIRS
 set(PROJECT_LIBRARIES
         ${OpenCV_LIBS}
         ${PCL_LIBRARIES}
-        ${JSONCPP_LIBRARIES}
+#        ${JSONCPP_LIBRARIES}
         jsoncpp_lib
         ${FREETYPE_LIBRARIES}
         ${Python3_LIBRARIES}
